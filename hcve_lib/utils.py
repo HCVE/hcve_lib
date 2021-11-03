@@ -253,14 +253,16 @@ def inverse_cumulative_count(series: Series) -> Iterator[Tuple[Real, float]]:
         yield value, fraction
 
 
-class Debug(BaseEstimator, TransformerMixin):
+class Callback(BaseEstimator, TransformerMixin):
     def __init__(
         self,
         fit_callback: Callable[[DataFrame], Any] = None,
         transform_callback: Callable[[DataFrame], Any] = None,
-        set_breakpoint_fit: bool = False,
+        breakpoint_fit: bool = False,
+        breakpoint_transform: bool = False,
     ):
-        self.set_breakpoint_fit = set_breakpoint_fit
+        self.breakpoint_fit = breakpoint_fit
+        self.breakpoint_transform = breakpoint_transform
         self.fit_callback = fit_callback
         self.transform_callback = transform_callback
         super()
@@ -270,6 +272,8 @@ class Debug(BaseEstimator, TransformerMixin):
             self.transform_callback(X)
         else:
             print('transform', X)
+        if self.breakpoint_transform:
+            breakpoint()
         return X
 
     # noinspection PyUnusedLocal
@@ -278,7 +282,7 @@ class Debug(BaseEstimator, TransformerMixin):
             self.fit_callback(X)
         else:
             print('fit', X)
-        if self.set_breakpoint_fit:
+        if self.breakpoint_fit:
             breakpoint()
         return self
 

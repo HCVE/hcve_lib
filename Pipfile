@@ -1,0 +1,28 @@
+[[source]]
+url = "https://pypi.python.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+pandas = "==1.2"
+toolz = "*"
+scikit-learn = "*"
+optuna = "*"
+frozendict = "*"
+pytest = "*"
+pre-commit = "*"
+matplotlib = "*"
+xgboost = "*"
+pyhumps = "*"
+matplotlib-label-lines = "*"
+pytest-mock = "*"
+scikit-survival = "*"
+flask-socketio = "*"
+mlflow = "*"
+
+[dev-packages]
+pipenv-setup = "*"
+pytest = "*"
+
+[requires]
+python_version = "3.9"

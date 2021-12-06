@@ -1,23 +1,28 @@
+import itertools
+import os
 import shelve
+from collections.abc import Mapping
 from copy import copy
+from functools import singledispatch, partial, update_wrapper
+from numbers import Real
+from pathlib import Path
+from pprint import pprint
+from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional, Sequence, Hashable
 
 import numpy
-from collections.abc import Mapping
+import numpy as np
+import pandas
+from IPython import get_ipython
 from filelock import FileLock, UnixFileLock
 from flask_socketio import SocketIO
 from frozendict import frozendict
-from functools import singledispatch, partial, update_wrapper
 from humps import decamelize, camelize
-from numbers import Real
+from matplotlib import pyplot
 from numpy import ndarray, recarray
 from pandas import Series, DataFrame, Index
 from pandas.core.groupby import DataFrameGroupBy
-from pathlib import Path
-from pprint import pprint
-from sklearn.base import TransformerMixin, BaseEstimator
-from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional
 
-from hcve_lib.custom_types import SurvivalPairTarget
+from hcve_lib.custom_types import SurvivalPairTarget, SplitPrediction, Target
 from hcve_lib.functional import pipe, unzip
 
 empty_dict: Mapping = frozendict()
@@ -253,40 +258,6 @@ def inverse_cumulative_count(series: Series) -> Iterator[Tuple[Real, float]]:
         yield value, fraction
 
 
-class Callback(BaseEstimator, TransformerMixin):
-    def __init__(
-        self,
-        fit_callback: Callable[[DataFrame], Any] = None,
-        transform_callback: Callable[[DataFrame], Any] = None,
-        breakpoint_fit: bool = False,
-        breakpoint_transform: bool = False,
-    ):
-        self.breakpoint_fit = breakpoint_fit
-        self.breakpoint_transform = breakpoint_transform
-        self.fit_callback = fit_callback
-        self.transform_callback = transform_callback
-        super()
-
-    def transform(self, X):
-        if self.transform_callback:
-            self.transform_callback(X)
-        else:
-            print('transform', X)
-        if self.breakpoint_transform:
-            breakpoint()
-        return X
-
-    # noinspection PyUnusedLocal
-    def fit(self, X, y=None, **fit_params):
-        if self.fit_callback:
-            self.fit_callback(X)
-        else:
-            print('fit', X)
-        if self.breakpoint_fit:
-            breakpoint()
-        return self
-
-
 def key_value_swap(d: Dict) -> Dict:
     return {v: k for k, v in d.items()}
 
@@ -302,13 +273,25 @@ def index_data(indexes: Iterable[int], data: IndexData) -> IndexData:
     elif isinstance(data, List):
         return [item for index, item in enumerate(data)
                 if index in indexes]  # type: ignore
+    elif isinstance(data, Dict) and 'name' in data and 'data' in data:
+        return {
+            **data, 'data': index_data(indexes, data['data'])
+        }  # type: ignore
+
     elif isinstance(data, SurvivalPairTarget):
         return (
             index_data(indexes, data[0]),
             index_data(indexes, data[1]),
-        )
+        )  # type: ignore
     else:
         raise TypeError("Can't handle this type")
+
+
+def loc(index: List[Hashable], data: IndexData) -> IndexData:
+    if isinstance(data, (DataFrame, Series)):
+        return data.loc[index]
+    elif isinstance(data, Dict) and 'data' in data:
+        return {**data, 'data': data['data'].loc[index]}
 
 
 ListToDictKey = TypeVar('ListToDictKey')
@@ -316,15 +299,15 @@ ListToDictValue = TypeVar('ListToDictValue')
 
 
 def list_to_dict_by_keys(
-    input_list: List[ListToDictValue],
+    input_list: Iterable[ListToDictValue],
     keys: Iterable[ListToDictKey],
 ) -> Dict[ListToDictKey, ListToDictValue]:
     return {key: value for key, value in zip(keys, input_list)}
 
 
 def list_to_dict_index(
-        input_list: List[ListToDictValue] \
-) -> Dict[int, ListToDictValue]:
+        input_list: Sequence[ListToDictValue] \
+) -> Dict[Hashable, ListToDictValue]:
     return {index: value for index, value in enumerate(input_list)}
 
 
@@ -345,8 +328,10 @@ def map_groups_iloc(
     current_index = 0
     for key, group in groups:
         group_iloc_subset = group.index.map(
-            lambda _key: flatten_data.index.get_loc(_key)).tolist()
-        yield key, group_iloc_subset
+            lambda _key: flatten_data.index.get_loc(_key)
+            if _key in flatten_data.index else -1)
+        group_iloc_subset = group_iloc_subset[group_iloc_subset != -1]
+        yield key, list(group_iloc_subset)
         current_index += len(group)
 
 
@@ -375,7 +360,7 @@ def remove_prefix(prefix: str, input_str: str) -> str:
         return input_str[:]
 
 
-def percent_missing(series: Series) -> float:
+def get_fraction_missing(series: Series) -> float:
     return len(series[series.isna()]) / len(series)
 
 
@@ -408,9 +393,86 @@ def transpose_dict(
     }
 
 
-def partial2(func, name: str = None, args=tuple(), kwargs=empty_dict):
-    partial_func = partial(func, *args, **kwargs)
+def partial2_args(func, name: str = None, args=tuple(), kwargs=empty_dict):
+    partial_func: Callable = partial(func, *args, **kwargs)
     update_wrapper(partial_func, func)
     if name:
-        partial_func.__name__ = name
+        func.__name__ = name
     return partial_func
+
+
+def partial2(func, *args, **kwargs):
+    return partial2_args(func, args=args, kwargs=kwargs)
+
+
+def split_data(X, y, fold: SplitPrediction, remove_extended: bool = False):
+    X_ = X[fold['X_columns']]
+    X_train = loc(fold['split'][0], X_)
+    y_train = loc(fold['split'][0], y)
+    X_test = loc(fold['split'][1], X_)
+    y_test = loc(fold['split'][1], y)
+    if not remove_extended:
+        y_test_ = y_test
+        X_test_ = X_test
+    else:
+        tte_train = get_tte(y_train)
+        tte_test = get_tte(y_test)
+        mask = tte_test <= max(tte_train)
+        y_test_ = {**y_test, 'data': y_test['data'][mask]}
+        X_test_ = X_test[mask]
+    return X_train, y_train, X_test_, y_test_
+
+
+def get_tte(target: Target) -> np.ndarray:
+    if isinstance(target, Dict):
+        return get_tte(target['data'])
+    elif isinstance(target, DataFrame):
+        return target['tte']
+    else:
+        raise TypeError(f'Unsupported {target.__class__}')
+
+
+def cross_validate_apply_mask(
+    mask: Dict[str, bool],
+    data: DataFrame,
+) -> DataFrame:
+    new_data = data.copy()
+    if set(mask.keys()) != set(data.columns):
+        raise Exception("Keys do not match")
+
+    for column_name, remove in mask.items():
+        if remove:
+            new_data.drop(column_name, axis=1, inplace=True)
+
+    return new_data
+
+
+def cwd_root():
+    for folder in itertools.chain([Path.cwd()], Path.cwd().parents):
+        if (folder / 'Pipfile').exists():
+            os.chdir(folder)
+            break
+
+
+def notebook_init():
+    cwd_root()
+    pandas.set_option("display.max_columns", None)
+    pyplot.rcParams['figure.facecolor'] = 'white'
+
+    ipython = get_ipython()
+    ipython.magic("load_ext autoreload")
+    ipython.magic("autoreload  2")
+    ipython.magic("matplotlib inline")
+    ipython.magic("config InlineBackend.figure_format = 'retina'")
+
+
+KeyT = TypeVar('KeyT')
+ValueT = TypeVar('ValueT')
+
+
+def get_key_by_value(dict: Dict[KeyT, ValueT], value: ValueT) -> KeyT:
+    for _key, _value in dict.items():
+        if value == _value:
+            return _key
+
+    raise Exception("Value not found")

@@ -1,11 +1,11 @@
 from enum import Enum
 from functools import partial as p, partial
-from typing import TypedDict, List, Iterator, Optional, Iterable, Tuple, Any, Dict
+from typing import TypedDict, List, Iterator, Optional, Iterable, Tuple, Any, Dict, Callable
 
 import numpy as np
 from pandas import DataFrame, Series
 
-from hcve_lib.custom_types import SurvivalPairTarget
+from hcve_lib.custom_types import SurvivalPairTarget, Target, TargetData
 from hcve_lib.functional import pipe, map_columns_, statements
 from hcve_lib.utils import key_value_swap
 
@@ -19,6 +19,7 @@ class MetadataItem(TypedDict):
     children: Optional['Metadata']  # type: ignore
     type: Optional['MetadataItemType']
     mapping: Optional[Dict]
+    unit: Optional[str]
 
 
 class MetadataItemType(Enum):
@@ -49,6 +50,64 @@ def find_item(
         if item.get('identifier') == identifier:
             return item
     return None
+
+
+def format_features_and_values(
+    data: DataFrame,
+    metadata: Metadata,
+    feature_axis: int = 1,
+) -> DataFrame:
+    return pipe(
+        data,
+        p(format_values, metadata=metadata),
+        p(format_features, metadata=metadata, axis=feature_axis),
+    )
+
+
+def format_features(
+    data: DataFrame,
+    metadata: Metadata,
+    axis: int = 1,
+    formatter: Callable[[str, Metadata], str] = None,
+) -> DataFrame:
+    if formatter is None:
+        formatter = format_identifier
+    return data.rename(
+        lambda identifier: formatter(identifier, metadata=metadata),
+        axis=axis,
+    )
+
+
+def format_value(value: Any, metadata_item: Optional[MetadataItem]) -> Any:
+    if not metadata_item:
+        return value
+
+    mapping = metadata_item.get('mapping')
+    if mapping:
+        return mapping.get(value, value)
+    else:
+        return value
+
+
+def inverse_format_value(
+    value: Any,
+    metadata_item: Optional[MetadataItem],
+) -> Any:
+
+    if metadata_item is None or 'mapping' not in metadata_item or metadata_item[
+            'mapping'] is None:
+        return value
+
+    mapping = key_value_swap(metadata_item['mapping'])
+
+    if mapping:
+        return mapping.get(value, value)
+    else:
+        return value
+
+
+def format_values(data: DataFrame, metadata: Metadata) -> DataFrame:
+    return map_columns_(data, partial(format_series, metadata=metadata))
 
 
 def format_identifier(
@@ -131,21 +190,24 @@ def get_survival_y(
     metadata_item: Optional[MetadataItem] = find_item(target_feature, metadata)
 
     if metadata_item:
-        return data[[
-            metadata_item['identifier'],
-            metadata_item['identifier_tte'],
-        ]].copy().rename(
-            {
-                metadata_item['identifier']: 'label',
-                metadata_item['identifier_tte']: 'tte',
-            },
-            axis=1,
+        return Target(
+            name=target_feature,
+            data=data[[
+                metadata_item['identifier'],
+                metadata_item['identifier_tte'],
+            ]].copy().rename(
+                {
+                    metadata_item['identifier']: 'label',
+                    metadata_item['identifier_tte']: 'tte',
+                },
+                axis=1,
+            ),
         )
     else:
         raise KeyError()
 
 
-def to_survival_y_records(survival_y: DataFrame) -> np.ndarray:
+def to_survival_y_records(survival_y: TargetData) -> np.recarray:
     return survival_y.to_records(
         index=False,
         column_dtypes={
@@ -187,64 +249,6 @@ def remove_nan_target(X: DataFrame, y: Series) -> Tuple[DataFrame, Series]:
     return X_defined, y_defined
 
 
-def format_value(value: Any, metadata_item: Optional[MetadataItem]) -> Any:
-    if not metadata_item:
-        return value
-
-    mapping = metadata_item.get('mapping')
-    if mapping:
-        return mapping.get(value, value)
-    else:
-        return value
-
-
-def inverse_format_value(
-    value: Any,
-    metadata_item: Optional[MetadataItem],
-) -> Any:
-
-    if metadata_item is None or 'mapping' not in metadata_item or metadata_item[
-            'mapping'] is None:
-        return value
-
-    mapping = key_value_swap(metadata_item['mapping'])
-
-    if mapping:
-        return mapping.get(value, value)
-    else:
-        return value
-
-
-def format_dataframe(
-    data: DataFrame,
-    metadata: Metadata,
-    feature_axis: int = 1,
-) -> DataFrame:
-    return pipe(
-        data,
-        p(format_values, metadata=metadata),
-        p(format_features, metadata=metadata, axis=feature_axis),
-    )
-
-
-def format_features(
-    data: DataFrame,
-    metadata: Metadata,
-    axis: int = 1,
-) -> DataFrame:
-    return data.rename(
-        lambda identifier: statements(
-            value := format_identifier_raw(identifier, metadata),
-            f'[{identifier}] {value}' if value else identifier,
-        ),
-        axis=axis,
-    )
-
-
-def format_values(data: DataFrame, metadata: Metadata) -> DataFrame:
-    return map_columns_(data, partial(format_series, metadata=metadata))
-
-
 def get_default_mapping(column_series: Series) -> Dict:
     return {column: column for column in column_series.unique()}
 
@@ -277,3 +281,16 @@ def get_available_identifiers_per_category(
         )
         if len(identifiers) > 0:
             yield item, identifiers
+
+
+def categorize_features(X: DataFrame) -> Tuple[List[str], List[str]]:
+    categorical_features = [
+        column_name for column_name in X.columns
+        if X[column_name].dtype.name == 'object'
+        or X[column_name].dtype.name == 'category'
+    ]
+    continuous_features = [
+        column_name for column_name in X.columns
+        if column_name not in categorical_features
+    ]
+    return categorical_features, continuous_features

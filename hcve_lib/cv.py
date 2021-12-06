@@ -1,32 +1,33 @@
 import itertools
-import json
 import logging
 from abc import ABC, abstractmethod
 from functools import partial
+from math import inf
 from multiprocessing import Pool, cpu_count
-from typing import Callable, Dict, List, Any, Union, Iterable, Hashable
+from typing import Callable, Dict, List, Union, Iterable, Hashable, Optional, Mapping, Sequence, TypeVar
 
+import numpy as np
 import yaml
-from mlflow import active_run, get_experiment
+from mlflow import active_run, get_experiment, start_run, set_tag, log_metrics
 from optuna import create_study, Trial
 from optuna.integration import MLflowCallback
-from pandas import DataFrame, Series
+from pandas import DataFrame, Series, Index
 from pandas.core.groupby import DataFrameGroupBy
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import KFold
 from toolz import compose_left, merge, identity, dissoc
-from toolz.curried import valmap, valfilter, map
+from toolz.curried import valmap, valfilter
 
-from common import brier
-from hcve_lib.custom_types import FoldPrediction, Estimator, EstimatorProba, Target, FoldInput
-from hcve_lib.evaluation_functions import compute_metrics_ci, c_index
-from hcve_lib.functional import star_args, pipe
-from hcve_lib.tracking import log_metrics_ci
-from hcve_lib.utils import empty_dict, index_data, list_to_dict_by_keys, map_groups_iloc, subtract_lists, \
-    list_to_dict_index, percent_missing, partial2
+from hcve_lib.custom_types import SplitPrediction, Estimator, Target, SplitInput, Splits
+from hcve_lib.evaluation_functions import compute_metrics_ci, c_index, get_1_class_y_score
+from hcve_lib.functional import star_args, pipe, always, statements, t
+from hcve_lib.splitting import filter_missing_features
+from hcve_lib.tracking import log_metrics_ci, get_active_experiment_id
+from hcve_lib.utils import empty_dict, list_to_dict_by_keys, list_to_dict_index, cross_validate_apply_mask, \
+    partial2_args, loc
 
 default_cv = KFold(n_splits=10).split
-__CROSS_VALIDATE__ = '__cross_validate__'
+CROSS_VALIDATE_KEY = 'cross_validate'
 
 
 def configuration_to_params(dictionary: Dict) -> Dict:
@@ -47,18 +48,27 @@ class Method(ABC):
         ...
 
 
-class Optimize(BaseEstimator):
+OptimizeEvaluate = Callable[[
+    Trial,
+    Callable,
+    DataFrame,
+    Target,
+], float]
+
+
+class Optimize:
     def __init__(
         self,
         get_pipeline: Callable,
-        objective: Callable,
-        scoring: Callable,
         predict_callback: Callable,
-        cv,
+        optuna: Callable,
+        objective_evaluate: OptimizeEvaluate,
+        get_splits=None,
         optimize_params=empty_dict,
         mlflow_callback=None,
         optimize_callbacks: List[Callable] = None,
         study_name: str = None,
+        catch_exceptions: bool = True,
         logger: logging.Logger = None,
     ):
         if optimize_callbacks is None:
@@ -68,18 +78,20 @@ class Optimize(BaseEstimator):
             mlflow_callback = MLflowCallback(nest_trials=True)
 
         if not study_name and active_run():
-            study_name = get_experiment(active_run().info.experiment_id).name
-
-        self.cv = cv
+            self.study_name = get_experiment(
+                active_run().info.experiment_id).name
+        self.get_splits = get_splits
         self.get_pipeline = get_pipeline
-        self.objective = objective
-        self.study = create_study(direction='maximize', study_name=study_name)
-        self.scoring = scoring
+        self.optuna = optuna
+        self.study = create_study(direction='maximize',
+                                  study_name=self.study_name)
+        self.objective_evaluate = objective_evaluate
         self.predict_callback = predict_callback
         self.optimize_params = optimize_params
         self.fit_best_model = None
         self.mlflow_callback = mlflow_callback
         self.optimize_callbacks = optimize_callbacks
+        self.catch_exceptions = catch_exceptions
         self.logger = logger
 
     def fit(self, X, y):
@@ -91,34 +103,35 @@ class Optimize(BaseEstimator):
         self.study.optimize(
             decorator(
                 compose_left(
-                    self.objective,
+                    self.optuna,
                     star_args(partial(self._objective_instantiate)),
-                    star_args(partial(self._objective_evaluate, X=X, y=y)),
+                    star_args(
+                        partial(
+                            self.objective_evaluate,
+                            X=X,
+                            y=y,
+                            get_splits=self.get_splits,
+                            log_mlflow=self.mlflow_callback is not None,
+                            logger=self.logger,
+                            predict_callback=self.predict_callback,
+                        )),
                 )),
             **merge(
                 dict(n_trials=1),
                 self.optimize_params,
             ),
+            catch=((Exception, ArithmeticError,
+                    RuntimeError) if self.catch_exceptions else ()),
             callbacks=[
                 *self.optimize_callbacks,
                 *([self.mlflow_callback] if self.mlflow_callback else [])
             ],
         )
-        # TODO:
-        # self.fit_best_model = self._instantiate_from_hyperparameters(
-        #     self.study.best_trial.user_attrs['hyperparameters'])
-        # self.fit_best_model.fit(X, y)
-
-    def predict(self, X):
-        return self.fit_best_model.predict(X)
-
-    def predict_proba(self, X):
-        return self.fit_best_model.predict_proba(X)
 
     def _objective_instantiate(self, trial, hyperparameters):
-        if __CROSS_VALIDATE__ in hyperparameters:
-            cv_hyperparameters = hyperparameters[__CROSS_VALIDATE__]
-            rest_hyperparameters = dissoc(hyperparameters, __CROSS_VALIDATE__)
+        if CROSS_VALIDATE_KEY in hyperparameters:
+            cv_hyperparameters = hyperparameters[CROSS_VALIDATE_KEY]
+            rest_hyperparameters = dissoc(hyperparameters, CROSS_VALIDATE_KEY)
         else:
             cv_hyperparameters = {}
             rest_hyperparameters = hyperparameters
@@ -130,77 +143,224 @@ class Optimize(BaseEstimator):
             X,
         )
 
-    def _objective_evaluate(
+    def _instantiate_from_hyperparameters(
         self,
-        trial: Trial,
-        get_pipeline,
+        hyperparameters,
         X: DataFrame,
-        y: Target,
-    ):
-        cv_hyperparams = trial.user_attrs['cv_hyperparameters']
-        result = cross_validate(
-            X,
-            y,
-            get_pipeline,
-            self.predict_callback,
-            self.cv,
-            n_jobs=1,
-            train_test_filter=lambda x_train, x_test: filter_missing_features(
-                x_train,
-                x_test,
-                threshold=cv_hyperparams.get('missing_fraction', 1)),
-            logger=self.logger,
-        )
-        metrics = compute_metrics_ci(
-            result['predictions'],
-            [c_index, partial2(brier, kwargs={'time_point': 365 * 3})],
-            y_true=y,
-        )
-        trial.set_user_attr('metrics', metrics)
-        trial.set_user_attr('pipeline', str(get_pipeline(X).steps))
-        trial.set_user_attr(
-            'mask',
-            json.dumps(get_removed_features_from_mask(result['column_masks'])))
-        if self.mlflow_callback:
-            log_metrics_ci(metrics)
-        return metrics['c_index']['mean']
-
-    def _instantiate_from_hyperparameters(self, hyperparameters, X: DataFrame):
+    ) -> Estimator:
         return self.get_pipeline(X).set_params(
             **configuration_to_params(hyperparameters))
 
 
-def cross_validate(
+def evaluate_optimize_splits(
+    trial: Trial,
+    get_pipeline: Callable,
     X: DataFrame,
     y: Target,
+    predict_callback: Callable,
+    get_splits,
+    log_mlflow: bool = False,
+    logger: logging.Logger = None,
+):
+    cv_hyperparams = trial.user_attrs['cv_hyperparameters']
+    split_runs = cross_validate(
+        X,
+        y,
+        get_pipeline,
+        predict_callback,
+        get_splits(X, y),
+        n_jobs=1,
+        train_test_filter_callback=partial(
+            filter_missing_features,
+            threshold=cv_hyperparams.get('missing_fraction', 1),
+        ),
+        logger=logger,
+    )
+    metrics = compute_metrics_ci(
+        split_runs,
+        [partial2_args(c_index, kwargs={
+            'X': X,
+            'y': y
+        })],
+    )
+    trial.set_user_attr('result_slit', split_runs)
+    trial.set_user_attr('metrics', metrics)
+    trial.set_user_attr('pipeline', str(get_pipeline(X).steps))
+    if log_mlflow:
+        log_metrics_ci(metrics, drop_ci=True)
+        # TODO
+        # set_tag("inner_cv", get_splits.__name__)
+    return metrics['c_index']['mean']
+
+
+def optimize_per_split(
+    get_optimize: Callable[[], Optimize],
+    get_splits: Callable[[DataFrame, Target], Dict[Hashable, SplitInput]],
+    X: DataFrame,
+    y: Target,
+    mlflow_track: bool = False,
+    n_jobs: Optional[int] = -1,
+) -> Dict[Hashable, Optimize]:
+    if n_jobs == -1:
+        n_jobs = min(cpu_count(), len(get_splits(X, y)))
+
+    splits = get_splits(X, y)
+
+    fold_data = {
+        fold_name: (
+            fold_name,
+            statements(
+                optimize := get_optimize(),
+                setattr(optimize, 'get_splits', always({'tt': fold})),
+                optimize,
+            ),
+            X,
+            y,
+            mlflow_track,
+        )
+        for fold_name, fold in splits.items()
+    }
+
+    return run_parallel(cross_validate_fit, fold_data, n_jobs)
+
+
+def optimize_per_group(
+    get_optimize: Callable[[], Optimize],
+    X: DataFrameGroupBy,
+    y: Target,
+    mlflow_track: bool = False,
+    n_jobs: Optional[int] = -1,
+) -> Dict[Hashable, Optimize]:
+    if n_jobs == -1:
+        n_jobs = cpu_count()
+    fold_data = {
+        group_name: (
+            group_name,
+            get_optimize(),
+            group_X,
+            loc(group_X.index, y),
+            mlflow_track,
+        )
+        for group_name, group_X in X
+    }
+    return run_parallel(cross_validate_fit, fold_data, n_jobs)
+
+
+ExecutePerGroupT = TypeVar('ExecutePerGroupT')
+
+
+def execute_per_group(
+    callback: Callable[[str, DataFrame, Target], ExecutePerGroupT],
+    X_group_by: DataFrameGroupBy,
+    y: Target,
+    n_jobs: Optional[int] = -1,
+) -> Dict[Hashable, ExecutePerGroupT]:
+    if n_jobs == -1:
+        n_jobs = cpu_count()
+    fold_data = {
+        group_name: (
+            group_name,
+            group_X,
+            loc(group_X.index, y),
+        )
+        for group_name, group_X in X_group_by
+    }
+    return run_parallel(callback, fold_data, n_jobs)
+
+
+def run_parallel(function, fold_data, n_jobs):
+    if n_jobs == 1:
+        optimizers = list_to_dict_by_keys(
+            itertools.starmap(
+                function,
+                fold_data.values(),
+            ),
+            fold_data.keys(),
+        )
+    else:
+        with Pool(min(len(fold_data), n_jobs)) as p:  # type: ignore
+            optimizers = list_to_dict_by_keys(
+                p.starmap(
+                    function,
+                    fold_data.values(),
+                ),
+                fold_data.keys(),
+            )
+    return optimizers
+
+
+class OptimizeEstimator(BaseEstimator, Optimize):
+    X_train: DataFrame = None
+    y_train: Optional[Target] = None
+    fit_best_model: Optional[Estimator] = None
+
+    def fit(self, X, y):
+        super().fit(X, y)
+        self.fit_best_model = self._instantiate_from_hyperparameters(
+            self.study.best_trial.user_attrs['hyperparameters'],
+            X,
+        )
+        if self.fit_best_model:
+            self.fit_best_model.fit(X, y)
+            self.X_train = X
+            self.y_train = y
+
+    def predict(self, X):
+        return self.fit_best_model.predict(X)
+
+    def predict_proba(self, X):
+        return self.fit_best_model.predict_proba(X)
+
+    def predict_survival_function(self, X):
+        return self.fit_best_model.predict_survival_function(X)
+
+
+def cross_validate(
+    X: DataFrame,
+    y: Union[Target, Union[Series, np.recarray]],
     get_pipeline: Callable[[DataFrame], Estimator],
     predict: Callable,
-    splits: Union[Iterable[FoldInput], Dict[Any, FoldInput]] = None,
-    train_test_filter: Callable[[Series, Series], bool] = None,
+    splits: Union[Iterable[SplitInput], Dict[Hashable, SplitInput]] = None,
+    train_test_filter_callback: Callable[[Series, Series], bool] = None,
     n_batches: int = 1,
-    callbacks: Dict[str, Callable] = empty_dict,
+    callbacks: Mapping[str, Callable] = empty_dict,
     n_jobs: int = None,
     logger: logging.Logger = None,
-) -> Dict[Any, FoldPrediction]:
+    mlflow_track: bool = False,
+    split_hyperparameters: Mapping[str, Dict] = empty_dict
+) -> Dict[Hashable, SplitPrediction]:
+    if train_test_filter_callback is None:
+        train_test_filter_callback = filter_missing_features
     if n_jobs is None:
         n_jobs = cpu_count()
+    y_data = y['data'] if y is Dict else y
 
     if splits is None:
-        splits = default_cv(X, y)
+        splits = default_cv(X, y_data)
 
-    splits_list = splits.values() if isinstance(splits, Dict) else splits
-    splits_list = list(splits_list)
+    splits_dict: Dict[Hashable, SplitInput]
 
-    models = [get_pipeline(X) for _ in range(len(splits_list))]
+    if isinstance(splits, Sequence):
+        splits_dict = list_to_dict_index(splits)
+    elif isinstance(splits, Dict):
+        splits_dict = splits
+    else:
+        raise TypeError('Incompatible splits')
 
-    column_masks = get_column_mask(splits_list, X, train_test_filter)
+    models = valmap(lambda _: get_pipeline(X), splits_dict)
+
+    if split_hyperparameters:
+        for split_name, model in models.items():
+            model.set_params(
+                **configuration_to_params(split_hyperparameters[split_name]))
+
+    column_masks = get_column_mask(splits_dict, X, train_test_filter_callback)
 
     if logger:
         removed_features = pipe(
             column_masks,
-            map(valfilter(identity)),
-            map(lambda k: list(k.keys())),
-            list,
+            valmap(valfilter(identity)),
+            valmap(lambda k: list(k.keys())),
         )
         logger.debug('\n' + yaml.dump(removed_features))
 
@@ -211,38 +371,34 @@ def cross_validate(
             X,
             y,
             models,
-            splits_list,
+            splits_dict,
             column_masks,
             n_jobs=n_jobs,
+            mlflow_track=mlflow_track,
         )
 
         if 'report_batch' in callbacks:
             callbacks['report_batch'](models, repeat_index + 1, n_batches)
 
-    scores = list(
+    runs = list(
         cross_validate_predict(
             X,
             y,
             predict,
-            splits_list,
+            splits_dict,
             column_masks,
             models,
         ))
 
     if isinstance(splits, Dict):
-        return {
-            'predictions': list_to_dict_by_keys(scores, splits.keys()),
-            'column_masks': list_to_dict_by_keys(column_masks, splits.keys()),
-        }
+        return list_to_dict_by_keys(runs, splits.keys())
     else:
-        return {
-            'predictions': list_to_dict_index(scores),
-            'column_masks': list_to_dict_index(column_masks),
-        }
+        return list_to_dict_index(runs)
 
 
 def get_removed_features_from_mask(
-        column_masks: Dict[Any, Dict[Any, bool]]) -> Dict[Hashable, List[str]]:
+    column_masks: Dict[Hashable, Dict[Hashable, bool]]
+) -> Dict[Hashable, List[str]]:
     return pipe(
         column_masks,
         valmap(lambda masks: valfilter(identity, masks)),
@@ -251,44 +407,38 @@ def get_removed_features_from_mask(
 
 
 def get_column_mask(
-    splits: List[FoldInput],
+    splits: Splits,
     X: DataFrame,
-    train_test_filter: Callable[[Series, Series], bool] = None,
-) -> List[Dict[Any, bool]]:
-    if train_test_filter:
-        return list(get_column_mask_filter(
-            X,
-            splits,
-            train_test_filter,
-        ))
+    train_test_filter_callback: Callable[[Series, Series], bool] = None,
+) -> Dict[Hashable, Dict[Hashable, bool]]:
+    if train_test_filter_callback:
+        return dict(
+            get_column_mask_filter(
+                X,
+                splits,
+                train_test_filter_callback,
+            ))
     else:
         return get_columns_mask_default(X, splits)
 
 
 def get_columns_mask_default(
     X: DataFrame,
-    splits: List[FoldInput],
-) -> List[Dict[Any, bool]]:
-    filtered_columns = [ \
-        {
-            column: False
-            for column in X.columns
-        }
-        for _ in splits
-    ]
-    return filtered_columns
+    splits: Splits,
+) -> Dict[Hashable, Dict[Hashable, bool]]:
+    return valmap(lambda _: {column: False for column in X.columns}, splits)
 
 
 def get_column_mask_filter(
     X: DataFrame,
-    splits: List[FoldInput],
-    train_test_filter: Callable[[DataFrame, DataFrame], bool],
-) -> Iterable[Dict[str, bool]]:
-    for train, test in splits:
-        X_train = X.iloc[train]
-        X_test = X.iloc[test]
-        yield {
-            column_name: train_test_filter(
+    splits: Splits,
+    _train_test_filter: Callable[[DataFrame, DataFrame], bool],
+) -> Iterable[Dict[Hashable, bool]]:
+    for fold_name, (train, test) in splits.items():
+        X_train = X.loc[train]
+        X_test = X.loc[test]
+        yield fold_name, {
+            column_name: _train_test_filter(
                 X_train[column_name],
                 X_test[column_name],
             )
@@ -300,43 +450,52 @@ def cross_validate_train(
     X: DataFrame,
     y: Target,
     models: List[Estimator],
-    splits_list: List[FoldInput],
-    filtered_columns: List[Dict[str, bool]],
+    splits_dict: Splits,
+    filtered_columns: Dict[Hashable, Dict[Hashable, bool]],
     n_jobs: int = -1,
+    mlflow_track: bool = False,
 ) -> List[Estimator]:
     if n_jobs == -1:
         n_jobs = cpu_count()
 
     fold_data = [(
-        models[nr],
-        cross_validate_preprocess(X, train_split, filtered_columns[nr]),
-        index_data(train_split, y),
-        filtered_columns[nr],
-    ) for nr, (train_split, test_split) in enumerate(splits_list)]
+        fold_name,
+        models[fold_name],
+        cross_validate_preprocess(
+            X.loc[train_split],
+            filtered_columns[fold_name],
+        ),
+        loc(train_split, y),
+        mlflow_track,
+    ) for fold_name, (train_split, test_split) in splits_dict.items()]
 
     if n_jobs == 1:
-        models = list(itertools.starmap(
-            cross_validate_fit,
-            fold_data,
-        ))
-    else:
-        with Pool(min(len(splits_list), n_jobs)) as p:
-            models = p.starmap(
+        models = list_to_dict_by_keys(
+            itertools.starmap(
                 cross_validate_fit,
                 fold_data,
+            ),
+            splits_dict.keys(),
+        )
+    else:
+        with Pool(min(len(splits_dict), n_jobs)) as p:
+            models = list_to_dict_by_keys(
+                p.starmap(
+                    cross_validate_fit,
+                    fold_data,
+                ),
+                splits_dict.keys(),
             )
     return models
 
 
 def cross_validate_preprocess(
     data: DataFrame,
-    split: List[int],
-    filtered_columns: Dict[str, bool],
+    mask: Dict[Hashable, bool],
 ):
     return pipe(
         data,
-        partial(index_data, split),
-        partial(cross_validate_apply_mask, filtered_columns),
+        partial(cross_validate_apply_mask, mask),
     )
 
 
@@ -344,190 +503,97 @@ def cross_validate_predict(
     X: DataFrame,
     y: Target,
     predict: Callable,
-    splits: List[FoldInput],
-    filtered_columns: List[Dict[str, bool]],
-    models: List[Estimator],
-) -> Iterable[FoldPrediction]:
-    for index, (train_split, test_split) in enumerate(splits):
+    splits: Splits,
+    filtered_columns: Dict[Hashable, Dict[Hashable, bool]],
+    models: Dict[Hashable, Estimator],
+) -> Iterable[SplitPrediction]:
+    for name, split in splits.items():
         yield predict(
-            X_train=cross_validate_preprocess(
-                X,
-                train_split,
-                filtered_columns[index],
-            ),
-            y_train=index_data(train_split, y),
-            X_test=cross_validate_preprocess(
-                X,
-                test_split,
-                filtered_columns[index],
-            ),
-            y_true=index_data(test_split, y),
-            model=models[index],
+            cross_validate_preprocess(X, filtered_columns[name]),
+            y,
+            model=models[name],
+            split=split,
         )
-
-
-def cross_validate_apply_mask(
-    mask: Dict[str, bool],
-    data: DataFrame,
-) -> DataFrame:
-    new_data = data.copy()
-    if set(mask.keys()) != set(data.columns):
-        raise Exception("Keys do not match")
-
-    for column_name, remove in mask.items():
-        if remove:
-            new_data.drop(column_name, axis=1, inplace=True)
-
-    return new_data
-
-
-# TODO:
-# def cross_validate_predict_binary(
-#     X: DataFrame,
-#     y: Target,
-#     estimators: List[EstimatorProba],
-#     splits: List[FoldInput] = None,
-# ) -> List[FoldPrediction]:
-#     scores = []
-#     for index, (train_split, test_split) in enumerate(splits):
-#         X_test = X.iloc[test_split]
-#         y_score = estimators[index].predict_proba(X_test)
-#
-#         if not isinstance(y_score, Series):
-#             y_score = DataFrame(y_score, index=X_test.index)
-#             y_score = get_1_class_y_score(y_score)
-#
-#         scores.append(
-#             FoldPrediction(y_true=y.iloc[test_split], y_score=y_score))
-#
-#     return scores
-
-
-def predict_survival(
-    X_train: DataFrame,
-    y_train: DataFrame,
-    X_test: DataFrame,
-    y_true: Target,
-    model: Estimator,
-) -> float:
-    return FoldPrediction(
-        X_train=X_train,
-        X_test=X_test,
-        y_train=y_train,
-        y_score=Series(
-            model.predict(X_test),
-            index=X_test.index,
-        ),
-        y_true=y_true,
-        model=model,
-    )
-
-
-def predict_nn(
-    X_train: DataFrame,
-    y_train: DataFrame,
-    X_test: DataFrame,
-    y_true: Target,
-    model: Estimator,
-) -> float:
-    predicted_score = model.predict(X_test)
-    return FoldPrediction(
-        X_train=X_train,
-        X_test=X_test,
-        y_train=y_train,
-        y_score=Series(
-            predicted_score.reshape(len(predicted_score)),
-            index=X_test.index,
-        ),
-        y_true=y_true,
-        model=model,
-    )
 
 
 def predict_proba(
-    X_train: DataFrame,
-    y_train: Target,
-    X_test: DataFrame,
-    y_true: Target,
-    model: EstimatorProba,
-) -> float:
-    return FoldPrediction(
-        X_train=X_train,
-        y_train=y_train,
-        y_score=model.predict_proba(X_test),
-        y_true=y_true,
+    X: DataFrame,
+    y: Target,
+    split: SplitInput,
+    model: Estimator,
+) -> SplitPrediction:
+    y_score = DataFrame(
+        model.predict_proba(loc(split[1], X)),
+        index=split[1],
+    )
+    return SplitPrediction(
+        split=split,
+        X_columns=X.columns.tolist(),
+        y_column=y['name'],
+        y_score=y_score,
         model=model,
     )
 
 
-def cross_validate_fit(estimator, X, y, columns: Dict[str, bool]) -> Estimator:
-    estimator.fit(
-        X,
-        y,
+def predict_survival(
+    X: DataFrame,
+    y: Target,
+    split: SplitInput,
+    model: Estimator,
+) -> SplitPrediction:
+    return SplitPrediction(
+        split=split,
+        X_columns=X.columns.tolist(),
+        y_column=y['name'],
+        y_score=predict_survival_(model, loc(split[1], X)),
+        model=model,
     )
+
+
+def predict_survival_(model: Estimator, X_test: DataFrame) -> Series:
+    return Series(
+        model.predict(X_test),
+        index=X_test.index,
+    )
+
+
+def predict_survival_dsm(
+    X: DataFrame,
+    y: Target,
+    split: SplitInput,
+    model: Estimator,
+) -> float:
+    return SplitPrediction(
+        split=split,
+        X_columns=X.columns.tolist(),
+        y_column=y['name'],
+        y_score=Series(
+            model.predict(X.iloc[split[1]]).flatten(),
+            index=X.iloc[split[1]].index,
+        ),
+        model=model,
+    )
+
+
+def cross_validate_fit(
+    fold_name: str,
+    estimator: Estimator,
+    X: DataFrame,
+    y: Target,
+    mlflow_track: bool = False,
+) -> Estimator:
+    if mlflow_track:
+        with start_run(
+                run_name=str(fold_name),
+                nested=True,
+                experiment_id=get_active_experiment_id(),
+        ):
+            estimator.fit(X, y['data'])
+    else:
+        estimator.fit(X, y['data'])
+
     return estimator
 
 
-def lco_cv(data: DataFrameGroupBy) -> Dict[Any, FoldInput]:
-    flatten_data = data.apply(identity)
-    all_indexes = range(0, len(flatten_data))
-    groups = map_groups_iloc(data, flatten_data)
-    return {
-        key: (subtract_lists(all_indexes, subset), subset)
-        for key, subset in groups
-    }
-
-
-def lm_cv(data: DataFrameGroupBy) -> Dict[Any, FoldInput]:
-    lco_splits: Dict[Any, FoldInput] = lco_cv(data)
-    return {
-        key: pipe(
-            fold_input,
-            reversed,
-            list,
-        )
-        for key, fold_input in lco_splits.items()
-    }
-
-
-def kfold_cv(data: DataFrame, **kfold_args) -> Dict[Any, FoldInput]:
-    return list_to_dict_index(KFold(**kfold_args).split(data))
-
-
-def train_test(
-    data: DataFrame,
-    train_filter: Callable,
-    test_filter: Callable = None,
-) -> Dict[Any, FoldInput]:
-    index = Series(
-        pipe(
-            len(data),
-            range,
-            list,
-        ),
-        index=data.index,
-    )
-
-    train_data = data[train_filter(data)]
-
-    if not test_filter:
-        test_data = index.loc[~index.index.isin(train_data.index)]
-    else:
-        test_data = data[test_filter(data)]
-
-    return {
-        'train_test': (
-            index.loc[train_data.index].tolist(),
-            index.loc[test_data.index].tolist(),
-        )
-    }
-
-
-def filter_missing_features(
-    x_train: Series,
-    x_test: Series,
-    threshold: float = 1,
-) -> bool:
-    return \
-        percent_missing(x_train) >= threshold \
-        or percent_missing(x_test) >= threshold
+def series_to_target(series: Series) -> Target:
+    return {'name': series.name, 'data': series}

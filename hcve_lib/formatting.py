@@ -6,9 +6,11 @@ from numbers import Integral, Rational
 from pandas import DataFrame
 from typing import Union, Dict, Callable
 
+from pandas.core.dtypes.inference import is_integer
+
 
 def format_number(i: Union[Integral, Rational, int]) -> str:
-    if type(i) == int:
+    if is_integer(i):
         return f'{i:,}'
     else:
         return f'{i:,.2f}'

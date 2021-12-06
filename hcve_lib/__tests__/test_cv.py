@@ -1,18 +1,15 @@
 import numpy as np
 import pandas
-from _pytest.python_api import raises
 from pandas import DataFrame, Series
-from pandas.testing import assert_frame_equal
-from pandas.testing import assert_series_equal
+from pandas.testing import assert_series_equal, assert_frame_equal
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import KFold
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
-from hcve_lib.cv import cross_validate, lco_cv, train_test, get_column_mask_filter, filter_missing_features, \
-    predict_proba, cross_validate_apply_mask, get_column_mask, get_removed_features_from_mask
+from hcve_lib.cv import cross_validate, optimize_per_split, predict_proba, series_to_target
 
 
-def test_cross_validate():
+def _test_cross_validate():
     Xs = []
     ys = []
     Xs_test = []
@@ -59,149 +56,66 @@ def test_cross_validate():
     assert_series_equal(y_scores, Series([0, 2, 6]))
 
 
-def test_lco_cv():
-    assert lco_cv(
-        DataFrame(
-            {
-                'a': [1, 1, 1, 2, 2, 3]
-            },
-            index=[10, 1, 2, 3, 4, 5],
-        ).groupby('a')) == {
-            1: ([3, 4, 5], [0, 1, 2]),
-            2: ([0, 1, 2, 5], [3, 4]),
-            3: ([0, 1, 2, 3, 4], [5]),
-        }
+def test_optimize_cv():
+    optimize_input = [Mock(), Mock()]
+    get_optimize = Mock(side_effect=optimize_input)
+    get_cv = Mock(side_effect=lambda *args: {
+        'a': ([0, 1, 2], [3]),
+        'b': ([0, 1, 3], [2]),
+    })
+    optimize_per_split(
+        get_optimize,
+        get_cv,
+        DataFrame({'a': [1, 2, 3]}),
+        Series([10, 20, 30]),
+    )
+    get_optimize.assert_has_calls([
+        call({'train_test': ([0, 1, 2], [3])}),
+        call({'train_test': ([0, 1, 3], [2])}),
+    ])
+
+    for optimize in optimize_input:
+        optimize.fit.assert_called_once()
 
 
-def test_train_test():
-    assert train_test(
-        DataFrame(
-            {'a': [1, 1, 1, 2, 2, 3]},
-            index=[10, 1, 2, 3, 4, 5],
-        ),
-        train_filter=lambda _data: _data['a'] == 1,
-    ) == {
-        'train_test': ([0, 1, 2], [3, 4, 5])
-    }
+def test_predict_proba():
+    class MockMethod:
+        predict_proba = Mock(side_effect=[np.array([[0.1, 0.9]])])
 
-    assert train_test(
-        DataFrame(
-            {'a': [1, 1, 1, 2, 2, 3]},
-            index=[10, 1, 2, 3, 4, 5],
-        ),
-        train_filter=lambda _data: _data['a'] == 1,
-        test_filter=lambda _data: _data['a'] == 3,
-    ) == {
-        'train_test': ([0, 1, 2], [5])
-    }
-
-
-def test_cross_validate_apply_filter():
-    assert list(
-        get_column_mask_filter(
-            DataFrame({'x': [1, 2, 3, 4]}),
-            [
-                ([0, 1], [2, 3]),
-                ([2, 3], [0, 1]),
-            ],
-            (lambda X_train, X_test:
-             (X_train.tolist() == [3, 4]) and (X_test.tolist() == [1, 2])),
-        )) == [{
-            'x': False
-        }, {
-            'x': True
-        }]
-
-
-def test_filter_missing_features():
-    assert filter_missing_features(
-        Series([0, 1, np.nan, 2]),
-        Series([0, 1, 2, 3]),
-        threshold=0.25,
-    ) is True
-
-    assert filter_missing_features(
-        Series([0, 1, 3, 4]),
-        Series([0, 1, 2, np.nan]),
-        threshold=0.25,
-    ) is True
-
-    assert filter_missing_features(
-        Series([0, 1, 3, 4]),
-        Series([0, 1, 2, np.nan]),
-        threshold=0.30,
-    ) is False
-
-
-def test_cross_validate_apply_mask():
-    assert_frame_equal(
-        cross_validate_apply_mask(
-            {
-                'a': True,
-                'b': False
-            },
-            DataFrame({
-                'a': [1],
-                'b': [2],
-            }),
-        ),
-        DataFrame({
-            'b': [2],
-        }),
+    model = MockMethod()
+    prediction = predict_proba(
+        DataFrame({'x': [1, 2]}, index=[10, 20]),
+        {
+            'name': 'a',
+            'data': Series([1, 2], index=[10, 20]),
+        },
+        ([10], [20]),
+        model,
     )
 
-    with raises(Exception):
-        cross_validate_apply_mask(
+    assert prediction['X_columns'] == ['x']
+    assert prediction['model'] == model
+    assert prediction['split'] == ([10], [20])
+    assert prediction['y_column'] == 'a'
+    assert_frame_equal(
+        prediction['y_score'],
+        DataFrame(
             {
-                'a': True,
+                0: [0.1],
+                1: [0.9]
             },
-            DataFrame({
-                'a': [1],
-                'b': [2],
-            }),
-        )
+            index=[20],
+        ),
+    )
+    assert len(model.predict_proba.call_args_list) == 1
+    assert_frame_equal(
+        model.predict_proba.call_args_list[0][0][0],
+        DataFrame({'x': 2}, index=[20]),
+    )
 
 
-def test_get_column_mask():
-    # Default
-    assert get_column_mask(
-        X=DataFrame({'x': [10, 20, 30, 40]}),
-        splits=[([0, 1, 2], [3]), ([0, 1, 3], [2])],
-    ) == [
-        {
-            'x': False
-        },
-        {
-            'x': False
-        },
-    ]
-
-    # Filter provided
-    assert get_column_mask(
-        X=DataFrame({'x': [10, 20, 30, 40]}),
-        splits=[([0, 1, 2], [3]), ([0, 1, 3], [2])],
-        train_test_filter=Mock(side_effect=[False, True]),
-    ) == [
-        {
-            'x': False
-        },
-        {
-            'x': True
-        },
-    ]
-
-
-def test_get_removed_features_from_mask():
-    assert get_removed_features_from_mask({
-        'x': {
-            'a': True,
-            'b': False
-        },
-        'y': {
-            'a': False,
-            'b': True
-        },
-    }) == {
-        'x': ['a'],
-        'y': ['b']
-    }
+def test_series_to_target():
+    series = Series([1, 2, 3], name='a')
+    target = series_to_target(series)
+    assert target['name'] == 'a'
+    assert_series_equal(target['data'], series)

@@ -6,7 +6,8 @@ from pandas import Series, DataFrame, Int64Index
 
 from hcve_lib.utils import get_class_ratios, decamelize_arguments, camelize_return, map_column_names, cumulative_count, \
     inverse_cumulative_count, key_value_swap, index_data, list_to_dict_by_keys, subtract_lists, map_groups_iloc, \
-    remove_prefix, remove_column_prefix, percent_missing, transpose_dict, map_groups_loc
+    remove_prefix, remove_column_prefix, get_fraction_missing, transpose_dict, map_groups_loc, loc, split_data, \
+    get_fraction_missing
 from pandas.testing import assert_frame_equal, assert_series_equal
 
 
@@ -196,9 +197,9 @@ def test_remove_column_prefix():
 
 
 def test_percent_missing():
-    assert percent_missing(Series([np.nan, np.nan])) == 1
-    assert percent_missing(Series([np.nan, 5])) == 0.5
-    assert percent_missing(Series([1, 5])) == 0
+    assert get_fraction_missing(Series([np.nan, np.nan])) == 1
+    assert get_fraction_missing(Series([np.nan, 5])) == 0.5
+    assert get_fraction_missing(Series([1, 5])) == 0
 
 
 def test_transpose_dict():
@@ -244,3 +245,152 @@ def test_map_groups_loc():
 
     assert results[1][0] == 1
     assert_array_equal(results[1][1], Int64Index([30, 40, 50], dtype='int64'))
+
+
+def test_loc():
+    assert_frame_equal(
+        loc(
+            [10, 30],
+            DataFrame(
+                {'a': [0, 0, 1, 1, 1]},
+                index=[10, 20, 30, 40, 50],
+            ),
+        ),
+        DataFrame(
+            {'a': [0, 1]},
+            index=[10, 30],
+        ),
+    )
+
+
+def test_split_data():
+
+    X_train, y_train, X_test, y_test = split_data(
+        DataFrame(
+            {
+                'a': [0, 1, 2, 3, 4],
+                'b': [0, 1, 2, 3, 4],
+            },
+            index=[10, 20, 30, 40, 50],
+        ),
+        {
+            'data':
+            DataFrame(
+                {
+                    'tte': [0, 10, 200, 30, 40],
+                    'label': [0, 0, 0, 1, 1]
+                },
+                index=[10, 20, 30, 40, 50],
+            ),
+        },
+        {
+            'split': ([10, 50], [20, 30, 40]),
+            'X_columns': ['a']
+        },
+    )
+    assert_frame_equal(
+        X_train,
+        DataFrame(
+            {
+                'a': [0, 4],
+            },
+            index=[10, 50],
+        ),
+    )
+    assert_frame_equal(
+        y_train['data'],
+        DataFrame(
+            {
+                'tte': [0, 40],
+                'label': [0, 1]
+            },
+            index=[10, 50],
+        ))
+
+    assert_frame_equal(
+        X_test,
+        DataFrame(
+            {
+                'a': [1, 2, 3],
+            },
+            index=[20, 30, 40],
+        ),
+    )
+    assert_frame_equal(
+        y_test['data'],
+        DataFrame(
+            {
+                'tte': [10, 200, 30],
+                'label': [0, 0, 1]
+            },
+            index=[20, 30, 40],
+        ))
+
+
+def test_split_data_remove_extended():
+
+    X_train, y_train, X_test, y_test = split_data(
+        DataFrame(
+            {
+                'a': [0, 1, 2, 3, 4],
+                'b': [0, 1, 2, 3, 4],
+            },
+            index=[10, 20, 30, 40, 50],
+        ),
+        {
+            'data':
+            DataFrame(
+                {
+                    'tte': [0, 10, 200, 30, 40],
+                    'label': [0, 0, 0, 1, 1]
+                },
+                index=[10, 20, 30, 40, 50],
+            ),
+        },
+        {
+            'split': ([10, 50], [20, 30, 40]),
+            'X_columns': ['a']
+        },
+        remove_extended=True,
+    )
+    assert_frame_equal(
+        X_train,
+        DataFrame(
+            {
+                'a': [0, 4],
+            },
+            index=[10, 50],
+        ),
+    )
+    assert_frame_equal(
+        y_train['data'],
+        DataFrame(
+            {
+                'tte': [0, 40],
+                'label': [0, 1]
+            },
+            index=[10, 50],
+        ))
+
+    assert_frame_equal(
+        X_test,
+        DataFrame(
+            {
+                'a': [1, 3],
+            },
+            index=[20, 40],
+        ),
+    )
+    assert_frame_equal(
+        y_test['data'],
+        DataFrame(
+            {
+                'tte': [10, 30],
+                'label': [0, 1]
+            },
+            index=[20, 40],
+        ))
+
+
+def test_fraction_missing():
+    assert get_fraction_missing(Series([0, 1, 2, np.nan])) == 0.25

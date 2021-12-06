@@ -67,9 +67,9 @@ def missing_values(data: DataFrame, metadata: Metadata, **plot_kwargs) -> None:
 
 def follow_ups_vs_threshold(series: Series, **plot_kwargs) -> None:
 
-    pyplot.title('Follow-ups vs threshold')
+    pyplot.title('Follow-ups vs threshold_missing')
     pyplot.plot(*unzip(inverse_cumulative_count(series)), **plot_kwargs)
     pyplot.gca().yaxis.set_major_formatter(
         FuncFormatter(lambda tick, _: f'{round(tick*100)}%'))
-    pyplot.xlabel('Follow up threshold [days]')
-    pyplot.ylabel('% Follow ups after threshold')
+    pyplot.xlabel('Follow up threshold_missing [days]')
+    pyplot.ylabel('% Follow ups after threshold_missing')

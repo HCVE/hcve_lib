@@ -2,11 +2,12 @@ from abc import abstractmethod, ABC
 from collections import namedtuple
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TypedDict, Optional, Tuple, Generic, TypeVar, Any, Union, List
+from typing import TypedDict, Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable
 
 import numpy as np
 from pandas import Series, DataFrame
 from sklearn.base import BaseEstimator
+from sklearn.pipeline import Pipeline
 
 
 class IndexAccess(ABC):
@@ -56,15 +57,39 @@ class DataStructure(DictAccess, ClassMapping, Printable):
     ...
 
 
-class Estimator(BaseEstimator):
+class TargetTransformer(BaseEstimator):
     @abstractmethod
-    def predict(self, X):
+    def fit(self, y):
+        ...
+
+    @abstractmethod
+    def transform(self, y):
+        ...
+
+    @abstractmethod
+    def inverse_transform(self, y):
         ...
 
 
-class EstimatorProba(Estimator):
+class Estimator(BaseEstimator):
     @abstractmethod
-    def predict_proba(self, X):
+    def fit(self, X, y):
+        ...
+
+    @abstractmethod
+    def predict(self, X, **kwargs):
+        ...
+
+    @abstractmethod
+    def predict_proba(self, X, **kwargs):
+        ...
+
+    @abstractmethod
+    def predict_survival_function(self, X, **kwargs):
+        ...
+
+    @abstractmethod
+    def score(self, X, y):
         ...
 
 
@@ -149,15 +174,23 @@ class ConfusionMetrics(DataStructure):
             self.f1 = 0
 
 
-class FoldPrediction(TypedDict):
-    X_train: DataFrame
-    X_test: DataFrame
-    y_train: DataFrame
-    y_true: Series
-    y_score: Any
-    model: Optional[Estimator]
-
-
 SurvivalPairTarget = namedtuple('SurvivalPairTarget', ('tte', 'label'))
-Target = Union[Series, np.recarray]
-FoldInput = Tuple[List[int], List[int]]
+SplitInput = Tuple[List[Hashable], List[Hashable]]
+
+TargetData = Union[Series, np.recarray]
+
+
+class Target(TypedDict):
+    name: str
+    data: TargetData
+
+
+class SplitPrediction(TypedDict):
+    y_score: Any
+    y_column: str
+    X_columns: List[str]
+    model: Pipeline
+    split: SplitInput
+
+
+Splits = Dict[Hashable, SplitInput]

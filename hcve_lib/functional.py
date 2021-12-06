@@ -1,15 +1,14 @@
-from numbers import Real, Rational
-
+import inspect
 import pprint
 from copy import copy
-from functools import reduce
-from numpy import ndarray
+from functools import reduce, partial, wraps
+from itertools import starmap as starmap_itertools
 from typing import Callable, TypeVar, Iterable, Tuple, Dict, List, Any, Union, Sequence
-import inspect
 
 import numpy as np
-from pandas import DataFrame, Series
-from toolz import curry
+from numpy import ndarray
+from pandas import DataFrame, Series, isna
+from toolz import curry, valfilter, valmap
 
 from hcve_lib.custom_types import IndexAccess
 
@@ -48,6 +47,7 @@ def list_from_items(items: Iterable[Tuple[int, T1]]) -> List[T1]:
     return out_list
 
 
+@curry
 def mapl(func, iterable):
     return list(map(func, iterable))
 
@@ -300,5 +300,52 @@ def map_columns_(
     return map_columns(callback, data)
 
 
-def rejectNone(sequence: Sequence) -> Iterable:
-    return iter(filter(lambda o: o is not None, sequence))
+def reject_none_values(dictionary: Dict) -> Dict:
+    return valfilter(lambda o: o is not None and not isna(o), dictionary)
+
+
+def reject_none(sequence: Sequence) -> Iterable:
+    return iter(filter(lambda o: o is not None and not isna(o), sequence))
+
+
+ReturnValueT = TypeVar('ReturnValueT')
+
+
+def return_value(*args, **kwargs) -> ReturnValueT:
+    return kwargs['val']
+
+
+def always(val: Any) -> Callable:
+    return partial(return_value, val=val)
+
+
+starmap = curry(starmap_itertools)
+
+
+def accept_extra_parameters(function: Callable):
+    function_signature = inspect.signature(function)
+    parameters = list(function_signature.parameters)
+
+    @wraps(function)
+    def accept_extra_parameters_(*args, **kwargs):
+        parameters_call = copy(parameters)
+        kwargs_selected = {}
+        for arg, value in kwargs.items():
+            if arg in parameters_call:
+                kwargs_selected[arg] = value
+                parameters_call.remove(arg)
+
+        return function(
+            *args[:min(len(parameters_call), len(args))],
+            **kwargs_selected,
+        )
+
+    return accept_extra_parameters_
+
+
+def valmap_(first, second):
+    return valmap(second, first)
+
+
+def starmap_(first, second):
+    return starmap(second, first)

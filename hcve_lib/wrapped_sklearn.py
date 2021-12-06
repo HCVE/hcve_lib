@@ -2,17 +2,23 @@ import numpy as np
 from pandas import Series, DataFrame
 from scipy.sparse import csr_matrix
 from sklearn.compose import ColumnTransformer
+from sklearn.decomposition import PCA
+from sklearn.ensemble._hist_gradient_boosting.binning import _BinMapper
 from sklearn.exceptions import NotFittedError
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer, KNNImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OrdinalEncoder
+from xgboost import XGBClassifier
+
 from sksurv.linear_model import CoxnetSurvivalAnalysis
 from typing import Any, Optional, List
 
-
 # noinspection PyAttributeOutsideInit,PyUnresolvedReferences
+from sksurv.meta import Stacking
+
+
 class DFWrapped:
     def get_feature_names(self):
         try:
@@ -67,7 +73,7 @@ class DFWrapped:
         y_pred = super().predict(X, *args, **kwargs)  # type: ignore
         return y_pred
 
-    def predict_proba(self, X, *args, **kwargs) -> None:
+    def predict_proba(self, X, *args, **kwargs):
         self.fitted_feature_names = self.get_fitted_feature_names(X)
         y_proba = super().predict_proba(X, *args, **kwargs)  # type: ignore
         return y_proba
@@ -76,6 +82,9 @@ class DFWrapped:
         self.fitted_feature_names = self.get_fitted_feature_names(X)
         super().fit(X, y, *args, **kwargs)
         return self
+
+    def get_params(self, *args, **kwargs):
+        return super().get_params(*args, **kwargs)
 
 
 def series_count_inf(series: Series) -> int:
@@ -149,6 +158,10 @@ class DFKNNImputer(DFWrapped, KNNImputer):
     ...
 
 
+class DFXGBClassifier(DFWrapped, XGBClassifier):
+    ...
+
+
 class DFPipeline(Pipeline):
     def get_feature_names(self):
         return self.steps[-1][1].fitted_feature_names
@@ -161,4 +174,12 @@ class DFLogisticRegression(DFWrapped, LogisticRegression):
 
 
 class DFCoxnetSurvivalAnalysis(DFWrapped, CoxnetSurvivalAnalysis):
+    ...
+
+
+class DFStacking(DFWrapped, Stacking):
+    ...
+
+
+class DFBinMapper(DFWrapped, _BinMapper):
     ...

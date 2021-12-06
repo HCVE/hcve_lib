@@ -13,7 +13,7 @@ from pandas import DataFrame, Series
 from scipy.stats import gaussian_kde
 from toolz import merge
 
-from hcve_lib.data import Metadata, format_dataframe
+from hcve_lib.data import Metadata, format_features_and_values
 from hcve_lib.formatting import format_number
 from hcve_lib.functional import flatten, pipe
 
@@ -106,7 +106,7 @@ def histogram(series: Series, ax=None, bins='auto') -> None:
 def show_dtale(data: DataFrame, metadata: Metadata) -> None:
     table = pipe(
         data,
-        partial(format_dataframe, metadata=metadata),
+        partial(format_features_and_values, metadata=metadata),
         dtale.show,
     )
     return table

@@ -5,7 +5,7 @@ from pandas.testing import assert_series_equal
 
 from hcve_lib.data import get_identifiers, sanitize_data_inplace, get_survival_y, \
     binarize_survival, get_X, MetadataItemType, remove_nan_target, is_target, format_value, \
-    format_dataframe, get_variables, get_available_identifiers_per_category, inverse_format_value
+    format_features_and_values, get_variables, get_available_identifiers_per_category, inverse_format_value
 
 
 def test_sanitize_data_inplace():
@@ -228,7 +228,7 @@ def test_inverse_format_value():
 
 def test_format_dataframe():
     assert_frame_equal(
-        format_dataframe(
+        format_features_and_values(
             DataFrame(
                 {
                     'a': [0, 1],

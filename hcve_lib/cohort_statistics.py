@@ -3,7 +3,8 @@ from itertools import chain
 from logging import Logger
 from typing import Iterable, Tuple, Optional
 
-from pandas import DataFrame, Series
+import numpy as np
+from pandas import DataFrame, Series, isna
 from pandas.core.groupby import DataFrameGroupBy
 from toolz import keyfilter
 
@@ -25,8 +26,8 @@ def get_table(
 
 def make_header(X_grouped: DataFrameGroupBy) -> Iterable[str]:
     yield '<th></th>'
-    for group_name, _ in X_grouped:
-        yield f'<th>{group_name}</th>'
+    for group_name, X_group in X_grouped:
+        yield f'<th>{group_name} (n={len(X_group)})</th><th>Missing&nbsp;%</th>'
 
 
 def get_rows(
@@ -35,15 +36,23 @@ def get_rows(
     X_grouped: DataFrameGroupBy,
 ) -> Iterable[str]:
     names = make_description_cells(get_description_column(metadata, X))
-    values_per_cohort = {}
+    values_per_cohort = []
     for name, X_cohort in X_grouped:
-        values_per_cohort[name] = pipe(
-            get_value_columns(metadata, X_cohort),
-            make_value_cells,
-            list,
-        )
+        values_per_cohort.append(
+            pipe(
+                get_value_column(metadata, X_cohort),
+                make_value_cells,
+                list,
+            ))
+        values_per_cohort.append(
+            pipe(
+                get_missing_column(metadata, X_cohort),
+                make_value_cells,
+                list,
+            ))
+
     rows = [''.join(make_header(X_grouped))]
-    rows = chain(rows, zip(names, *values_per_cohort.values()))
+    rows = chain(rows, zip(names, *values_per_cohort))
     rows = map(''.join, rows)
     rows = list(rows)
 
@@ -56,7 +65,8 @@ def iterate_over_items(
     level: int = 0,
 ) -> Iterable[Tuple[MetadataItem, int]]:
     for item in items:
-        if item['identifier'] not in X.columns and 'children' not in item:
+        if (item['identifier'] not in X.columns
+                and 'children' not in item) or item.get('type') == 'outcome':
             continue
         yield item, level
         if 'children' in item:
@@ -94,7 +104,7 @@ def make_description_cells(
         yield f'<td><span style="padding-left: {20 * level}px">{text_formatted}</td>'
 
 
-def get_value_columns(
+def get_value_column(
     metadata: Metadata,
     X: DataFrame,
     logger: Logger = None,
@@ -108,6 +118,22 @@ def get_value_columns(
                 yield get_continuous_statistic(X[item['identifier']])
             else:
                 yield get_categorical_statistic(X, item, logger)
+
+
+def get_missing_column(
+    metadata: Metadata,
+    X: DataFrame,
+) -> Iterable[str]:
+    for item, level in iterate_over_items(metadata, X):
+        if level == 0:
+            yield ''
+        elif level >= 1:
+            missing_fraction = (len(X[X[item['identifier']].isna()]) /
+                                len(X)) * 100
+            if missing_fraction == 0:
+                yield ''
+            else:
+                yield f'{missing_fraction:.1f}'
 
 
 def get_categorical_statistic(
@@ -138,14 +164,17 @@ def get_categorical_statistic(
     else:
         value_filtered = keyfilter(lambda key: key == 'Yes', value_counts)
 
+    len_X_non_missing = len(X[item['identifier']].dropna())
     value_fraction = valmap_(
         value_filtered,
-        lambda value_count: (value_count / len(X)) * 100,
+        lambda value_count: (value_count / len_X_non_missing) * 100
+        if len_X_non_missing != 0 else np.nan,
     )
 
     output = starmap_(
-        zip(value_fraction.values(), value_counts.values()),
-        lambda fraction, count: f'{fraction:.0f} ({format_number(count)})',
+        zip(value_fraction.values(), value_filtered.values()),
+        lambda fraction, count: '—' if isna(fraction) else
+        (f'{fraction:.0f}' + f' ({format_number(count)})'),
     )
 
     return ' / '.join(output)
@@ -155,8 +184,10 @@ def get_continuous_statistic(feature_values: Series) -> str:
     mean_value = float(feature_values.mean())
     spread_statistic = f' ({round(feature_values.quantile(0.1), 2)}' + \
                        f'-{round(feature_values.quantile(0.9), 2)})'
-    cell = str(f'{mean_value:.1f}') + spread_statistic
-    return cell
+    if isna(mean_value):
+        return '—'
+    else:
+        return str(f'{mean_value:.1f}') + spread_statistic
 
 
 def make_value_cells(column: Iterable[str]) -> Iterable[str]:

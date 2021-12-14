@@ -105,19 +105,23 @@ def test_get_feature_identifiers():
 
 
 def test_get_survival_y():
+    result = get_survival_y(
+        DataFrame({
+            'a': [0, 1, 0],
+            'a_tte': [1, 2, 3],
+            'x': [4, 5, 6],
+        }),
+        target_feature='a',
+        metadata=[{
+            'identifier': 'a',
+            'identifier_tte': 'a_tte'
+        }],
+    )
+
+    assert result['name'] == 'a'
+
     assert_frame_equal(
-        get_survival_y(
-            DataFrame({
-                'a': [0, 1, 0],
-                'a_tte': [1, 2, 3],
-                'x': [4, 5, 6],
-            }),
-            target_feature='a',
-            metadata=[{
-                'identifier': 'a',
-                'identifier_tte': 'a_tte'
-            }],
-        ),
+        result['data'],
         DataFrame({
             'label': [0, 1, 0],
             'tte': [1, 2, 3],
@@ -252,7 +256,7 @@ def test_format_dataframe():
         ),
         DataFrame(
             {
-                '[a] Ax': [0, 1],
+                'Ax': [0, 1],
                 'b': ['x', 3],
                 'c': [2, 3],
             },

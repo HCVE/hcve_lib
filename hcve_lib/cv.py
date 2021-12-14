@@ -120,8 +120,11 @@ class Optimize:
                 dict(n_trials=1),
                 self.optimize_params,
             ),
-            catch=((Exception, ArithmeticError,
-                    RuntimeError) if self.catch_exceptions else ()),
+            catch=((
+                Exception,
+                ArithmeticError,
+                RuntimeError,
+            ) if self.catch_exceptions else ()),
             callbacks=[
                 *self.optimize_callbacks,
                 *([self.mlflow_callback] if self.mlflow_callback else [])
@@ -194,7 +197,7 @@ def evaluate_optimize_splits(
 
 
 def optimize_per_split(
-    get_optimize: Callable[[], Optimize],
+    get_optimize: Callable[..., Optimize],
     get_splits: Callable[[DataFrame, Target], Dict[Hashable, SplitInput]],
     X: DataFrame,
     y: Target,
@@ -209,11 +212,7 @@ def optimize_per_split(
     fold_data = {
         fold_name: (
             fold_name,
-            statements(
-                optimize := get_optimize(),
-                setattr(optimize, 'get_splits', always({'tt': fold})),
-                optimize,
-            ),
+            get_optimize(get_splits=always({'train_test': fold})),
             X,
             y,
             mlflow_track,
@@ -259,7 +258,6 @@ def execute_per_group(
         n_jobs = cpu_count()
     fold_data = {
         group_name: (
-            group_name,
             group_X,
             loc(group_X.index, y),
         )
@@ -327,7 +325,7 @@ def cross_validate(
     n_jobs: int = None,
     logger: logging.Logger = None,
     mlflow_track: bool = False,
-    split_hyperparameters: Mapping[str, Dict] = empty_dict
+    split_hyperparameters: Optional[Mapping[str, Dict]] = empty_dict
 ) -> Dict[Hashable, SplitPrediction]:
     if train_test_filter_callback is None:
         train_test_filter_callback = filter_missing_features
@@ -568,8 +566,26 @@ def predict_survival_dsm(
         X_columns=X.columns.tolist(),
         y_column=y['name'],
         y_score=Series(
-            model.predict(X.iloc[split[1]]).flatten(),
-            index=X.iloc[split[1]].index,
+            model.predict(X.loc[split[1]]).flatten(),
+            index=X.loc[split[1]].index,
+        ),
+        model=model,
+    )
+
+
+def predict_predict(
+    X: DataFrame,
+    y: Target,
+    split: SplitInput,
+    model: Estimator,
+) -> SplitPrediction:
+    return SplitPrediction(
+        split=split,
+        X_columns=X.columns.tolist(),
+        y_column=y['name'],
+        y_score=Series(
+            model.predict(X.loc[split[1]]),
+            index=X.loc[split[1]].index,
         ),
         model=model,
     )
@@ -588,9 +604,9 @@ def cross_validate_fit(
                 nested=True,
                 experiment_id=get_active_experiment_id(),
         ):
-            estimator.fit(X, y['data'])
+            estimator.fit(X, y)
     else:
-        estimator.fit(X, y['data'])
+        estimator.fit(X, y)
 
     return estimator
 

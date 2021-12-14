@@ -6,18 +6,24 @@ from hcve_lib.evaluation_functions import compute_metric_groups, get_2_level_gro
 
 def test_compute_metric_groups():
     def dummy_metric(fold: SplitPrediction):
-        return (fold['y_true'] - fold['y_score']).tolist()
+        return (fold['y_score']).tolist()
 
     fold = SplitPrediction(
         y_score=Series(
             [10, 20, 30],
             index=['a', 'b', 'c'],
         ),
-        y_true=[100, 200, 300],
+        y_column='y_column',
+        X_columns=['a', 'b'],
+        split=[([0], [1])],
         model=None,
     )
-    expected_result = {0: [270], 1: [90, 180]}
+    expected_result = {0: [30], 1: [10, 20]}
 
+    data = DataFrame(
+        {'agg': [0, 1, 1, 0]},
+        index=['x', 'a', 'b', 'c'],
+    )
     assert compute_metric_groups(
         dummy_metric,
         get_2_level_groups(
@@ -25,12 +31,8 @@ def test_compute_metric_groups():
                 'a': fold,
                 'b': fold
             },
-            DataFrame(
-                {
-                    'agg': [0, 1, 1, 0]
-                },
-                index=['x', 'a', 'b', 'c'],
-            ).groupby('agg'),
+            data.groupby('agg'),
+            data,
         )) == {
             'a': expected_result,
             'b': expected_result

@@ -12,6 +12,7 @@ from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List
 import numpy
 import numpy as np
 import pandas
+import torch
 from IPython import get_ipython
 from filelock import FileLock, UnixFileLock
 from flask_socketio import SocketIO
@@ -460,7 +461,8 @@ def notebook_init():
     pyplot.rcParams['figure.facecolor'] = 'white'
 
     ipython = get_ipython()
-    ipython.magic("load_ext autoreload")
+    if 'autoreload' not in ipython.extension_manager.loaded:
+        ipython.magic("load_ext autoreload")
     ipython.magic("autoreload  2")
     ipython.magic("matplotlib inline")
     ipython.magic("config InlineBackend.figure_format = 'retina'")
@@ -476,3 +478,7 @@ def get_key_by_value(dict: Dict[KeyT, ValueT], value: ValueT) -> KeyT:
             return _key
 
     raise Exception("Value not found")
+
+
+def X_to_pytorch(X):
+    return torch.from_numpy(X.to_numpy().astype('float32')).to('cuda')

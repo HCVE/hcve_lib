@@ -138,7 +138,7 @@ def c_index(fold: SplitPrediction, X: DataFrame, y: Target) -> float:
     index: Tuple = concordance_index_censored(
         y_test['data']['label'].astype(bool),
         y_test['data']['tte'],
-        fold['y_score'],
+        fold['y_score'].to_numpy(),
     )
     return index[0]
 

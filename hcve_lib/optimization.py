@@ -55,6 +55,9 @@ class EarlyStoppingCallback(object):
 
 
 def optuna_report_mlflow(study, _):
+    if len(study.get_trials(states=[TrialState.COMPLETE])) == 0:
+        return study
+
     set_tag(
         'trials',
         len(study.trials),
@@ -63,19 +66,23 @@ def optuna_report_mlflow(study, _):
         'failed',
         toolz.count(1 for trial in study.trials if trial.state.name == "FAIL"),
     )
+
     mlflow.log_figure(
         optuna.visualization.plot_optimization_history(study),
         'optimization_history.html',
     )
+
     mlflow.log_figure(
         optuna.visualization.plot_parallel_coordinate(study),
         'parallel_coordinate_hyperparams.html',
     )
+
     if len(study.get_trials(states=[TrialState.COMPLETE])) > 1:
         mlflow.log_figure(
             optuna.visualization.plot_param_importances(study),
             'plot_hyperparam_importances.html',
         )
+
     log_metrics_ci(study.best_trial.user_attrs['metrics'])
 
     return study

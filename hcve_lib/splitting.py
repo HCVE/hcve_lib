@@ -1,7 +1,8 @@
 import itertools
 from functools import partial
-from typing import Callable, Sequence, List, Tuple
+from typing import Callable, Sequence, List, Tuple, Dict
 
+from numpy.typing import NDArray
 from pandas import DataFrame, Index, Series
 from pandas.core.groupby import DataFrameGroupBy
 from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
@@ -122,9 +123,14 @@ def get_reproduce_split(data: DataFrame) -> Splits:
 def get_kfold_splits(
     X: DataFrame,
     n_splits: int = 5,
+    random_state: int = None,
 ) -> Splits:
     return pipe(
-        KFold(n_splits=n_splits, shuffle=True).split(X),
+        KFold(
+            n_splits=n_splits,
+            shuffle=True,
+            random_state=random_state,
+        ).split(X),
         list,
         map(mapl(partial(iloc_to_loc, X))),
         list_to_dict_index,
@@ -231,3 +237,11 @@ def train_test_fold(data, fold: SplitPrediction,
                     metadata) -> Tuple[DataFrame, Target]:
     return data[fold['X_columns']], get_survival_y(data, fold['y_column'],
                                                    metadata)
+
+
+def get_group_indexes(
+    data: DataFrame,
+    feature_name: str,
+) -> Dict[str, Index]:
+    groups = data.groupby(feature_name)
+    return {name: group.index for name, group in groups}

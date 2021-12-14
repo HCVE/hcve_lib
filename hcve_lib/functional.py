@@ -93,7 +93,7 @@ def flatten_recursive(
     return [*list_of_lists[:1], *flatten_recursive(list_of_lists[1:])]
 
 
-def if_then_else(condition: bool, then: Callable, els: Callable = None):
+def if_(condition: Any, then: Callable, els: Callable = None):
     if condition:
         return then()
     elif els:

@@ -59,20 +59,18 @@ def _test_cross_validate():
 def test_optimize_cv():
     optimize_input = [Mock(), Mock()]
     get_optimize = Mock(side_effect=optimize_input)
-    get_cv = Mock(side_effect=lambda *args: {
+    get_splits = Mock(side_effect=lambda *args: {
         'a': ([0, 1, 2], [3]),
         'b': ([0, 1, 3], [2]),
     })
     optimize_per_split(
         get_optimize,
-        get_cv,
+        get_splits,
         DataFrame({'a': [1, 2, 3]}),
         Series([10, 20, 30]),
+        n_jobs=1,
     )
-    get_optimize.assert_has_calls([
-        call({'train_test': ([0, 1, 2], [3])}),
-        call({'train_test': ([0, 1, 3], [2])}),
-    ])
+    get_optimize.assert_called()
 
     for optimize in optimize_input:
         optimize.fit.assert_called_once()

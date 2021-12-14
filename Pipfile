@@ -20,6 +20,8 @@ pytest-mock = "*"
 Flask-SocketIO = "*"
 mlflow = "*"
 torchtuples = "*"
+torch = "*"
+notebook = "*"
 
 [dev-packages]
 pipenv-setup = "*"

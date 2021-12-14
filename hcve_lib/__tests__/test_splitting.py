@@ -2,12 +2,13 @@ from unittest.mock import Mock
 
 import numpy as np
 from _pytest.python_api import raises
-from pandas import DataFrame, Series
+from numpy.testing import assert_array_equal
+from pandas import DataFrame, Series, Index
 from pandas.testing import assert_frame_equal
 
 from hcve_lib.cv import get_column_mask_filter, get_column_mask, get_removed_features_from_mask
 from hcve_lib.splitting import get_lo_splits, iloc_to_loc, get_1_to_1_splits, train_test_filter, \
-    filter_missing_features, train_test_proportion, get_kfold_splits, get_splitting_per_group
+    filter_missing_features, train_test_proportion, get_kfold_splits, get_splitting_per_group, get_group_indexes
 from hcve_lib.utils import cross_validate_apply_mask
 
 
@@ -40,10 +41,11 @@ def test_get_kfold_splits():
     assert get_kfold_splits(
         X=DataFrame({'x': [100, 200, 300]}, index=[10, 20, 30]),
         n_splits=3,
+        random_state=1,
     ) == {
         0: [[20, 30], [10]],
-        1: [[10, 30], [20]],
-        2: [[10, 20], [30]]
+        1: [[10, 20], [30]],
+        2: [[10, 30], [20]]
     }
 
 
@@ -240,10 +242,14 @@ def test_get_splitting_per_group():
         }
 
     assert get_splitting_per_group(
-        DataFrame({'x': [100, 110, 300, 310, 320]}, index=[10, 20, 40, 50,
-                                                           60]),
-        DataFrame({'STUDY': [10, 10, 10, 30, 30, 30]},
-                  index=[10, 20, 30, 40, 50, 60]),
+        DataFrame(
+            {'x': [100, 110, 300, 310, 320]},
+            index=[10, 20, 40, 50, 60],
+        ),
+        DataFrame(
+            {'STUDY': [10, 10, 10, 30, 30, 30]},
+            index=[10, 20, 30, 40, 50, 60],
+        ),
         get_splits=get_splits,
     ) == {
         (10, 'x'): ([10], [20]),
@@ -251,3 +257,15 @@ def test_get_splitting_per_group():
         (30, 'x'): ([40], [50, 60]),
         (30, 'y'): ([50, 60], [40])
     }
+
+
+def test_get_group_indexes():
+    result = get_group_indexes(
+        DataFrame(
+            {'x': [1, 1, 2]},
+            index=['a', 'b', 'c'],
+        ),
+        'x',
+    )
+    assert_array_equal(result[1], Index(('a', 'b')))
+    assert_array_equal(result[2], Index(('c', )))

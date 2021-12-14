@@ -6,8 +6,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 
-from deps.custom_types import Method
-from hcve_lib.custom_types import Estimator, Target, TargetTransformer
+from hcve_lib.custom_types import Estimator, Target, TargetTransformer, Method
 from hcve_lib.wrapped_sklearn import DFPipeline
 
 
@@ -32,6 +31,9 @@ class TransformTarget(BaseEstimator):
 
     def predict_survival_function(self, X):
         return self.inner.predict_survival_function(X)
+
+    def predict_survival(self, X):
+        return self.inner.predict_survival(X)
 
 
 class TransformerTarget(BaseEstimator):

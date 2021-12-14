@@ -2,12 +2,12 @@ from abc import abstractmethod, ABC
 from collections import namedtuple
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TypedDict, Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable
+from typing import TypedDict, Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable, Callable
 
 import numpy as np
+from optuna import Trial
 from pandas import Series, DataFrame
 from sklearn.base import BaseEstimator
-from sklearn.pipeline import Pipeline
 
 
 class IndexAccess(ABC):
@@ -86,6 +86,10 @@ class Estimator(BaseEstimator):
 
     @abstractmethod
     def predict_survival_function(self, X, **kwargs):
+        ...
+
+    @abstractmethod
+    def predict_survival(self, X, **kwargs):
         ...
 
     @abstractmethod
@@ -189,8 +193,32 @@ class SplitPrediction(TypedDict):
     y_score: Any
     y_column: str
     X_columns: List[str]
-    model: Pipeline
+    model: Estimator
     split: SplitInput
 
 
 Splits = Dict[Hashable, SplitInput]
+
+Splitter = Callable[..., Splits]
+
+
+class Method(ABC):
+    @staticmethod
+    @abstractmethod
+    def get_estimator(X: DataFrame, verbose=0, advanced_impute=False):
+        ...
+
+    @staticmethod
+    @abstractmethod
+    def optuna(trial: Trial) -> Tuple[Trial, Dict]:
+        ...
+
+    @staticmethod
+    @abstractmethod
+    def predict(
+        X: DataFrame,
+        y: Target,
+        split: SplitInput,
+        model: Estimator,
+    ):
+        ...

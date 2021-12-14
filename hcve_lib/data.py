@@ -185,7 +185,7 @@ def get_survival_y(
     data: DataFrame,
     target_feature: str,
     metadata: Metadata,
-) -> DataFrame:
+) -> Target:
 
     metadata_item: Optional[MetadataItem] = find_item(target_feature, metadata)
 
@@ -207,8 +207,8 @@ def get_survival_y(
         raise KeyError()
 
 
-def to_survival_y_records(survival_y: TargetData) -> np.recarray:
-    return survival_y.to_records(
+def to_survival_y_records(survival_y: Target) -> np.recarray:
+    return survival_y['data'].to_records(
         index=False,
         column_dtypes={
             'label': np.bool_,

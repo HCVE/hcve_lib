@@ -9,8 +9,8 @@ def test_log_metrics_ci(mocker):
                               return_value=None)
     log_metrics_ci({'metric': ValueWithCI(mean=20, ci=(10, 30))})
     log_metric.assert_has_calls(
-        [call('metric', 20),
-         call('metric_l', 10),
+        [call('metric_l', 10),
+         call('metric', 20),
          call('metric_r', 30)])
 
 

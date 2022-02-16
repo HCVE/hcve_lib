@@ -13,7 +13,6 @@ from optuna import Study
 from pandas import DataFrame, Series
 from toolz import valmap
 
-from deps.logger import logger
 from hcve_lib.custom_types import ValueWithCI, SplitPrediction, Result
 from hcve_lib.functional import pipe, valmap_
 from hcve_lib.visualisation import display_html
@@ -242,7 +241,7 @@ def get_subruns_of(experiment_name: str,
     return get_children_runs(runs, run_method['root_run_id'])
 
 
-def log_early_stopping(it):
+def log_early_stopping(logger: logging.Logger, it):
     logger.info(f'Early stopping after {it} iterations')
 
 

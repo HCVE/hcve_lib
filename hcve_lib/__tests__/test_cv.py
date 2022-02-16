@@ -91,6 +91,7 @@ def test_predict_proba():
         },
         ([10], [20]),
         model,
+        random_state=0,
     )
 
     assert prediction['X_columns'] == ['x']

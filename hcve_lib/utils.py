@@ -11,13 +11,11 @@ from logging import Logger
 from numbers import Real
 from pathlib import Path
 from pprint import pprint
-from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional, Sequence, Hashable, Union, \
-    cast
+from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional, Sequence, Hashable
 
 import numpy
 import numpy as np
 import pandas
-import torch
 from IPython import get_ipython
 from filelock import FileLock, UnixFileLock
 from flask_socketio import SocketIO
@@ -598,6 +596,7 @@ def get_key_by_value(dict: Dict[KeyT, ValueT], value: ValueT) -> KeyT:
 
 
 def X_to_pytorch(X):
+    import torch
     return torch.from_numpy(X.to_numpy().astype('float32')).to('cuda')
 
 

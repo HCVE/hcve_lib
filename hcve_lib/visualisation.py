@@ -1,13 +1,12 @@
 from functools import partial
+from math import ceil
 from numbers import Rational
+from typing import Any
 
-import dtale
-import numpy as np
+import yaml
 from IPython.core.display import HTML
 from IPython.display import display
-from math import ceil
 from matplotlib import pyplot
-from matplotlib.axis import Axis
 from numpy import arange
 from pandas import DataFrame, Series
 from scipy.stats import gaussian_kde
@@ -104,9 +103,14 @@ def histogram(series: Series, ax=None, bins='auto') -> None:
 
 
 def show_dtale(data: DataFrame, metadata: Metadata) -> None:
+    import dtale
     table = pipe(
         data,
         partial(format_features_and_values, metadata=metadata),
         dtale.show,
     )
     return table
+
+
+def print_formatted(something: Any) -> None:
+    print(yaml.dump(something))

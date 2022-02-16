@@ -1,13 +1,18 @@
 import itertools
+import multiprocessing
 import os
+import random
 import shelve
 from collections.abc import Mapping
+from contextlib import contextmanager
 from copy import copy
 from functools import singledispatch, partial, update_wrapper
+from logging import Logger
 from numbers import Real
 from pathlib import Path
 from pprint import pprint
-from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional, Sequence, Hashable
+from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional, Sequence, Hashable, Union, \
+    cast
 
 import numpy
 import numpy as np
@@ -23,7 +28,7 @@ from numpy import ndarray, recarray
 from pandas import Series, DataFrame, Index
 from pandas.core.groupby import DataFrameGroupBy
 
-from hcve_lib.custom_types import SurvivalPairTarget, SplitPrediction, Target
+from hcve_lib.custom_types import SurvivalPairTarget, SplitPrediction, Target, SplitInput
 from hcve_lib.functional import pipe, unzip
 
 empty_dict: Mapping = frozendict()
@@ -288,11 +293,30 @@ def index_data(indexes: Iterable[int], data: IndexData) -> IndexData:
         raise TypeError("Can't handle this type")
 
 
-def loc(index: List[Hashable], data: IndexData) -> IndexData:
+def loc(
+    indexes: List[Hashable],
+    data: IndexData,
+    ignore_not_present: bool = False,
+    logger: Logger = None,
+) -> IndexData:
     if isinstance(data, (DataFrame, Series)):
-        return data.loc[index]
+        if ignore_not_present:
+            actual_index = [index for index in indexes if index in data.index]
+            if logger:
+                removed_indexes = len(indexes) - len(actual_index)
+                if removed_indexes > 0:
+                    logger.warning(f'Removed samples {removed_indexes}')
+        else:
+            actual_index = indexes
+            removed_indexes = None
+        return data.loc[actual_index]
     elif isinstance(data, Dict) and 'data' in data:
-        return {**data, 'data': data['data'].loc[index]}
+        return {
+            **data, 'data':
+            loc(indexes, data['data'], ignore_not_present=ignore_not_present)
+        }
+    else:
+        raise Exception()
 
 
 ListToDictKey = TypeVar('ListToDictKey')
@@ -402,26 +426,119 @@ def partial2_args(func, name: str = None, args=tuple(), kwargs=empty_dict):
     return partial_func
 
 
-def partial2(func, *args, **kwargs):
-    return partial2_args(func, args=args, kwargs=kwargs)
+def partial2(func, name: str = None, *args, **kwargs):
+    return partial2_args(func, name=name, args=args, kwargs=kwargs)
 
 
-def split_data(X, y, fold: SplitPrediction, remove_extended: bool = False):
-    X_ = X[fold['X_columns']]
-    X_train = loc(fold['split'][0], X_)
-    y_train = loc(fold['split'][0], y)
-    X_test = loc(fold['split'][1], X_)
-    y_test = loc(fold['split'][1], y)
-    if not remove_extended:
+def split_data(
+    X: DataFrame,
+    y: Target,
+    fold: SplitPrediction,
+    remove_extended: bool = False,
+    logger: Logger = None,
+):
+
+    X_train, X_test = get_X_split(X, fold, logger)
+
+    y_train, y_test = get_y_split(y, fold, logger)
+
+    if remove_extended:
+        X_test_, y_test_ = limit_to_observed(y_train, X_test, y_test)
+    else:
         y_test_ = y_test
         X_test_ = X_test
-    else:
-        tte_train = get_tte(y_train)
-        tte_test = get_tte(y_test)
-        mask = tte_test <= max(tte_train)
-        y_test_ = {**y_test, 'data': y_test['data'][mask]}
-        X_test_ = X_test[mask]
+
     return X_train, y_train, X_test_, y_test_
+
+
+def get_X_split(
+    X: DataFrame,
+    fold: SplitPrediction,
+    logger: Logger = None,
+):
+    split_train, split_test = filter_split_in_index(fold['split'], X.index)
+
+    if logger:
+        if removed_split_train := len(split_train) - len(fold['split'][0]):
+            logger.warning(f'Removed {removed_split_train} from X train set')
+
+        if removed_split_test := len(split_test) - len(fold['split'][0]):
+            logger.warning(f'Removed {removed_split_test} from X test set')
+
+    X_ = X[fold['X_columns']]
+
+    X_train = loc(split_train, X_)
+    X_test = loc(split_test, X_)
+
+    if isinstance(fold.get('y_score'), Series):
+        X_test = loc(fold['y_score'].index, X_test, ignore_not_present=True)
+
+    if logger:
+        log_additional_removed(
+            X_test,
+            fold['y_score'],
+            logger,
+            'from X test set',
+        )
+
+    return X_train, X_test
+
+
+def get_y_split(
+    y: Target,
+    fold: SplitPrediction,
+    logger: Logger = None,
+):
+    split_train, split_test = filter_split_in_index(
+        fold['split'],
+        y['data'].index,
+    )
+
+    if logger:
+        if removed_split_train := len(split_train) - len(fold['split'][0]):
+            logger.warning(f'Removed {removed_split_train} from y train set')
+
+        if removed_split_test := len(split_test) - len(fold['split'][0]):
+            logger.warning(f'Removed {removed_split_test} from y test set')
+
+    y_train = loc(split_train, y)
+    y_test = loc(split_test, y)
+
+    if isinstance(fold.get('y_score'), Series):
+        y_test = loc(fold['y_score'].index, y_test, ignore_not_present=True)
+
+    if logger:
+        log_additional_removed(
+            y['data'],
+            fold['y_score'],
+            logger,
+            'from y test set',
+        )
+
+    return y_train, y_test
+
+
+def log_additional_removed(X_test, y_score, logger, message):
+    removed_rows = len(X_test) - len(y_score)
+    if removed_rows > 0:
+        logger.warning(f'Removed additional {removed_rows} {message}')
+
+
+def limit_to_observed(y_train, X_test, y_test):
+    tte_train = get_tte(y_train)
+    tte_test = get_tte(y_test)
+    mask = tte_test <= max(tte_train)
+    y_test_ = {**y_test, 'data': y_test['data'][mask]}
+    X_test_ = X_test[mask]
+    return X_test_, y_test_
+
+
+def filter_split_in_index(split: SplitInput, index: Index) -> SplitInput:
+    return filter_in_index(split[0], index), filter_in_index(split[1], index)
+
+
+def filter_in_index(iterable: List, index: Index) -> List:
+    return [i for i in iterable if i in index]
 
 
 def get_tte(target: Target) -> np.ndarray:
@@ -482,3 +599,76 @@ def get_key_by_value(dict: Dict[KeyT, ValueT], value: ValueT) -> KeyT:
 
 def X_to_pytorch(X):
     return torch.from_numpy(X.to_numpy().astype('float32')).to('cuda')
+
+
+MapRecursiveFrom = TypeVar('MapRecursiveFrom')
+MapRecursiveTo = TypeVar('MapRecursiveTo')
+
+
+@singledispatch
+def map_recursive(
+    obj,
+    mapper,
+):
+    return mapper(obj)
+
+
+@map_recursive.register(list)
+def _(
+    obj: List[MapRecursiveFrom],
+    mapper: Callable,
+) -> List[MapRecursiveTo]:
+    return list(map(mapper, obj))
+
+
+@map_recursive.register(dict)
+def _(
+    obj: Dict[Hashable, MapRecursiveFrom],
+    mapper: Callable,
+) -> Dict[Hashable, MapRecursiveTo]:
+    return {key: map_recursive(value, mapper) for key, value in obj.items()}
+
+
+def random_seed(seed: int) -> None:
+    numpy.random.seed(seed)
+    random.seed(seed)
+
+
+class NonDaemonProcess(multiprocessing.Process):
+    @property  # type: ignore
+    def daemon(self):
+        return False
+
+    @daemon.setter
+    def daemon(self, val):
+        pass
+
+
+class NonDaemonPool(multiprocessing.pool.Pool):
+    def Process(self, *args, **kwds):
+        # noinspection PyUnresolvedReferences
+        proc = super(NonDaemonPool, self).Process(*args, **kwds)
+        proc.__class__ = NonDaemonProcess
+        return proc
+
+
+@contextmanager
+def noop_context_manager(*args, **kwargs):
+    yield
+
+
+def noop(*args, **kwargs):
+    pass
+
+
+GetKeysSubsetT = TypeVar(
+    'GetKeysSubsetT',
+    bound=Dict[Hashable, Any],
+)
+
+
+def get_keys(
+    keys: Iterable[Hashable],
+    dictionary: GetKeysSubsetT,
+) -> GetKeysSubsetT:
+    return {key: dictionary[key] for key in keys}  # type: ignore

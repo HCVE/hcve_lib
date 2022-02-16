@@ -120,6 +120,17 @@ def get_reproduce_split(data: DataFrame) -> Splits:
 
 
 @accept_extra_parameters
+def get_healthabc_ascot_split(data: DataFrame) -> Splits:
+    return train_test_filter(
+        data,
+        train_filter=lambda _data: _data['STUDY'].isin([
+            'HEALTHABC',
+        ]),
+        test_filter=lambda _data: _data['STUDY'] == 'ASCOT',
+    )
+
+
+@accept_extra_parameters
 def get_kfold_splits(
     X: DataFrame,
     n_splits: int = 5,
@@ -153,21 +164,21 @@ def get_kfold_stratified_splits(
 
 
 @accept_extra_parameters
-def train_test_proportion(
+def get_train_test(
     X: DataFrame,
+    y: Target,
     test_size=None,
     train_size=None,
     random_state=None,
     shuffle=True,
-    stratify=None,
 ) -> Splits:
     data_train, data_test = train_test_split(
         X,
-        test_size,
-        train_size,
-        random_state,
-        shuffle,
-        stratify,
+        test_size=test_size,
+        train_size=train_size,
+        random_state=random_state,
+        shuffle=shuffle,
+        stratify=y['data']['label'],
     )
     data_train_index = data_train.index.tolist()
     data_test_index = data_test.index.tolist()
@@ -221,6 +232,8 @@ def get_splitter(splitter_name: str) -> Callable:
         return get_lco_splits
     elif splitter_name == 'reproduce':
         return get_reproduce_split
+    elif splitter_name == 'healtahc_ascot':
+        return get_healthabc_ascot_split
     elif splitter_name == 'lm':
         return partial2(get_1_to_1_splits, group_by_column='STUDY')
     elif splitter_name == 'cohort_10_fold':

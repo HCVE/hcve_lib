@@ -8,7 +8,7 @@ from pandas.testing import assert_frame_equal
 
 from hcve_lib.cv import get_column_mask_filter, get_column_mask, get_removed_features_from_mask
 from hcve_lib.splitting import get_lo_splits, iloc_to_loc, get_1_to_1_splits, train_test_filter, \
-    filter_missing_features, train_test_proportion, get_kfold_splits, get_splitting_per_group, get_group_indexes
+    filter_missing_features, get_train_test, get_kfold_splits, get_splitting_per_group, get_group_indexes
 from hcve_lib.utils import cross_validate_apply_mask
 
 

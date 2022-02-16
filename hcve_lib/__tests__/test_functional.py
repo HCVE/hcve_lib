@@ -2,7 +2,8 @@ import pytest
 from pandas import DataFrame
 from pandas.testing import assert_frame_equal
 
-from hcve_lib.functional import map_columns, reject_none, always, reject_none_values, accept_extra_parameters
+from hcve_lib.functional import map_columns, reject_none, always, reject_none_values, accept_extra_parameters, lagged, \
+    subtract
 
 
 def test_map_columns():
@@ -47,3 +48,11 @@ def test_accept_extra_parameters():
 
     with pytest.raises(TypeError):
         test_func(arg2=5)
+
+
+def test_lagged():
+    assert list(lagged([1, 2, 3])) == [(1, 2), (2, 3)]
+
+
+def test_subtract():
+    assert list(subtract(iter([1, 2, 3]), iter([2]))) == [1, 3]

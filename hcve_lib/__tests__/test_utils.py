@@ -1,13 +1,14 @@
 from typing import List, Dict
 
 import numpy as np
+import pytest
 from numpy.testing import assert_array_equal
 from pandas import Series, DataFrame, Int64Index
 
 from hcve_lib.utils import get_class_ratios, decamelize_arguments, camelize_return, map_column_names, cumulative_count, \
     inverse_cumulative_count, key_value_swap, index_data, list_to_dict_by_keys, subtract_lists, map_groups_iloc, \
     remove_prefix, remove_column_prefix, get_fraction_missing, transpose_dict, map_groups_loc, loc, split_data, \
-    get_fraction_missing
+    get_fraction_missing, map_recursive, get_keys
 from pandas.testing import assert_frame_equal, assert_series_equal
 
 
@@ -262,18 +263,36 @@ def test_loc():
         ),
     )
 
+    with pytest.raises(Exception):
+        loc(
+            [10, 30, -100],
+            DataFrame(
+                {'a': [0, 0, 1, 1, 1]},
+                index=[10, 20, 30, 40, 50],
+            ),
+        )
+
+    loc(
+        [10, 30, -100],
+        DataFrame(
+            {'a': [0, 0, 1, 1, 1]},
+            index=[10, 20, 30, 40, 50],
+        ),
+        ignore_not_present=True,
+    )
+
 
 def test_split_data():
 
     X_train, y_train, X_test, y_test = split_data(
-        DataFrame(
+        X=DataFrame(
             {
                 'a': [0, 1, 2, 3, 4],
                 'b': [0, 1, 2, 3, 4],
             },
             index=[10, 20, 30, 40, 50],
         ),
-        {
+        y={
             'data':
             DataFrame(
                 {
@@ -283,11 +302,14 @@ def test_split_data():
                 index=[10, 20, 30, 40, 50],
             ),
         },
-        {
-            'split': ([10, 50], [20, 30, 40]),
+        fold={
+            'split': ([10, 50], [20, 30]),
+            # Skipping index 20 in y_score
+            'y_score': Series([1, 3, 4, 5], index=[10, 30, 40, 50]),
             'X_columns': ['a']
         },
     )
+
     assert_frame_equal(
         X_train,
         DataFrame(
@@ -311,20 +333,21 @@ def test_split_data():
         X_test,
         DataFrame(
             {
-                'a': [1, 2, 3],
+                'a': [2],
             },
-            index=[20, 30, 40],
+            index=[30],
         ),
     )
     assert_frame_equal(
         y_test['data'],
         DataFrame(
             {
-                'tte': [10, 200, 30],
-                'label': [0, 0, 1]
+                'tte': [200],
+                'label': [0]
             },
-            index=[20, 30, 40],
-        ))
+            index=[30],
+        ),
+    )
 
 
 def test_split_data_remove_extended():
@@ -394,3 +417,24 @@ def test_split_data_remove_extended():
 
 def test_fraction_missing():
     assert get_fraction_missing(Series([0, 1, 2, np.nan])) == 0.25
+
+
+def test_map_recursive():
+    assert map_recursive(
+        {
+            'a': {
+                'b': [2, 3],
+                'c': 4,
+            },
+        },
+        lambda num: num + 1,
+    ) == {
+        'a': {
+            'b': [3, 4],
+            'c': 5,
+        }
+    }
+
+
+def test_get_keys():
+    assert get_keys(['x'], {'x': 1, 'y': 2}) == {'x': 1}

@@ -14,11 +14,12 @@ from toolz import pluck, merge
 from toolz.curried import itemmap
 
 from hcve_lib.custom_types import ClassificationMetrics, ValueWithStatistics, \
-    ClassificationMetricsWithStatistics, GenericConfusionMatrix, ConfusionMetrics, ValueWithCI, ConfusionMatrix, Target
+    ClassificationMetricsWithStatistics, GenericConfusionMatrix, ConfusionMetrics, ValueWithCI, ConfusionMatrix, Target, \
+    Result
 from hcve_lib.custom_types import SplitPrediction
 from hcve_lib.functional import pass_args, pipe, find_index, star_args, reject_none
 from hcve_lib.stats import confidence_interval
-from hcve_lib.utils import transpose_dict, map_groups_loc, split_data
+from hcve_lib.utils import transpose_dict, map_groups_loc, split_data, get_y_split
 
 
 def get_1_class_y_score(y_score: Union[DataFrame, Series]) -> Series:
@@ -131,15 +132,24 @@ def get_confusion_from_threshold(
     return matrix
 
 
-def c_index(fold: SplitPrediction, X: DataFrame, y: Target) -> float:
+def c_index(
+    fold: SplitPrediction,
+    y: Target,
+    is_train: bool = False,
+) -> float:
     if len(fold['y_score']) == 0:
         return np.nan
-    _, _, _, y_test = split_data(X, y, fold)
+
+    y_train, y_test = get_y_split(y, fold)
+
+    y_to_evaluate = y_train if is_train else y_test
+
     index: Tuple = concordance_index_censored(
-        y_test['data']['label'].astype(bool),
-        y_test['data']['tte'],
+        y_to_evaluate['data']['label'].astype(bool),
+        y_to_evaluate['data']['tte'],
         fold['y_score'].to_numpy(),
     )
+
     return index[0]
 
 
@@ -203,18 +213,18 @@ def compute_metrics_folds(
 
 
 def compute_metrics_fold(
-    metrics: List[Callable[[SplitPrediction], float]],
+    metrics: List[Callable],
     fold: SplitPrediction,
+    y: Target,
 ) -> Dict[Any, float]:
-
-    return {metric.__name__: metric(fold) for metric in metrics}
+    return {metric.__name__: metric(fold, y=y) for metric in metrics}
 
 
 def get_2_level_groups(
-    folds: Dict[Hashable, SplitPrediction],
+    folds: Result,
     group_by: DataFrameGroupBy,
     data: DataFrame,
-) -> Dict[Hashable, Dict[Hashable, SplitPrediction]]:
+) -> Dict[Hashable, Result]:
     groups = list(map_groups_loc(group_by))
     result: DefaultDict = defaultdict(dict)
 
@@ -243,7 +253,7 @@ def get_2_level_groups(
 
 def compute_metric_groups(
     metric: Callable[[SplitPrediction], float],
-    groups: Dict[Hashable, Dict[Hashable, SplitPrediction]],
+    groups: Dict[Hashable, Result],
 ) -> Dict:
     result: DefaultDict = defaultdict(dict)
     for train_name, test_folds in groups.items():

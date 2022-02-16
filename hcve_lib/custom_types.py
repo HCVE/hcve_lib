@@ -195,17 +195,25 @@ class SplitPrediction(TypedDict):
     X_columns: List[str]
     model: Estimator
     split: SplitInput
+    random_state: int
 
 
 Splits = Dict[Hashable, SplitInput]
 
 Splitter = Callable[..., Splits]
 
+Result = Dict[Hashable, SplitPrediction]
+
 
 class Method(ABC):
     @staticmethod
     @abstractmethod
-    def get_estimator(X: DataFrame, verbose=0, advanced_impute=False):
+    def get_estimator(
+        X: DataFrame,
+        random_state: int,
+        verbose=0,
+        advanced_impute=False,
+    ):
         ...
 
     @staticmethod

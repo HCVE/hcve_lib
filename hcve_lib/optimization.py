@@ -76,14 +76,16 @@ def optuna_report_mlflow(study, _):
         optuna.visualization.plot_parallel_coordinate(study),
         'parallel_coordinate_hyperparams.html',
     )
+    try:
+        if len(study.get_trials(states=[TrialState.COMPLETE])) > 1:
+            mlflow.log_figure(
+                optuna.visualization.plot_param_importances(study),
+                'plot_hyperparam_importances.html',
+            )
 
-    if len(study.get_trials(states=[TrialState.COMPLETE])) > 1:
-        mlflow.log_figure(
-            optuna.visualization.plot_param_importances(study),
-            'plot_hyperparam_importances.html',
-        )
-
-    log_metrics_ci(study.best_trial.user_attrs['metrics'])
+        log_metrics_ci(study.best_trial.user_attrs['metrics'])
+    except RuntimeError:
+        pass
 
     return study
 

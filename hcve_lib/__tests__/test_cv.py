@@ -7,6 +7,7 @@ from sklearn.model_selection import KFold
 from unittest.mock import Mock, call
 
 from hcve_lib.cv import cross_validate, optimize_per_split, predict_proba, series_to_target
+from hcve_lib.splitting import filter_missing_features
 
 
 def _test_cross_validate():
@@ -43,6 +44,7 @@ def _test_cross_validate():
         predict=predict_proba,
         splits=KFold(n_splits=3).split(X_all),
         n_jobs=1,
+        train_test_filter_callback=filter_missing_features,
     )
 
     for X_fold, X_test_fold, y_fold in zip(Xs, Xs_test, ys):

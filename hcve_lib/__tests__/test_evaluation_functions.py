@@ -1,7 +1,7 @@
 from pandas import Series, DataFrame
 
 from hcve_lib.custom_types import SplitPrediction
-from hcve_lib.evaluation_functions import compute_metric_groups, get_2_level_groups
+from hcve_lib.evaluation_functions import compute_metric_groups, get_2_level_groups, c_index
 
 
 def test_compute_metric_groups():
@@ -37,3 +37,13 @@ def test_compute_metric_groups():
             'a': expected_result,
             'b': expected_result
         }
+
+
+def test_c_index():
+    assert c_index(
+        {
+            'y_test': Series([1, 2, 3, 4]),
+            'y_score': Series([2, 1, 3, 4]),
+        },
+        DataFrame({}),
+    )

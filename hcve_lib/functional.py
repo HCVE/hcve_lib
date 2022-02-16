@@ -2,7 +2,7 @@ import inspect
 import pprint
 from copy import copy
 from functools import reduce, partial, wraps
-from itertools import starmap as starmap_itertools
+from itertools import starmap as starmap_itertools, tee
 from typing import Callable, TypeVar, Iterable, Tuple, Dict, List, Any, Union, Sequence
 
 import numpy as np
@@ -16,9 +16,12 @@ T1 = TypeVar('T1')
 T2 = TypeVar('T2')
 
 
-def t(*args):
-    print(*args)
-    return args[-1]
+def t(arg, callback=None):
+    if callback:
+        callback(arg)
+    else:
+        print(arg)
+    return arg
 
 
 def or_fn(*fns: Callable[..., bool]) -> Callable[..., bool]:
@@ -349,3 +352,14 @@ def valmap_(first, second):
 
 def starmap_(first, second):
     return starmap(second, first)
+
+
+def lagged(iterable: Iterable) -> Iterable:
+    a, b = tee(iterable)
+    next(b, None)
+    return zip(a, b)
+
+
+def subtract(a: Iterable, b: Iterable) -> Iterable:
+    b_ = list(b)
+    return (x for x in a if x not in b_)

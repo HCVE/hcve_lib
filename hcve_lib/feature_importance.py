@@ -11,12 +11,13 @@ from hcve_lib.functional import pipe
 from hcve_lib.utils import split_data
 
 
-def show_permutation_importance(
+def run_permutation_importance(
     result: SplitPrediction,
     X: DataFrame,
     y: Target,
     metadata: Metadata,
     show: bool = True,
+    previous_plot=None,
     **get_permutation_importance_kwargs,
 ) -> Figure:
     fig = pipe(
@@ -30,18 +31,19 @@ def show_permutation_importance(
     )
     if show:
         fig.show()
-    return fig
+    else:
+        return fig
 
 
 def get_permutation_importance(
-    result_slit: SplitPrediction,
+    result_split: SplitPrediction,
     X: DataFrame,
     y: Target,
     train_importance: bool = False,
     limit: int = None,
     **permutation_importance_kwargs,
 ) -> DataFrame:
-    X_train, y_train, X_test, y_test = split_data(X, y, result_slit)
+    X_train, y_train, X_test, y_test = split_data(X, y, result_split)
 
     if train_importance:
         X_importance = X_train
@@ -51,7 +53,7 @@ def get_permutation_importance(
         y_importance = y_test
 
     importance_result = permutation_importance(
-        result_slit['model'],
+        result_split['model'],
         X_importance,
         y_importance,
         **permutation_importance_kwargs,
@@ -85,6 +87,7 @@ def plot_permutation_importance(
         yaxis_title='Feature',
         yaxis_tickmode='linear',
     )
+    fig.add_vline(x=0)
     fig.update_yaxes(showgrid=True)
     return fig
 

@@ -94,7 +94,7 @@ setup(
         "zipp==3.7.0",
     ],
     name="hcve_lib",
-    version="0.1",
+    version="0.1.1",
     packages=[""],
     url="",
     license="",

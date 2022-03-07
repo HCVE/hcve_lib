@@ -20,8 +20,8 @@ pytest-mock = "*"
 Flask-SocketIO = "*"
 mlflow = "*"
 torchtuples = "*"
-torch = "*"
-notebook = "*"
+Cython = "*"
+scikit-survival = "*"
 
 [dev-packages]
 pipenv-setup = "*"

@@ -5,7 +5,8 @@ import numpy as np
 import pytest
 from pandas import DataFrame
 
-from hcve_lib.cohort_statistics import get_description_column, get_value_column, get_missing_column
+from hcve_lib.cohort_statistics import get_description_column, get_value_column, get_missing_column, \
+    get_events_per_person_years, get_incidence, get_missing, get_non_missing, get_missing_fraction, get_median_follow_up
 
 metadata = [{
     'identifier':
@@ -79,3 +80,83 @@ def test_get_value_column(_):
 
 def test_get_missing_column():
     assert list(get_missing_column(metadata, data)) == ['', '', '25.0', '50.0']
+
+
+def test_get_events_per_person_years():
+    assert get_events_per_person_years(
+        DataFrame({
+            'EVENT': [1, 0, 0, 0],
+            'FUEVENT': [365, 365, 365, 365],
+        }),
+        feature={
+            'identifier': 'EVENT',
+            'identifier_tte': 'FUEVENT'
+        },
+        desired_person_years=1000,
+    ) == 250
+
+
+def test_get_incidence():
+    assert get_incidence(
+        DataFrame({
+            'EVENT': [1, 0, 0, 0],
+            'FUEVENT': [365, 365, 365, 365],
+        }),
+        feature={
+            'identifier': 'EVENT',
+            'identifier_tte': 'FUEVENT'
+        },
+    ) == 0.25
+
+
+def test_get_na_fu():
+    assert get_missing(
+        DataFrame({
+            'EVENT': [1, 0, 0, np.nan],
+            'FUEVENT': [365, 365, 365, 365],
+        }),
+        feature={
+            'identifier': 'EVENT',
+            'identifier_tte': 'FUEVENT'
+        },
+    ) == 1
+
+
+def test_get_non_na_fu():
+    assert get_non_missing(
+        DataFrame({
+            'EVENT': [1, 0, 0, np.nan],
+            'FUEVENT': [365, 365, 365, 365],
+        }),
+        feature={
+            'identifier': 'EVENT',
+            'identifier_tte': 'FUEVENT'
+        },
+    ) == 3
+
+
+def test_get_missing_fraction():
+    assert get_missing_fraction(
+        DataFrame({
+            'EVENT': [1, 0, 0, np.nan],
+            'FUEVENT': [365, 365, 365, 365],
+        }),
+        feature={
+            'identifier': 'EVENT',
+            'identifier_tte': 'FUEVENT'
+        },
+    ) == 0.25
+
+
+def test_get_median_follow_up():
+
+    assert get_median_follow_up(
+        DataFrame({
+            'EVENT': [1, 0, 0, 1, np.nan],
+            'FUEVENT': [1, 10, 15, 100, 100000],
+        }),
+        feature={
+            'identifier': 'EVENT',
+            'identifier_tte': 'FUEVENT'
+        },
+    ) == 15

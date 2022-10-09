@@ -22,10 +22,16 @@ mlflow = "*"
 torchtuples = "*"
 Cython = "*"
 scikit-survival = "*"
+multimethod = "*"
+ansi2html = "*"
+imblearn = "*"
+rpy2 = "*"
+statsmodels = "*"
+plotly = "*"
 
 [dev-packages]
 pipenv-setup = "*"
 pytest = "*"
 
 [requires]
-python_version = "3.9"
+python_version = "3.10"

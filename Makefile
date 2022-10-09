@@ -1,7 +1,9 @@
 test:
-	PYTHONPATH=. pytest --color=yes | less -R
+	PYTHONPATH=. pytest
+deps:
+	pip install setuptools wheel twine --upgrade
 package:
 	pipenv-setup sync
-mypy:
-	mypy .
+	python setup.py sdist bdist_wheel
+	python -m twine upload dist/*
 

@@ -1,12 +1,12 @@
 from enum import Enum
 from functools import partial as p, partial
-from typing import TypedDict, List, Iterator, Optional, Iterable, Tuple, Any, Dict, Callable
+from typing import TypedDict, List, Iterator, Optional, Iterable, Tuple, Any, Dict, Callable, Union
 
 import numpy as np
 from pandas import DataFrame, Series
 
-from hcve_lib.custom_types import SurvivalPairTarget, Target, TargetData
-from hcve_lib.functional import pipe, map_columns_, statements
+from hcve_lib.custom_types import SurvivalPairTarget, Target
+from hcve_lib.functional import pipe, map_columns_
 from hcve_lib.utils import key_value_swap
 
 Metadata = List['MetadataItem']  # type: ignore
@@ -27,7 +27,7 @@ class MetadataItemType(Enum):
     BINARY_TARGET = 'binary_target'
 
 
-def flatten_metadata(metadata: List[MetadataItem]) -> Iterator[MetadataItem]:
+def flatten_metadata(metadata: Metadata) -> Iterator[MetadataItem]:
     for item in metadata:
         yield item
         if has_children(item):
@@ -59,7 +59,7 @@ def format_features_and_values(
 ) -> DataFrame:
     return pipe(
         data,
-        p(format_values, metadata=metadata),
+        p(format_feature_values, metadata=metadata),
         p(format_features, metadata=metadata, axis=feature_axis),
     )
 
@@ -68,7 +68,7 @@ def format_features(
     data: DataFrame,
     metadata: Metadata,
     axis: int = 1,
-    formatter: Callable[[str, Metadata], str] = None,
+    formatter: Callable[..., str] = None,
 ) -> DataFrame:
     if formatter is None:
         formatter = format_identifier
@@ -78,7 +78,7 @@ def format_features(
     )
 
 
-def format_value(value: Any, metadata_item: Optional[MetadataItem]) -> Any:
+def format_feature_value(value: Any, metadata_item: Optional[MetadataItem]) -> Any:
     if not metadata_item:
         return value
 
@@ -89,13 +89,12 @@ def format_value(value: Any, metadata_item: Optional[MetadataItem]) -> Any:
         return value
 
 
-def inverse_format_value(
+def inverse_format_feature_value(
     value: Any,
     metadata_item: Optional[MetadataItem],
 ) -> Any:
 
-    if metadata_item is None or 'mapping' not in metadata_item or metadata_item[
-            'mapping'] is None:
+    if metadata_item is None or 'mapping' not in metadata_item or metadata_item['mapping'] is None:
         return value
 
     mapping = key_value_swap(metadata_item['mapping'])
@@ -106,13 +105,13 @@ def inverse_format_value(
         return value
 
 
-def format_values(data: DataFrame, metadata: Metadata) -> DataFrame:
+def format_feature_values(data: DataFrame, metadata: Metadata) -> DataFrame:
     return map_columns_(data, partial(format_series, metadata=metadata))
 
 
 def format_identifier(
     identifier: str,
-    metadata: List[MetadataItem],
+    metadata: Metadata,
 ) -> str:
     meaning = format_identifier_raw(identifier, metadata)
     return meaning if meaning is not None else identifier
@@ -120,20 +119,28 @@ def format_identifier(
 
 def format_identifier_long(
     identifier: str,
-    metadata: List[MetadataItem],
+    metadata: Metadata,
 ) -> str:
     return f'[{identifier}] {format_identifier(identifier, metadata)}'
 
 
 def format_identifier_raw(
     identifier: str,
-    metadata: List[MetadataItem],
+    metadata: Metadata,
 ):
     item = find_item(identifier, metadata)
     if item:
         return item.get('meaning')
     else:
         return None
+
+
+def format_identifier_short(
+    identifier: str,
+    metadata: Metadata,
+) -> str:
+    item = find_item(identifier, metadata)
+    return item.get('short_label', item.get('meaning', identifier))
 
 
 def get_feature_subset(df: DataFrame, feature_names: List[str]) -> DataFrame:
@@ -154,10 +161,27 @@ def sanitize_data_inplace(data: DataFrame) -> DataFrame:
     data['VISIT'] = data['VISIT'].str.upper()
 
 
+def get_targets(metadata: Metadata) -> Iterator[MetadataItem]:
+    return pipe(
+        metadata,
+        flatten_metadata,
+        partial(filter, is_target),
+        iter,
+    )
+
+
 def is_target(item: MetadataItem) -> bool:
     return item.get('type') in (
         MetadataItemType.SURVIVAL_TARGET.value,
         MetadataItemType.BINARY_TARGET.value,
+    )
+
+
+def get_variables(metadata: Metadata) -> Iterator[MetadataItem]:
+    return pipe(
+        metadata,
+        flatten_metadata,
+        partial(filter, is_variable),
     )
 
 
@@ -166,14 +190,6 @@ def get_variable_identifier(metadata: Metadata) -> Iterator[str]:
         metadata,
         get_variables,
         get_identifiers,
-    )
-
-
-def get_variables(metadata: List[MetadataItem]) -> Iterator[MetadataItem]:
-    return pipe(
-        metadata,
-        flatten_metadata,
-        partial(filter, is_variable),
     )
 
 
@@ -211,8 +227,7 @@ def to_survival_y_records(survival_y: Target) -> np.recarray:
     return survival_y['data'].to_records(
         index=False,
         column_dtypes={
-            'label': np.bool_,
-            'tte': np.int32
+            'label': np.bool_, 'tte': np.int32
         },
     )
 
@@ -224,11 +239,18 @@ def to_survival_y_pair(survival_y: DataFrame) -> SurvivalPairTarget:
     )
 
 
-def binarize_survival(tte: int, survival_y: DataFrame) -> Series:
+def binarize_event(
+    tte: int,
+    survival_y: DataFrame,
+    drop_censored: bool = True,
+) -> Series:
     y_binary = Series(index=survival_y.index.copy())
     y_binary[(survival_y['tte'] > tte)] = 0
     y_binary[(survival_y['tte'] <= tte) & (survival_y['label'] == 1)] = 1
-    return y_binary
+    if drop_censored:
+        return y_binary.dropna().astype(int)
+    else:
+        return y_binary
 
 
 def get_X(
@@ -236,7 +258,8 @@ def get_X(
     metadata: Metadata,
 ) -> DataFrame:
     features = [
-        item.get('identifier') for item in flatten_metadata(metadata)
+        item.get('identifier')
+        for item in flatten_metadata(metadata)
         if not is_target(item) and item.get('identifier') in data.columns
     ]
 
@@ -286,11 +309,11 @@ def get_available_identifiers_per_category(
 def categorize_features(X: DataFrame) -> Tuple[List[str], List[str]]:
     categorical_features = [
         column_name for column_name in X.columns
-        if X[column_name].dtype.name == 'object'
-        or X[column_name].dtype.name == 'category'
+        if X[column_name].dtype.name == 'object' or X[column_name].dtype.name == 'category'
     ]
-    continuous_features = [
-        column_name for column_name in X.columns
-        if column_name not in categorical_features
-    ]
+    continuous_features = [column_name for column_name in X.columns if column_name not in categorical_features]
     return categorical_features, continuous_features
+
+
+def get_age_range(X: DataFrame, age_range: Union[List, Tuple]) -> DataFrame:
+    return X[(X['AGE'] >= age_range[0]) & (X['AGE'] <= age_range[1])]

@@ -2,21 +2,21 @@ import itertools
 from functools import partial
 from typing import Callable, Sequence, List, Tuple, Dict
 
-from numpy.typing import NDArray
 from pandas import DataFrame, Index, Series
 from pandas.core.groupby import DataFrameGroupBy
 from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
-from toolz import identity
+from toolz import identity, merge
 from toolz.curried import valfilter, map
 
-from hcve_lib.custom_types import Target, Splits, SplitPrediction
+from hcve_lib.custom_types import Target, TrainTestSplits, Prediction, ExceptionValue
 from hcve_lib.data import get_survival_y
-from hcve_lib.functional import pipe, mapl, t, accept_extra_parameters, flatten
-from hcve_lib.utils import subtract_lists, map_groups_iloc, list_to_dict_index, get_fraction_missing, partial2
+from hcve_lib.functional import pipe, mapl, accept_extra_parameters, flatten, valmap_
+from hcve_lib.utils import subtract_lists, map_groups_iloc, list_to_dict_index, get_fraction_missing, partial2, loc, \
+    empty_dict, filter_in_index, filter_split_in_index
 
 
 @accept_extra_parameters
-def get_lco_splits(X: DataFrame, data: DataFrame) -> Splits:
+def get_lco_splits(X: DataFrame, data: DataFrame) -> TrainTestSplits:
     return get_lo_splits(X, data, 'STUDY')
 
 
@@ -25,7 +25,7 @@ def get_lo_splits(
     X: DataFrame,
     data: DataFrame,
     group_by_column: str,
-) -> Splits:
+) -> TrainTestSplits:
     data_subset = data.loc[X.index]
     all_indexes = data_subset.index
     groups = data_subset.groupby(group_by_column)
@@ -46,7 +46,7 @@ def get_1_to_1_splits(
     X: DataFrame,
     data: DataFrame,
     group_by_column: str,
-) -> Splits:
+) -> TrainTestSplits:
     data_subset = data.loc[X.index]
     groups = data_subset.groupby(group_by_column)
     permutations = itertools.permutations(
@@ -61,7 +61,7 @@ def get_1_to_1_splits(
 def get_group_splits(
     X: DataFrame,
     data: DataFrameGroupBy,
-) -> Splits:
+) -> TrainTestSplits:
     flatten_data = data.apply(identity).loc[X.index]
     all_indexes = range(0, len(flatten_data))
     groups = map_groups_iloc(data, flatten_data)
@@ -94,8 +94,8 @@ def get_splitting_per_group(
 def get_lm_splits(
     X: DataFrame,
     data: DataFrameGroupBy,
-) -> Splits:
-    lco_splits: Splits = get_lco_splits(X, data)
+) -> TrainTestSplits:
+    lco_splits: TrainTestSplits = get_lco_splits(X, data)
     return {
         key: pipe(
             fold_input,
@@ -107,7 +107,7 @@ def get_lm_splits(
 
 
 @accept_extra_parameters
-def get_reproduce_split(data: DataFrame) -> Splits:
+def get_reproduce_split(data: DataFrame) -> TrainTestSplits:
     return train_test_filter(
         data,
         train_filter=lambda _data: _data['STUDY'].isin([
@@ -120,7 +120,7 @@ def get_reproduce_split(data: DataFrame) -> Splits:
 
 
 @accept_extra_parameters
-def get_healthabc_ascot_split(data: DataFrame) -> Splits:
+def get_healthabc_ascot_split(data: DataFrame) -> TrainTestSplits:
     return train_test_filter(
         data,
         train_filter=lambda _data: _data['STUDY'].isin([
@@ -135,7 +135,7 @@ def get_kfold_splits(
     X: DataFrame,
     n_splits: int = 5,
     random_state: int = None,
-) -> Splits:
+) -> TrainTestSplits:
     return pipe(
         KFold(
             n_splits=n_splits,
@@ -153,7 +153,7 @@ def get_kfold_stratified_splits(
     X: DataFrame,
     y: Target,
     n_splits: int = 5,
-) -> Splits:
+) -> TrainTestSplits:
     return pipe(
         StratifiedKFold(n_splits=n_splits,
                         shuffle=True).split(X, y['data']['label']),
@@ -171,7 +171,7 @@ def get_train_test(
     train_size=None,
     random_state=None,
     shuffle=True,
-) -> Splits:
+) -> TrainTestSplits:
     data_train, data_test = train_test_split(
         X,
         test_size=test_size,
@@ -191,7 +191,7 @@ def train_test_filter(
     data: DataFrame,
     train_filter: Callable,
     test_filter: Callable = None,
-) -> Splits:
+) -> TrainTestSplits:
 
     train_mask = train_filter(data)
     train_data = data[train_mask]
@@ -246,7 +246,7 @@ def get_splitter(splitter_name: str) -> Callable:
         raise Exception('Splitting not know')
 
 
-def train_test_fold(data, fold: SplitPrediction,
+def train_test_fold(data, fold: Prediction,
                     metadata) -> Tuple[DataFrame, Target]:
     return data[fold['X_columns']], get_survival_y(data, fold['y_column'],
                                                    metadata)
@@ -258,3 +258,26 @@ def get_group_indexes(
 ) -> Dict[str, Index]:
     groups = data.groupby(feature_name)
     return {name: group.index for name, group in groups}
+
+
+def resample_prediction_test(
+    index: Index,
+    prediction: Prediction,
+) -> Prediction:
+    return merge(
+        prediction,
+        dict(
+            split=(prediction['split'][0], list(index)),
+            y_score=loc(index, prediction['y_score'], ignore_not_present=True),
+            y_proba=valmap_(
+                prediction.get('y_proba', empty_dict),
+                lambda y_proba: loc(
+                    index,
+                    y_proba,
+                    ignore_not_present=True,
+                ) if (y_proba is not None and isinstance(
+                    y_proba,
+                    (Series, DataFrame))) else ExceptionValue(value=y_proba),
+            ),
+        ),
+    )

@@ -8,7 +8,7 @@ from logging import Logger
 from typing import Iterable
 from pandas import DataFrame
 from typing import Callable
-from hcve_lib.data import inverse_format_value, Metadata, find_item, format_value
+from hcve_lib.data import inverse_format_feature_value, Metadata, find_item, format_feature_value
 
 
 class Step(TypedDict, total=False):
@@ -32,31 +32,37 @@ def perform(steps: Iterable[Step], logger: Logger = None) -> DataFrame:
 
 
 def log_step(description: str, metadata: Metadata) -> Callable:
+
     def log_step_(
         logger: Logger,
         current: DataFrame,
         previous: DataFrame,
     ) -> None:
-        current_study_nrs = set(current["STUDY_NUM"].unique())
+        current_study_nrs = set(current["STUDY"].unique())
         if previous is None:
             previous_study_nrs = None
         else:
-            previous_study_nrs = set(previous["STUDY_NUM"].unique())
+            previous_study_nrs = set(previous["STUDY"].unique())
 
-        cohort_nr_changed = previous is not None and len(
-            current_study_nrs) != len(previous_study_nrs)
+        cohort_nr_changed = previous is not None and len(current_study_nrs) != len(previous_study_nrs)
 
-        logger.info(f'{description}\n' + ('' if previous is None else ((
-            ' ' if not cohort_nr_changed else
-            (f'\tn cohorts removed={len(previous_study_nrs)-len(current_study_nrs)}: '
-             +
-             f'{", ".join(get_cohorts_identifiers(previous_study_nrs-current_study_nrs, metadata))}\n'
-             )
-        ) + f'\tn individuals removed={format_number(len(previous)-len(current))}\n\n'
-                                                                       )) +
-                    ((' ' if not (cohort_nr_changed or previous is None) else
-                      f'\tn cohorts={len(current["STUDY_NUM"].unique())}\n') +
-                     f'\tn individuals={format_number(len(current))}\n'))
+        logger.info(
+            f'{description}\n' + (
+                '' if previous is None else (
+                    (
+                        ' ' if not cohort_nr_changed else (
+                            f'\tn cohorts removed={len(previous_study_nrs)-len(current_study_nrs)}: ' +
+                            f'{", ".join(get_cohorts_identifiers(previous_study_nrs-current_study_nrs, metadata))}\n'
+                        )
+                    ) + f'\tn individuals removed={format_number(len(previous)-len(current))}\n\n'
+                )
+            ) + (
+                (
+                    ' ' if not (cohort_nr_changed or previous is None
+                                ) else f'\tn cohorts={len(current["STUDY"].unique())}\n'
+                ) + f'\tn individuals={format_number(len(current))}\n'
+            )
+        )
 
     return log_step_
 
@@ -77,15 +83,11 @@ def get_cohort_nrs(
     cohort_names: Iterable[str],
     metadata: Metadata,
 ) -> Iterable[int]:
-    return (inverse_format_value(cohort_name, find_item('STUDY_NUM', metadata))
-            for cohort_name in cohort_names)
+    return (inverse_format_feature_value(cohort_name, find_item('STUDY_NUM', metadata)) for cohort_name in cohort_names)
 
 
 def get_cohorts_identifiers(
     cohort_nrs: Iterable[int],
     metadata: Metadata,
 ) -> Iterable[str]:
-    return [
-        format_value(cohort_nr, find_item('STUDY_NUM', metadata))
-        for cohort_nr in cohort_nrs
-    ]
+    return [format_feature_value(cohort_nr, find_item('STUDY_NUM', metadata)) for cohort_nr in cohort_nrs]

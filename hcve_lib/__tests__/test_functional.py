@@ -56,3 +56,4 @@ def test_lagged():
 
 def test_subtract():
     assert list(subtract(iter([1, 2, 3]), iter([2]))) == [1, 3]
+

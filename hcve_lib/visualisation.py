@@ -1,7 +1,7 @@
 from functools import partial
 from math import ceil
 from numbers import Rational
-from typing import Any
+from typing import Tuple, Any, List
 
 import yaml
 from IPython.core.display import HTML
@@ -9,12 +9,15 @@ from IPython.display import display
 from matplotlib import pyplot
 from numpy import arange
 from pandas import DataFrame, Series
+from plotly.graph_objs import Figure
 from scipy.stats import gaussian_kde
 from toolz import merge
 
 from hcve_lib.data import Metadata, format_features_and_values
 from hcve_lib.formatting import format_number
-from hcve_lib.functional import flatten, pipe
+from hcve_lib.functional import flatten, pipe, itemmap_recursive, itemmap_recursive_
+
+TRANSPARENT = 'rgba(0,0,0,0)'
 
 
 def display_number(i: Rational) -> None:
@@ -72,15 +75,10 @@ def make_subplots(n_items: int, columns: int = 3, width=None, **subplot_args):
 
 
 def savefig(*args, **kwargs) -> None:
-    pyplot.savefig(
-        *args,
-        **merge(
-            dict(bbox_inches='tight',
-                 pad_inches=0.1,
-                 dpi=300,
-                 facecolor='white'),
-            kwargs,
-        ))
+    pyplot.savefig(*args, **merge(
+        dict(bbox_inches='tight', pad_inches=0.1, dpi=300, facecolor='white'),
+        kwargs,
+    ))
 
 
 def grid(ax=None) -> None:
@@ -114,3 +112,45 @@ def show_dtale(data: DataFrame, metadata: Metadata) -> None:
 
 def print_formatted(something: Any) -> None:
     print(yaml.dump(something))
+
+
+def display_tree(what: Any, levels: int = 5) -> None:
+
+    def get_indent(level: int) -> str:
+        return '  ' * level
+
+    def itemmap_recursive_print_item(key, value, level):
+        print(f'{get_indent(level)}{key}: {type(value).__name__}')
+        if isinstance(value, (List, Tuple)) and len(value) > 3:
+            print(f'{get_indent(level+1)}0')
+            print(f'{get_indent(level+1)}.')
+            print(f'{get_indent(level+1)}.')
+            print(f'{get_indent(level+1)}.')
+            print(f'{get_indent(level+1)}{len(value)}')
+            itemmap_recursive_(value[0], itemmap_recursive_print_item, level, levels=5 - level)
+            return key, None
+        else:
+            return key, value
+
+    itemmap_recursive(
+        what,
+        itemmap_recursive_print_item,
+        levels=levels,
+    )
+
+
+def setup_plotly_style(fig: Figure) -> None:
+    fig.update_layout(
+        template='simple_white',
+        font=dict(family='Calibri', size=25),
+        bargroupgap=0.1,
+        xaxis=dict(showgrid=True, ),
+        yaxis=dict(showgrid=True, ),
+        legend={
+            'title': {
+                'font': {
+                    'color': 'rgba(0,0,0,0)'
+                }
+            },
+        },
+    )

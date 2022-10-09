@@ -4,6 +4,7 @@ from hcve_lib.custom_types import ValueWithCI
 from hcve_lib.tracking import log_metrics_ci, encode_run_name
 
 
+
 def test_log_metrics_ci(mocker):
     log_metric = mocker.patch('hcve_lib.tracking.log_metric',
                               return_value=None)

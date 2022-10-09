@@ -1,3 +1,5 @@
+import argparse
+import enum
 import itertools
 import multiprocessing
 import os
@@ -11,7 +13,9 @@ from logging import Logger
 from numbers import Real
 from pathlib import Path
 from pprint import pprint
-from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional, Sequence, Hashable
+from toolz import valmap
+from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional, Sequence, Hashable, cast, \
+    Union
 
 import numpy
 import numpy as np
@@ -20,14 +24,14 @@ from IPython import get_ipython
 from filelock import FileLock, UnixFileLock
 from flask_socketio import SocketIO
 from frozendict import frozendict
+from hcve_lib.custom_types import SurvivalPairTarget, Prediction, Target, TrainTestIndex
+from hcve_lib.functional import pipe, unzip
 from humps import decamelize, camelize
+from imblearn.over_sampling.base import BaseOverSampler
 from matplotlib import pyplot
-from numpy import ndarray, recarray
+from numpy import ndarray, recarray, isnan
 from pandas import Series, DataFrame, Index
 from pandas.core.groupby import DataFrameGroupBy
-
-from hcve_lib.custom_types import SurvivalPairTarget, SplitPrediction, Target, SplitInput
-from hcve_lib.functional import pipe, unzip
 
 empty_dict: Mapping = frozendict()
 
@@ -128,6 +132,11 @@ def get_class_ratio(series: Series) -> float:
     return get_class_ratios(series)[1]
 
 
+def get_fractions(series: Series):
+    counted = series.value_counts()
+    return counted / counted.sum()
+
+
 def decamelize_recursive(d):
     if isinstance(d, dict):
         new = {}
@@ -145,8 +154,7 @@ def camelize_recursive(d):
         if isinstance(d, dict):
             new = {}
             for k, v in d.items():
-                new[camelize_adjusted(k)
-                    if k[0] != "_" else k] = camelize_recursive(v)
+                new[camelize_adjusted(k) if k[0] != "_" else k] = camelize_recursive(v)
             return new
         elif isinstance(d, list):
             return list(map(camelize_recursive, d))
@@ -167,19 +175,19 @@ def camelize_adjusted(string: str) -> str:
 
 
 def decamelize_arguments(function: Callable) -> Callable:
+
     def decamelize_arguments_(*args, **kwargs):
         return function(
             *[decamelize_recursive(arg) for arg in args],
-            **{
-                arg_name: decamelize_recursive(arg)
-                for arg_name, arg in kwargs.items()
-            },
+            **{arg_name: decamelize_recursive(arg)
+               for arg_name, arg in kwargs.items()},
         )
 
     return decamelize_arguments_
 
 
 def camelize_return(function: Callable) -> Callable:
+
     def camelize_return_(*args, **kwargs):
         return camelize_recursive(function(*args, **kwargs))
 
@@ -187,6 +195,7 @@ def camelize_return(function: Callable) -> Callable:
 
 
 def to_plain_decorator(function: Callable) -> Callable:
+
     def to_plain_decorator_(*args, **kwargs):
         return to_plain(function(*args, **kwargs))
 
@@ -194,7 +203,9 @@ def to_plain_decorator(function: Callable) -> Callable:
 
 
 def get_event_listener(socketio: SocketIO):
+
     def event_listener_1(*socketio_args, **socketio_kwargs) -> Callable:
+
         def event_listener_2(function: Callable):
             return pipe(
                 function,
@@ -275,12 +286,9 @@ def index_data(indexes: Iterable[int], data: IndexData) -> IndexData:
     elif isinstance(data, (DataFrame, Series)):
         return data.iloc[indexes]
     elif isinstance(data, List):
-        return [item for index, item in enumerate(data)
-                if index in indexes]  # type: ignore
+        return [item for index, item in enumerate(data) if index in indexes]  # type: ignore
     elif isinstance(data, Dict) and 'name' in data and 'data' in data:
-        return {
-            **data, 'data': index_data(indexes, data['data'])
-        }  # type: ignore
+        return {**data, 'data': index_data(indexes, data['data'])}  # type: ignore
 
     elif isinstance(data, SurvivalPairTarget):
         return (
@@ -292,29 +300,35 @@ def index_data(indexes: Iterable[int], data: IndexData) -> IndexData:
 
 
 def loc(
-    indexes: List[Hashable],
+    index: Index,
     data: IndexData,
     ignore_not_present: bool = False,
     logger: Logger = None,
 ) -> IndexData:
     if isinstance(data, (DataFrame, Series)):
         if ignore_not_present:
-            actual_index = [index for index in indexes if index in data.index]
+            actual_index = [index for index in index if index in data.index]
             if logger:
-                removed_indexes = len(indexes) - len(actual_index)
+                removed_indexes = len(index) - len(actual_index)
                 if removed_indexes > 0:
                     logger.warning(f'Removed samples {removed_indexes}')
         else:
-            actual_index = indexes
+            actual_index = index
             removed_indexes = None
         return data.loc[actual_index]
     elif isinstance(data, Dict) and 'data' in data:
-        return {
-            **data, 'data':
-            loc(indexes, data['data'], ignore_not_present=ignore_not_present)
-        }
+        return cast(
+            IndexData,
+            {
+                **data, 'data': loc(
+                    index,
+                    data['data'],
+                    ignore_not_present=ignore_not_present,
+                )
+            },
+        )
     else:
-        raise Exception()
+        raise Exception(f'Type \'{type(data)}\' not supported')
 
 
 ListToDictKey = TypeVar('ListToDictKey')
@@ -351,8 +365,8 @@ def map_groups_iloc(
     current_index = 0
     for key, group in groups:
         group_iloc_subset = group.index.map(
-            lambda _key: flatten_data.index.get_loc(_key)
-            if _key in flatten_data.index else -1)
+            lambda _key: flatten_data.index.get_loc(_key) if _key in flatten_data.index else -1
+        )
         group_iloc_subset = group_iloc_subset[group_iloc_subset != -1]
         yield key, list(group_iloc_subset)
         current_index += len(group)
@@ -371,6 +385,7 @@ def remove_column_prefix(X: DataFrame) -> DataFrame:
             column_name,
             partial(remove_prefix, 'categorical__'),
             partial(remove_prefix, 'continuous__'),
+            partial(remove_prefix, 'remainder__'),
         ),
         axis=1,
     )
@@ -397,9 +412,7 @@ TransposeDictInput = Dict[
 ]
 
 
-def transpose_dict(
-    dictionary: TransposeDictInput
-) -> Dict[TransposeDictT2, Dict[TransposeDictT1, TransposeDictValue]]:
+def transpose_dict(dictionary: TransposeDictInput) -> Dict[TransposeDictT2, Dict[TransposeDictT1, TransposeDictValue]]:
     outer_keys = dictionary.keys()
 
     if len(outer_keys) == 0:
@@ -408,12 +421,17 @@ def transpose_dict(
     inner_keys = next(iter(dictionary.values())).keys()
 
     return {
-        inner_key: {
-            outer_key: dictionary[outer_key][inner_key]
-            for outer_key in outer_keys
-        }
+        inner_key: {outer_key: dictionary[outer_key][inner_key]
+                    for outer_key in outer_keys}
         for inner_key in inner_keys
     }
+
+
+T1 = TypeVar('T1')
+
+
+def transpose_list(l: List[List[T1]]) -> List[List[T1]]:
+    return list(map(list, itertools.zip_longest(*l, fillvalue=None)))
 
 
 def partial2_args(func, name: str = None, args=tuple(), kwargs=empty_dict):
@@ -428,17 +446,18 @@ def partial2(func, name: str = None, *args, **kwargs):
     return partial2_args(func, name=name, args=args, kwargs=kwargs)
 
 
-def split_data(
+def \
+        split_data(
     X: DataFrame,
     y: Target,
-    fold: SplitPrediction,
+    prediction: Prediction,
     remove_extended: bool = False,
     logger: Logger = None,
 ):
 
-    X_train, X_test = get_X_split(X, fold, logger)
+    X_train, X_test = get_X_split(X, prediction, logger)
 
-    y_train, y_test = get_y_split(y, fold, logger)
+    y_train, y_test = get_y_split(y, prediction, logger)
 
     if remove_extended:
         X_test_, y_test_ = limit_to_observed(y_train, X_test, y_test)
@@ -451,7 +470,7 @@ def split_data(
 
 def get_X_split(
     X: DataFrame,
-    fold: SplitPrediction,
+    fold: Prediction,
     logger: Logger = None,
 ):
     split_train, split_test = filter_split_in_index(fold['split'], X.index)
@@ -484,7 +503,7 @@ def get_X_split(
 
 def get_y_split(
     y: Target,
-    fold: SplitPrediction,
+    fold: Prediction,
     logger: Logger = None,
 ):
     split_train, split_test = filter_split_in_index(
@@ -502,8 +521,9 @@ def get_y_split(
     y_train = loc(split_train, y)
     y_test = loc(split_test, y)
 
-    if isinstance(fold.get('y_score'), Series):
-        y_test = loc(fold['y_score'].index, y_test, ignore_not_present=True)
+    # TODO: Causing problems with BoostrapMetric
+    # if isinstance(fold.get('y_score'), Series):
+    #     y_test = loc(fold['y_score'].index, y_test, ignore_not_present=True)
 
     if logger:
         log_additional_removed(
@@ -512,7 +532,6 @@ def get_y_split(
             logger,
             'from y test set',
         )
-
     return y_train, y_test
 
 
@@ -531,7 +550,7 @@ def limit_to_observed(y_train, X_test, y_test):
     return X_test_, y_test_
 
 
-def filter_split_in_index(split: SplitInput, index: Index) -> SplitInput:
+def filter_split_in_index(split: TrainTestIndex, index: Index) -> TrainTestIndex:
     return filter_in_index(split[0], index), filter_in_index(split[1], index)
 
 
@@ -539,7 +558,7 @@ def filter_in_index(iterable: List, index: Index) -> List:
     return [i for i in iterable if i in index]
 
 
-def get_tte(target: Target) -> np.ndarray:
+def get_tte(target: Union[DataFrame, Dict]) -> np.ndarray:
     if isinstance(target, Dict):
         return get_tte(target['data'])
     elif isinstance(target, DataFrame):
@@ -587,8 +606,8 @@ KeyT = TypeVar('KeyT')
 ValueT = TypeVar('ValueT')
 
 
-def get_key_by_value(dict: Dict[KeyT, ValueT], value: ValueT) -> KeyT:
-    for _key, _value in dict.items():
+def get_key_by_value(d: Dict[KeyT, ValueT], value: ValueT) -> KeyT:
+    for _key, _value in d.items():
         if value == _value:
             return _key
 
@@ -600,40 +619,13 @@ def X_to_pytorch(X):
     return torch.from_numpy(X.to_numpy().astype('float32')).to('cuda')
 
 
-MapRecursiveFrom = TypeVar('MapRecursiveFrom')
-MapRecursiveTo = TypeVar('MapRecursiveTo')
-
-
-@singledispatch
-def map_recursive(
-    obj,
-    mapper,
-):
-    return mapper(obj)
-
-
-@map_recursive.register(list)
-def _(
-    obj: List[MapRecursiveFrom],
-    mapper: Callable,
-) -> List[MapRecursiveTo]:
-    return list(map(mapper, obj))
-
-
-@map_recursive.register(dict)
-def _(
-    obj: Dict[Hashable, MapRecursiveFrom],
-    mapper: Callable,
-) -> Dict[Hashable, MapRecursiveTo]:
-    return {key: map_recursive(value, mapper) for key, value in obj.items()}
-
-
 def random_seed(seed: int) -> None:
     numpy.random.seed(seed)
     random.seed(seed)
 
 
 class NonDaemonProcess(multiprocessing.Process):
+
     @property  # type: ignore
     def daemon(self):
         return False
@@ -644,9 +636,10 @@ class NonDaemonProcess(multiprocessing.Process):
 
 
 class NonDaemonPool(multiprocessing.pool.Pool):
-    def Process(self, *args, **kwds):
+
+    def Process(self, *args, **kwargs):
         # noinspection PyUnresolvedReferences
-        proc = super(NonDaemonPool, self).Process(*args, **kwds)
+        proc = super(NonDaemonPool, self).Process(*args, **kwargs)
         proc.__class__ = NonDaemonProcess
         return proc
 
@@ -671,3 +664,153 @@ def get_keys(
     dictionary: GetKeysSubsetT,
 ) -> GetKeysSubsetT:
     return {key: dictionary[key] for key in keys}  # type: ignore
+
+
+def sort_columns_by_order(
+    data_frame: DataFrame,
+    order: List[str],
+) -> DataFrame:
+    columns_not_present = [column for column in order if column not in data_frame]
+
+    new_data_frame = data_frame.copy(deep=False)
+    new_data_frame[columns_not_present] = np.nan
+
+    return new_data_frame[order]
+
+
+def sort_index_by_order(
+    data_frame: DataFrame,
+    order: List[str],
+) -> DataFrame:
+    index_not_present = [index for index in order if index not in data_frame.index]
+
+    missing_df = DataFrame(index=index_not_present)
+
+    new_data_frame = pandas.concat([missing_df, data_frame])
+
+    return new_data_frame.loc[order]
+
+
+def is_noneish(what: Any) -> bool:
+    if what is None:
+        return True
+    elif isinstance(what, str):
+        return False
+    elif isinstance(what, float) and isnan(what):
+        return True
+    else:
+        return False
+
+
+class SaveEnum(argparse.Action):
+    """
+    Argparse action for handling Enums
+    """
+
+    def __init__(self, **kwargs):
+        # Pop off the type value
+        enum_type = kwargs.pop("type", None)
+
+        # Ensure an Enum subclass is provided
+        if enum_type is None:
+            raise ValueError("type must be assigned an Enum when using SaveEnum")
+        if not issubclass(enum_type, enum.Enum):
+            raise TypeError("type must be an Enum when using SaveEnum")
+
+        # Generate choices from the Enum
+        kwargs.setdefault("choices", tuple(e.value for e in enum_type))
+
+        super(SaveEnum, self).__init__(**kwargs)
+
+        self._enum = enum_type
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        # Convert value back into an Enum
+        value = self._enum(values)
+        setattr(namespace, self.dest, value)
+
+
+class SurvivalResample(BaseOverSampler):
+
+    def __init__(self, resampler):
+        super().__init__()
+        self.resampler = resampler
+
+    def fit(self, X, y=None):
+        self.resampler.fit(X, y['data']['label'])
+        return self
+
+    def fit_resample(self, X, y):
+        return self._fit_resample(X, y)
+
+    def _fit_resample(self, X, y):
+        Xr, yr = self.resampler.fit_resample(
+            pandas.concat(
+                [X, Series(X.index, index=X.index, name='index')],
+                axis=1,
+            ),
+            y['data']['label'],
+        )
+        return loc(Xr['index'], X), loc(Xr['index'], y)
+
+
+def binarize(s: Series, threshold: float) -> Series:
+    return (s >= threshold).map({True: 1, False: 0})
+
+
+def get_first_entry(something: Dict) -> Any:
+    return something[next(iter(something))]
+
+
+def run_parallel(function: Callable, data: Dict, n_jobs: int = None) -> Dict:
+    if n_jobs is None:
+        n_jobs = min(len(data), multiprocessing.cpu_count())
+
+    data_ = valmap(
+        lambda args: args if isinstance(args, list) else args,
+        data,
+    )
+
+    if n_jobs == 1:
+        optimizers = list_to_dict_by_keys(
+            itertools.starmap(
+                function,
+                data_.values(),
+            ),
+            data_.keys(),
+        )
+    else:
+        with NonDaemonPool(min(len(data_), n_jobs)) as p:  # type: ignore
+            optimizers = list_to_dict_by_keys(
+                p.starmap(
+                    function,
+                    data_.values(),
+                ),
+                data_.keys(),
+            )
+    return optimizers
+
+
+def apply_args_and_kwargs(function: Callable, args: List, kwargs: Dict):
+    return function(*args, **kwargs)
+
+
+def put_contents(file: str, content: str) -> None:
+    with open(file, 'w') as f:
+        f.write(content)
+
+
+def round_significant(value: float, places: int = 3) -> str:
+    return '{:g}'.format(float(('{:.' + str(places) + 'g}').format(value)))
+
+
+def is_numeric(value: Any) -> bool:
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
+
+
+def get_categorical_columns(data: DataFrame) -> List[str]:
+    return [column for column, dtype in df.dtypes.items() if dtype == 'category']

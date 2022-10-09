@@ -1,27 +1,27 @@
+import sys
 from typing import List, Dict
 
 import numpy as np
 import pytest
+from hcve_lib.functional import itemmap_recursive, map_recursive
+from hcve_lib.utils import get_class_ratios, decamelize_arguments, camelize_return, map_column_names, \
+    cumulative_count, inverse_cumulative_count, key_value_swap, index_data, list_to_dict_by_keys, subtract_lists, \
+    map_groups_iloc, remove_prefix, remove_column_prefix, transpose_dict, map_groups_loc, loc, split_data, \
+    get_fraction_missing, get_keys, sort_columns_by_order, is_noneish, sort_index_by_order, SurvivalResample, \
+    transpose_list, binarize, get_fractions, run_parallel, is_numeric
+from imblearn.under_sampling import RandomUnderSampler
 from numpy.testing import assert_array_equal
 from pandas import Series, DataFrame, Int64Index
-
-from hcve_lib.utils import get_class_ratios, decamelize_arguments, camelize_return, map_column_names, cumulative_count, \
-    inverse_cumulative_count, key_value_swap, index_data, list_to_dict_by_keys, subtract_lists, map_groups_iloc, \
-    remove_prefix, remove_column_prefix, get_fraction_missing, transpose_dict, map_groups_loc, loc, split_data, \
-    get_fraction_missing, map_recursive, get_keys
 from pandas.testing import assert_frame_equal, assert_series_equal
 
 
 def test_get_class_ratio():
     assert get_class_ratios(Series([1, 1, 1, 1, 0, 0])) == {0: 2., 1: 1.}
-    assert get_class_ratios(Series([1, 1, 1, 2, 0, 0])) == {
-        0: 1.5,
-        1: 1.0,
-        2: 3.0
-    }
+    assert get_class_ratios(Series([1, 1, 1, 2, 0, 0])) == {0: 1.5, 1: 1.0, 2: 3.0}
 
 
 def test_decamelize_arguments():
+
     @decamelize_arguments
     def test_function(arg1: Dict, arg2: List):
         return arg1, arg2
@@ -42,6 +42,7 @@ def test_decamelize_arguments():
 
 
 def test_camelize_return():
+
     @camelize_return
     def test_function(arg1: Dict, arg2: List):
         return arg1, arg2
@@ -65,14 +66,12 @@ def test_map_columns():
     assert_frame_equal(
         map_column_names(
             DataFrame({
-                'a': [1],
-                'b': [2]
+                'a': [1], 'b': [2]
             }),
             lambda k: k + 'x',
         ),
         DataFrame({
-            'ax': [1],
-            'bx': [2]
+            'ax': [1], 'bx': [2]
         }),
     )
 
@@ -144,11 +143,10 @@ def test_index_data():
     )
 
     assert_array_equal(
-        index_data([1, 2],
-                   np.array(
-                       [(1.0, 2), (2.0, 3), (3.0, 4)],
-                       dtype=[('x', '<f8'), ('y', '<i8')],
-                   )),
+        index_data([1, 2], np.array(
+            [(1.0, 2), (2.0, 3), (3.0, 4)],
+            dtype=[('x', '<f8'), ('y', '<i8')],
+        )),
         np.array(
             [(2.0, 3), (3.0, 4)],
             dtype=[('x', '<f8'), ('y', '<i8')],
@@ -183,16 +181,11 @@ def test_remove_prefix():
 
 def test_remove_column_prefix():
     assert_frame_equal(
-        remove_column_prefix(
-            DataFrame({
-                'a': [1],
-                'categorical__b': ['a'],
-                'continuous__c': [3]
-            })),
+        remove_column_prefix(DataFrame({
+            'a': [1], 'categorical__b': ['a'], 'continuous__c': [3]
+        })),
         DataFrame({
-            'a': [1],
-            'b': ['a'],
-            'c': [3]
+            'a': [1], 'b': ['a'], 'c': [3]
         }),
     )
 
@@ -206,40 +199,35 @@ def test_percent_missing():
 def test_transpose_dict():
     assert transpose_dict({
         0: {
-            'a': 'x',
-            'b': 1
+            'a': 'x', 'b': 1
         },
         1: {
-            'a': 'y',
-            'b': 2
+            'a': 'y', 'b': 2
         },
         2: {
-            'a': 'z',
-            'b': 3
+            'a': 'z', 'b': 3
         },
     }) == {
         'a': {
-            0: 'x',
-            1: 'y',
-            2: 'z'
+            0: 'x', 1: 'y', 2: 'z'
         },
         'b': {
-            0: 1,
-            1: 2,
-            2: 3
+            0: 1, 1: 2, 2: 3
         },
     }
 
 
+def test_transpose_list():
+    assert transpose_list([[1, 2], [3, 4]]) == [[1, 3], [2, 4]]
+
+
 def test_map_groups_loc():
-    results = list(
-        map_groups_loc(
-            DataFrame(
-                {
-                    'a': [0, 0, 1, 1, 1]
-                },
-                index=[10, 20, 30, 40, 50],
-            ).groupby('a')))
+    results = list(map_groups_loc(DataFrame(
+        {
+            'a': [0, 0, 1, 1, 1]
+        },
+        index=[10, 20, 30, 40, 50],
+    ).groupby('a')))
 
     assert results[0][0] == 0
     assert_array_equal(results[0][1], Int64Index([10, 20], dtype='int64'))
@@ -302,7 +290,7 @@ def test_split_data():
                 index=[10, 20, 30, 40, 50],
             ),
         },
-        fold={
+        prediction={
             'split': ([10, 50], [20, 30]),
             # Skipping index 20 in y_score
             'y_score': Series([1, 3, 4, 5], index=[10, 30, 40, 50]),
@@ -319,15 +307,12 @@ def test_split_data():
             index=[10, 50],
         ),
     )
-    assert_frame_equal(
-        y_train['data'],
-        DataFrame(
-            {
-                'tte': [0, 40],
-                'label': [0, 1]
-            },
-            index=[10, 50],
-        ))
+    assert_frame_equal(y_train['data'], DataFrame(
+        {
+            'tte': [0, 40], 'label': [0, 1]
+        },
+        index=[10, 50],
+    ))
 
     assert_frame_equal(
         X_test,
@@ -342,8 +327,7 @@ def test_split_data():
         y_test['data'],
         DataFrame(
             {
-                'tte': [200],
-                'label': [0]
+                'tte': [200], 'label': [0]
             },
             index=[30],
         ),
@@ -385,15 +369,12 @@ def test_split_data_remove_extended():
             index=[10, 50],
         ),
     )
-    assert_frame_equal(
-        y_train['data'],
-        DataFrame(
-            {
-                'tte': [0, 40],
-                'label': [0, 1]
-            },
-            index=[10, 50],
-        ))
+    assert_frame_equal(y_train['data'], DataFrame(
+        {
+            'tte': [0, 40], 'label': [0, 1]
+        },
+        index=[10, 50],
+    ))
 
     assert_frame_equal(
         X_test,
@@ -404,15 +385,12 @@ def test_split_data_remove_extended():
             index=[20, 40],
         ),
     )
-    assert_frame_equal(
-        y_test['data'],
-        DataFrame(
-            {
-                'tte': [10, 30],
-                'label': [0, 1]
-            },
-            index=[20, 40],
-        ))
+    assert_frame_equal(y_test['data'], DataFrame(
+        {
+            'tte': [10, 30], 'label': [0, 1]
+        },
+        index=[20, 40],
+    ))
 
 
 def test_fraction_missing():
@@ -427,7 +405,7 @@ def test_map_recursive():
                 'c': 4,
             },
         },
-        lambda num: num + 1,
+        lambda num, _: num + 1 if isinstance(num, int) else num,
     ) == {
         'a': {
             'b': [3, 4],
@@ -438,3 +416,143 @@ def test_map_recursive():
 
 def test_get_keys():
     assert get_keys(['x'], {'x': 1, 'y': 2}) == {'x': 1}
+
+
+def test_itemmap_recursive():
+    with pytest.raises(TypeError):
+        itemmap_recursive('x', lambda x: x + 'b')
+
+    assert itemmap_recursive(
+        {
+            'x': 1, 'y': 2
+        },
+        lambda k, v, l: (k + 'b', v + 1),
+    ) == {
+        'xb': 2, 'yb': 3
+    }
+
+    assert itemmap_recursive(
+        (1, 2, 3),
+        lambda k, v, l: (None, v + 1),  # Key ignored
+    ) == (2, 3, 4)
+
+    assert itemmap_recursive(
+        [1, 2, 3],
+        lambda k, v, l: (None, v + 1),  # Key ignored
+    ) == [2, 3, 4]
+
+    assert itemmap_recursive(
+        {
+            'x': {
+                'y': 1
+            },
+        },
+        lambda k, v, l: (k + 'b', v + 1 if isinstance(v, int) else v),
+    ) == {
+        'xb': {
+            'yb': 2
+        },
+    }
+
+    assert itemmap_recursive(
+        {'x': [1, 2, 3]},
+        lambda k, v, l: (str(k) + 'b', v + l if isinstance(v, int) else v),
+    ) == {
+        'xb': [2, 3, 4],
+    }
+
+
+def test_sort_columns_by_order():
+    assert_frame_equal(
+        sort_columns_by_order(
+            DataFrame({
+                'a': [1], 'b': [2], 'c': [3]
+            }),
+            ['x', 'a', 'c'],
+        ),
+        DataFrame({
+            'x': [np.nan],
+            'a': [1],
+            'c': [3],
+        }),
+    )
+
+
+def test_sort_index_by_order():
+    assert_frame_equal(
+        sort_index_by_order(
+            DataFrame({'a': [1, 2, 3]}, index=['x', 'y', 'z']),
+            ['w', 'z', 'y'],
+        ),
+        DataFrame({'a': [np.nan, 3, 2]}, index=['w', 'z', 'y']),
+    )
+
+
+def test_is_noneish():
+    assert is_noneish(None) is True
+    assert is_noneish(np.nan) is True
+    assert is_noneish(False) is False
+    assert is_noneish(0) is False
+    assert is_noneish('0') is False
+    assert is_noneish(5) is False
+
+
+def subprocess(something):
+    print('3')
+
+
+def test_capture_output():
+    # test_std = StringIO()
+    # sys.stdout = test_std
+    # sys.stderr = test_std
+
+    from hcve_lib.log_output import capture_output
+
+    with capture_output() as get_output:
+        print('1')
+        print('2', file=sys.stderr)
+        run_parallel(subprocess, {0: ['a']}, n_jobs=2)
+
+    assert get_output() == '1\n2\n3\n'
+
+
+def test_SurvivalResample():
+    X = DataFrame({'x': [1, 2, 3]}, index=[10, 20, 30])
+    y = {
+        'data': DataFrame(
+            {
+                'tte': [10, 10, 20],
+                'label': [1, 1, 0],
+            },
+            index=[10, 20, 30],
+        )
+    }
+    Xr, yr = SurvivalResample(RandomUnderSampler()).fit_resample(X, y)
+    assert yr['data']['label'].value_counts()[1] == yr['data']['label'].value_counts()[0]
+
+
+def test_binarize():
+    assert_series_equal(
+        binarize(Series([0.1, 0.2, 0.3]), threshold=0.2),
+        Series([0, 1, 1]),
+    )
+
+
+def test_get_fractions():
+    assert_series_equal(
+        get_fractions(Series(['a', 'a', 'b', 'c'])),
+        Series([0.5, 0.25, 0.25], index=['a', 'b', 'c']),
+    )
+
+
+def test_is_numeric():
+    assert is_numeric('5') is True
+    assert is_numeric('-5') is True
+    assert is_numeric('5.5') is True
+    assert is_numeric(100) is True
+    assert is_numeric('a5') is False
+
+
+# TODO
+def test_get_categorical_columns():
+    categories = get_categorical_columns(DataFrame({'x': [1], 'y': ['cat']}, dtypes={'x': int, 'y': 'category'}))

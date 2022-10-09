@@ -4,8 +4,9 @@ from pandas.testing import assert_frame_equal
 from pandas.testing import assert_series_equal
 
 from hcve_lib.data import get_identifiers, sanitize_data_inplace, get_survival_y, \
-    binarize_survival, get_X, MetadataItemType, remove_nan_target, is_target, format_value, \
-    format_features_and_values, get_variables, get_available_identifiers_per_category, inverse_format_value
+    binarize_event, get_X, MetadataItemType, remove_nan_target, is_target, format_feature_value, \
+    format_features_and_values, get_variables, get_available_identifiers_per_category, inverse_format_feature_value, \
+    get_targets, get_age_range
 
 
 def test_sanitize_data_inplace():
@@ -21,68 +22,51 @@ def test_sanitize_data_inplace():
 
 
 def test_get_features_from_metadata():
-    metadata = [{
-        'identifier':
-        'Administrative',
-        'children': [{
-            'identifier': 'AGE',
-            'meaning': 'Age',
-            'unit': 'Years'
-        }, {
-            'identifier': 'BW',
-            'meaning': 'Body weight',
-            'unit': 'Kg'
-        }]
-    }, {
-        'identifier':
-        'Medical history',
-        'children': [
-            {
-                'identifier': 'HTA',
-                'meaning': 'Hypertension',
-                'mapping': {
-                    0: False,
-                    1: True
+    metadata = [
+        {
+            'identifier': 'Administrative',
+            'children': [
+                {
+                    'identifier': 'AGE', 'meaning': 'Age', 'unit': 'Years'
+                }, {
+                    'identifier': 'BW', 'meaning': 'Body weight', 'unit': 'Kg'
                 }
-            },
-            {
-                'identifier': 'DIABETES',
-                'meaning': 'History of diabetes',
-                'mapping': {
-                    0: False,
-                    1: True
-                }
-            },
-        ]
-    }]
+            ]
+        },
+        {
+            'identifier': 'Medical history',
+            'children': [
+                {
+                    'identifier': 'HTA', 'meaning': 'Hypertension', 'mapping': {
+                        0: False, 1: True
+                    }
+                },
+                {
+                    'identifier': 'DIABETES', 'meaning': 'History of diabetes', 'mapping': {
+                        0: False, 1: True
+                    }
+                },
+            ]
+        }
+    ]
 
     features = list(get_variables(metadata))
 
     assert features == [
         {
-            'identifier': 'AGE',
-            'meaning': 'Age',
-            'unit': 'Years'
+            'identifier': 'AGE', 'meaning': 'Age', 'unit': 'Years'
         },
         {
-            'identifier': 'BW',
-            'meaning': 'Body weight',
-            'unit': 'Kg'
+            'identifier': 'BW', 'meaning': 'Body weight', 'unit': 'Kg'
         },
         {
-            'identifier': 'HTA',
-            'meaning': 'Hypertension',
-            'mapping': {
-                0: False,
-                1: True
+            'identifier': 'HTA', 'meaning': 'Hypertension', 'mapping': {
+                0: False, 1: True
             }
         },
         {
-            'identifier': 'DIABETES',
-            'meaning': 'History of diabetes',
-            'mapping': {
-                0: False,
-                1: True
+            'identifier': 'DIABETES', 'meaning': 'History of diabetes', 'mapping': {
+                0: False, 1: True
             }
         },
     ]
@@ -90,18 +74,17 @@ def test_get_features_from_metadata():
 
 def test_get_feature_identifiers():
     assert list(
-        get_identifiers([
-            {
-                'identifier': 'AGE',
-                'meaning': 'Age',
-                'unit': 'Years'
-            },
-            {
-                'identifier': 'BW',
-                'meaning': 'Body weight',
-                'unit': 'Kg'
-            },
-        ])) == ['AGE', 'BW']
+        get_identifiers(
+            [
+                {
+                    'identifier': 'AGE', 'meaning': 'Age', 'unit': 'Years'
+                },
+                {
+                    'identifier': 'BW', 'meaning': 'Body weight', 'unit': 'Kg'
+                },
+            ]
+        )
+    ) == ['AGE', 'BW']
 
 
 def test_get_survival_y():
@@ -113,8 +96,7 @@ def test_get_survival_y():
         }),
         target_feature='a',
         metadata=[{
-            'identifier': 'a',
-            'identifier_tte': 'a_tte'
+            'identifier': 'a', 'identifier_tte': 'a_tte'
         }],
     )
 
@@ -131,7 +113,7 @@ def test_get_survival_y():
 
 def test_binarize_survival():
     assert_series_equal(
-        binarize_survival(
+        binarize_event(
             tte=100,
             survival_y=DataFrame(
                 {
@@ -159,8 +141,7 @@ def test_get_X():
             }),
             metadata=[
                 {
-                    'identifier': 'a',
-                    'type': MetadataItemType.BINARY_TARGET.value
+                    'identifier': 'a', 'type': MetadataItemType.BINARY_TARGET.value
                 },
                 {
                     'identifier': 'x',
@@ -219,15 +200,15 @@ def test_is_target():
 
 
 def test_format_value():
-    assert format_value('a', {'mapping': {'a': 'b'}}) == 'b'
-    assert format_value('c', {'mapping': {'a': 'b'}}) == 'c'
-    assert format_value('d', {}) == 'd'
+    assert format_feature_value('a', {'mapping': {'a': 'b'}}) == 'b'
+    assert format_feature_value('c', {'mapping': {'a': 'b'}}) == 'c'
+    assert format_feature_value('d', {}) == 'd'
 
 
 def test_inverse_format_value():
-    assert inverse_format_value('b', {'mapping': {'a': 'b'}}) == 'a'
-    assert inverse_format_value('c', {'mapping': {'a': 'b'}}) == 'c'
-    assert inverse_format_value('d', {}) == 'd'
+    assert inverse_format_feature_value('b', {'mapping': {'a': 'b'}}) == 'a'
+    assert inverse_format_feature_value('c', {'mapping': {'a': 'b'}}) == 'c'
+    assert inverse_format_feature_value('d', {}) == 'd'
 
 
 def test_format_dataframe():
@@ -243,12 +224,10 @@ def test_format_dataframe():
             ),
             metadata=[
                 {
-                    'identifier': 'a',
-                    'meaning': 'Ax'
+                    'identifier': 'a', 'meaning': 'Ax'
                 },
                 {
-                    'identifier': 'b',
-                    'mapping': {
+                    'identifier': 'b', 'mapping': {
                         2: "x"
                     }
                 },
@@ -270,14 +249,12 @@ def test_get_available_identifiers_per_category():
         get_available_identifiers_per_category(
             [
                 {
-                    'identifier': '1',
-                    'children': [{
+                    'identifier': '1', 'children': [{
                         'identifier': 'a'
                     }]
                 },
                 {
-                    'identifier': '2',
-                    'children': [
+                    'identifier': '2', 'children': [
                         {
                             'identifier': 'b'
                         },
@@ -288,8 +265,44 @@ def test_get_available_identifiers_per_category():
                 },
             ],
             DataFrame({'a': [1, 2]}),
-        ))
+        )
+    )
 
     assert len(identifiers) == 1
     assert identifiers[0][0]['identifier'] == '1'
     assert identifiers[0][1] == ['a']
+
+
+def test_get_targets():
+    target_features = [
+        {
+            'identifier': 'x1', 'meaning': 'X1', 'type': MetadataItemType.SURVIVAL_TARGET.value
+        },
+        {
+            'identifier': 'x2', 'meaning': 'X2', 'type': MetadataItemType.BINARY_TARGET.value
+        },
+    ]
+
+    other_features = [{'identifier': 'x3', 'meaning': 'X3', 'type': 'something_else'}]
+
+    metadata = [{
+        'identifier': 'category', 'children': [
+            *target_features,
+            *other_features,
+        ]
+    }]
+
+    assert list(get_targets(metadata)) == target_features
+
+
+def test_get_age_range():
+    assert_frame_equal(
+        get_age_range(
+            DataFrame({'AGE': [10, 20, 30, 40]}, index=[1, 2, 3, 4]),
+            [20, 40],
+        ),
+        DataFrame(
+            {'AGE': [20, 30, 40]},
+            index=[2, 3, 4],
+        ),
+    )

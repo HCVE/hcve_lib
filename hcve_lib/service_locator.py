@@ -1,0 +1,3 @@
+class Provide:
+    def __enter__(self):
+        ...

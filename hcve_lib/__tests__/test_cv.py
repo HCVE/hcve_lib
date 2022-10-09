@@ -6,7 +6,8 @@ from sklearn.base import BaseEstimator
 from sklearn.model_selection import KFold
 from unittest.mock import Mock, call
 
-from hcve_lib.cv import cross_validate, optimize_per_split, predict_proba, series_to_target
+from hcve_lib.cv import cross_validate, optimize_per_split, series_to_target
+from hcve_lib.evaluation_functions import predict_proba
 from hcve_lib.splitting import filter_missing_features
 
 

@@ -4,11 +4,13 @@ import numpy as np
 from _pytest.python_api import raises
 from numpy.testing import assert_array_equal
 from pandas import DataFrame, Series, Index
+from pandas.testing import assert_series_equal
 from pandas.testing import assert_frame_equal
 
 from hcve_lib.cv import get_column_mask_filter, get_column_mask, get_removed_features_from_mask
 from hcve_lib.splitting import get_lo_splits, iloc_to_loc, get_1_to_1_splits, train_test_filter, \
-    filter_missing_features, get_train_test, get_kfold_splits, get_splitting_per_group, get_group_indexes
+    filter_missing_features, get_train_test, get_kfold_splits, get_splitting_per_group, get_group_indexes, \
+    resample_prediction_test
 from hcve_lib.utils import cross_validate_apply_mask
 
 
@@ -235,6 +237,7 @@ def test_train_test_proportion():
 
 
 def test_get_splitting_per_group():
+
     def get_splits(group):
         return {
             'x': (group.index.tolist()[0:1], group.index.tolist()[1:]),
@@ -269,3 +272,28 @@ def test_get_group_indexes():
     )
     assert_array_equal(result[1], Index(('a', 'b')))
     assert_array_equal(result[2], Index(('c', )))
+
+
+def test_resample_prediction_test():
+    out = resample_prediction_test(
+        [10, 30],
+        dict(
+            split=[(50, 60), (10, 20, 30)],
+            y_score=Series([1, 2, 3], index=[10, 20, 30]),
+            y_proba={'a': Series([2, 3, 4], index=[10, 20, 30])},
+        ),
+    )
+
+    assert out['split'][1] == [10, 30]
+
+    assert_series_equal(
+        out['y_score'],
+        Series(
+            [1, 3],
+            index=[10, 30],
+        ),
+    )
+    assert_series_equal(
+        out['y_proba']['a'],
+        Series([2, 4], index=[10, 30]),
+    )

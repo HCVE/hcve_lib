@@ -3,12 +3,13 @@ import pprint
 from copy import copy
 from functools import reduce, partial, wraps
 from itertools import starmap as starmap_itertools, tee
-from typing import Callable, TypeVar, Iterable, Tuple, Dict, List, Any, Union, Sequence
+from typing import Callable, TypeVar, Iterable, Tuple, Dict, List, Any, Union, Sequence, Optional
 
 import numpy as np
+from multimethod import multimethod
 from numpy import ndarray
 from pandas import DataFrame, Series, isna
-from toolz import curry, valfilter, valmap
+from toolz import curry, valfilter, valmap, itemmap
 
 from hcve_lib.custom_types import IndexAccess
 
@@ -25,11 +26,11 @@ def t(arg, callback=None):
 
 
 def or_fn(*fns: Callable[..., bool]) -> Callable[..., bool]:
-    return lambda *args: reduce(
-        lambda current_value, fn: current_value or fn(*args), fns, False)
+    return lambda *args: reduce(lambda current_value, fn: current_value or fn(*args), fns, False)
 
 
 def star_args(function: Callable[..., T1]) -> Callable[[Iterable], T1]:
+
     def unpacked(args):
         return function(*args)
 
@@ -55,12 +56,11 @@ def mapl(func, iterable):
     return list(map(func, iterable))
 
 
-def mapi(func, iterable):
+def map_with_index(func, iterable):
     return map(star_args(func), enumerate(iterable))
 
 
-def map_tuples(callback: Callable[..., T2],
-               iterable: Iterable[T1]) -> Iterable[T2]:
+def map_tuples(callback: Callable[..., T2], iterable: Iterable[T1]) -> Iterable[T2]:
     return map(star_args(callback), iterable)  # type: ignore
 
 
@@ -74,8 +74,7 @@ def dict_subset_list(list_keys: List[str], dictionary: dict) -> List:
 
 def flatten(iterable_outer: Iterable[Union[Iterable[T1], T1]]) -> Iterable[T1]:
     for iterable_inner in iterable_outer:
-        if isinstance(iterable_inner,
-                      Iterable) and not isinstance(iterable_inner, str):
+        if isinstance(iterable_inner, Iterable) and not isinstance(iterable_inner, str):
             for item in iterable_inner:
                 yield item
         else:
@@ -83,16 +82,11 @@ def flatten(iterable_outer: Iterable[Union[Iterable[T1], T1]]) -> Iterable[T1]:
 
 
 # TODO: moore efficient implementation
-def flatten_recursive(
-        list_of_lists: Union[Sequence, ndarray]) -> Union[Sequence, ndarray]:
+def flatten_recursive(list_of_lists: Union[Sequence, ndarray]) -> Union[Sequence, ndarray]:
     if len(list_of_lists) == 0:
         return list_of_lists
-    if isinstance(list_of_lists[0], Sequence) or isinstance(
-            list_of_lists[0], np.ndarray):
-        return [
-            *flatten_recursive(list_of_lists[0]),
-            *flatten_recursive(list_of_lists[1:])
-        ]
+    if isinstance(list_of_lists[0], Sequence) or isinstance(list_of_lists[0], np.ndarray):
+        return [*flatten_recursive(list_of_lists[0]), *flatten_recursive(list_of_lists[1:])]
     return [*list_of_lists[:1], *flatten_recursive(list_of_lists[1:])]
 
 
@@ -134,6 +128,7 @@ def do_nothing():
 
 
 def pass_value() -> Callable[[T1], T1]:
+
     def pass_value_callback(value):
         return value
 
@@ -141,12 +136,12 @@ def pass_value() -> Callable[[T1], T1]:
 
 
 def in_ci(string: str, sequence: Union[List, str]) -> bool:
-    normalized_sequence = [item.upper() for item in sequence] if isinstance(
-        sequence, List) else sequence.upper()
+    normalized_sequence = [item.upper() for item in sequence] if isinstance(sequence, List) else sequence.upper()
     return string.upper() in normalized_sequence
 
 
 def partial_method(method: Callable, *args, **kwargs) -> Callable:
+
     def partial_callback(self: object):
         method(self, *args, **kwargs)
 
@@ -158,9 +153,7 @@ def pipe(*args: Any, log=False) -> Any:
     for function in args[1:]:
         current_value = function(current_value)
         if log:
-            print(
-                f'\'{function.__name__}\' with input \n {pprint.pformat(current_value)}'
-            )
+            print(f'\'{function.__name__}\' with input \n {pprint.pformat(current_value)}')
     return current_value
 
 
@@ -184,8 +177,11 @@ def define_consts(to: Callable[..., T1], **variables) -> T1:
     return to(**variables)
 
 
-def statements(*args: Any) -> Any:
-    return args[-1]
+def statements(*args, **kwargs) -> Any:
+    if len(kwargs) > 0:
+        return kwargs['return_value']
+    else:
+        return args[-1]
 
 
 def filter_keys(keys: Iterable[Any], dictionary: Dict) -> Dict:
@@ -206,11 +202,11 @@ def try_except(
     # noinspection PyBroadException
     except Exception as e:
         if callable(except_clauses):
-            except_clauses(e)
+            return except_clauses(e)
         else:
             for ExceptionClass, except_clause in except_clauses.items():
                 if isinstance(e, ExceptionClass):
-                    return except_clause()
+                    return except_clause(e)
             raise e
 
 
@@ -225,8 +221,7 @@ def merge_by(callback: Callable, sequence: Iterable) -> Any:
 TIndexAccess = TypeVar('TIndexAccess', bound=IndexAccess)
 
 
-def assign_index(something: TIndexAccess, index: Any,
-                 value: Any) -> TIndexAccess:
+def assign_index(something: TIndexAccess, index: Any, value: Any) -> TIndexAccess:
     something_copied = copy(something)
     something_copied[index] = value
     return something_copied
@@ -276,6 +271,7 @@ def compact(iterable: Iterable) -> Iterable:
 
 
 def tap(callback: Callable[[T1], None]) -> Callable[[T1], T1]:
+
     def tap_callback(arg: T1) -> T1:
         callback(arg)
         return arg
@@ -307,7 +303,7 @@ def reject_none_values(dictionary: Dict) -> Dict:
     return valfilter(lambda o: o is not None and not isna(o), dictionary)
 
 
-def reject_none(sequence: Sequence) -> Iterable:
+def reject_none(sequence: Iterable) -> Iterable:
     return iter(filter(lambda o: o is not None and not isna(o), sequence))
 
 
@@ -346,8 +342,12 @@ def accept_extra_parameters(function: Callable):
     return accept_extra_parameters_
 
 
-def valmap_(first, second):
-    return valmap(second, first)
+def valmap_(iterable: Iterable, callback: Callable) -> Dict:
+    return valmap(callback, iterable)
+
+
+def itemmap_(first, second):
+    return itemmap(second, first)
 
 
 def starmap_(first, second):
@@ -363,3 +363,119 @@ def lagged(iterable: Iterable) -> Iterable:
 def subtract(a: Iterable, b: Iterable) -> Iterable:
     b_ = list(b)
     return (x for x in a if x not in b_)
+
+
+def itemmap_recursive(obj, mapper, levels=None):
+    allowed_types = (Dict, List, Tuple)
+    if isinstance(obj, allowed_types):
+        return itemmap_recursive_(obj, mapper, 0, levels)
+    else:
+        raise TypeError(f'{obj} is not one of {allowed_types}')
+
+
+@multimethod
+def itemmap_recursive_(
+    obj,
+    mapper,
+    level,
+    levels,
+):
+    return obj
+
+
+@itemmap_recursive_.register(List)
+def _(
+    obj: List,
+    mapper: Callable,
+    level: int,
+    levels: Optional[int] = None,
+) -> List:
+    if levels and level == levels:
+        return obj
+
+    return list(_item_recursive_iterable(obj, mapper, level, levels))
+
+
+@itemmap_recursive_.register(Tuple)
+def _(
+    obj: Tuple,
+    mapper: Callable,
+    level: int,
+    levels: Optional[int] = None,
+) -> Tuple:
+    if levels and level == levels:
+        return obj
+
+    return tuple(_item_recursive_iterable(obj, mapper, level, levels))
+
+
+@itemmap_recursive_.register(Dict)
+def _(
+    obj: Dict,
+    mapper: Callable,
+    level: int,
+    levels: Optional[int] = None,
+) -> Dict:
+    if levels and levels == level:
+        return obj
+
+    return itemmap_(
+        obj,
+        lambda item: statements(
+            mapped := mapper(*item, level),
+            (
+                mapped[0],
+                itemmap_recursive_(mapped[1], mapper, level + 1, levels),
+            ),
+        ),
+    )
+
+
+def _item_recursive_iterable(
+    obj: Iterable,
+    mapper: Callable,
+    level: int,
+    levels: Optional[int] = None,
+) -> Iterable:
+    if levels and level == levels:
+        return obj
+
+    return map_with_index(
+        lambda index,
+        value: itemmap_recursive_(
+            mapper(index, value, level)[1],  # Ignores index (key) mapping
+            mapper,
+            level + 1,
+            levels,
+        ),
+        obj,
+    )
+
+
+def map_recursive(
+    obj: Any,
+    mapper: Callable[[Any, int], Any],
+    levels: Optional[int] = None,
+) -> Any:
+    return itemmap_recursive(
+        obj,
+        lambda key, value, level: (key, mapper(value, level)),
+        levels=levels,
+    )
+
+
+def map_deep(
+    obj: Any,
+    mapper: Callable[[Any, int], Any],
+    levels: Optional[int] = None,
+) -> Any:
+    return itemmap_recursive(
+        obj,
+        lambda key,
+        value,
+        level: (
+            key,
+            mapper(value, level) if level + 1 == levels or not isinstance(value, Dict) else value,
+        ),
+        levels=levels,
+    )

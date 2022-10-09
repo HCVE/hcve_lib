@@ -1,15 +1,19 @@
 from pandas import DataFrame, Series
-from pandas._testing import assert_series_equal
+from pandas.testing import assert_series_equal
 from sklearn.base import BaseEstimator
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.preprocessing import FunctionTransformer
 
+from hcve_lib.cv import cross_validate
 from hcve_lib.functional import t
-from hcve_lib.pipelines import prepend_timeline
+from hcve_lib.pipelines import prepend_timeline, Model
 from hcve_lib.wrapped_sklearn import DFPipeline
 
 
 def test_prepend_timeline():
+
     class DummyClassifier(BaseEstimator):
+
         def __init__(self):
             self.y = None
 
@@ -30,3 +34,16 @@ def test_prepend_timeline():
 
     new_pipeline.fit(DataFrame({'x': [10, 10]}), Series([1, 2]))
     assert_series_equal(new_pipeline.predict(DataFrame()), Series([12, 13])),
+
+
+def test_Model():
+
+    X = DataFrame({'x': [1, 2, 3]})
+    y = Series([0.5, 2.0, 3.0])
+
+    class TestModel(Model):
+
+        def get_estimator(self) -> BaseEstimator:
+            return KNeighborsRegressor(n_neighbors=1)
+
+    cross_validate(X, y)

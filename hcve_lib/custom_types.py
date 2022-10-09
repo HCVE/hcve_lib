@@ -1,8 +1,10 @@
+import traceback
 from abc import abstractmethod, ABC
 from collections import namedtuple
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TypedDict, Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable, Callable
+from enum import auto, Enum
+from typing import TypedDict, Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable, Callable, Type
 
 import numpy as np
 from optuna import Trial
@@ -11,6 +13,7 @@ from sklearn.base import BaseEstimator
 
 
 class IndexAccess(ABC):
+
     @abstractmethod
     def __getitem__(self, key):
         ...
@@ -21,6 +24,7 @@ class IndexAccess(ABC):
 
 
 class DictAccess:
+
     def __delitem__(self, key):
         self.__delattr__(key)
 
@@ -32,6 +36,7 @@ class DictAccess:
 
 
 class Printable:
+
     def __str__(self):
         return '\n'.join([
             f'{key}: {value}' for key, value in self.__dict__.items()
@@ -40,6 +45,7 @@ class Printable:
 
 
 class ClassMapping(Mapping):
+
     def __getitem__(self, item):
         try:
             return self.__dict__[item]
@@ -58,6 +64,7 @@ class DataStructure(DictAccess, ClassMapping, Printable):
 
 
 class TargetTransformer(BaseEstimator):
+
     @abstractmethod
     def fit(self, y):
         ...
@@ -72,8 +79,9 @@ class TargetTransformer(BaseEstimator):
 
 
 class Estimator(BaseEstimator):
+
     @abstractmethod
-    def fit(self, X, y):
+    def fit(self, X, y, **kwargs):
         ...
 
     @abstractmethod
@@ -89,7 +97,7 @@ class Estimator(BaseEstimator):
         ...
 
     @abstractmethod
-    def predict_survival(self, X, **kwargs):
+    def predict_survival(self, X, *args, **kwargs):
         ...
 
     @abstractmethod
@@ -119,8 +127,8 @@ class ValueWithCI(TypedDict):
 
 class ValueWithStatistics(TypedDict):
     mean: float
-    std: float
     ci: Optional[Tuple[float, float]]
+    std: float
 
 
 class ClassificationMetricsWithStatistics(TypedDict):
@@ -179,9 +187,18 @@ class ConfusionMetrics(DataStructure):
 
 
 SurvivalPairTarget = namedtuple('SurvivalPairTarget', ('tte', 'label'))
-SplitInput = Tuple[List[Hashable], List[Hashable]]
 
-TargetData = Union[Series, np.recarray]
+TargetData = Union[DataFrame, Series, np.recarray]
+
+Index = List[int]
+
+TrainTestIndex = Tuple[Index, Index]
+
+TrainTestSplits = Dict[Hashable, TrainTestIndex]
+
+Splits = Dict[Hashable, Index]
+
+TrainTestSplitter = Callable[..., TrainTestSplits]
 
 
 class Target(TypedDict):
@@ -189,30 +206,26 @@ class Target(TypedDict):
     data: TargetData
 
 
-class SplitPrediction(TypedDict):
+class Prediction(TypedDict, total=False):
     y_score: Any
+    y_proba: Dict[Any, Any]
     y_column: str
     X_columns: List[str]
     model: Estimator
-    split: SplitInput
+    split: TrainTestIndex
     random_state: int
-
-
-Splits = Dict[Hashable, SplitInput]
-
-Splitter = Callable[..., Splits]
-
-Result = Dict[Hashable, SplitPrediction]
+    method: Type['Method']
 
 
 class Method(ABC):
+
     @staticmethod
     @abstractmethod
     def get_estimator(
         X: DataFrame,
         random_state: int,
+        configuration: Dict,
         verbose=0,
-        advanced_impute=False,
     ):
         ...
 
@@ -226,7 +239,84 @@ class Method(ABC):
     def predict(
         X: DataFrame,
         y: Target,
-        split: SplitInput,
+        split: TrainTestIndex,
         model: Estimator,
-    ):
+        method: Type['Method'],
+        random_state: int,
+    ) -> Prediction:
         ...
+
+
+Result = Dict[Hashable, Prediction]
+
+
+class ExceptionValue:
+    traceback: str
+    value: Any
+
+    def __init__(
+        self,
+        value: Any = None,
+        exception: Exception = None,
+    ):
+        self.traceback = traceback.format_exc()
+        self.value = value
+        self.exception = exception
+
+    def __repr__(self):
+        return f'Value:\n {self.value}\n\n Exception:\n{self.exception}\n\n {self.traceback}'
+
+
+class StrEnum(Enum):
+
+    def _generate_next_value_(name, start, count, last_values):
+        return name
+
+    def __str__(self):
+        return self._name_
+
+    def __eq__(self, other):
+        if type(self).__qualname__ != type(other).__qualname__:
+            return False
+
+        return self.name == other.name and self.value == other.value
+
+
+class OptimizationDirection(StrEnum):
+    MAXIMIZE = auto()
+    MINIMIZE = auto()
+
+
+class Metric(ABC):
+
+    @abstractmethod
+    def get_names(
+        self,
+        prediction: Prediction,
+        y: Target,
+    ) -> List[str]:
+        ...
+
+    @abstractmethod
+    def get_values(
+        self,
+        prediction: Prediction,
+        y: Target,
+    ) -> List[Union[ExceptionValue, float, ValueWithCI]]:
+        ...
+
+    @abstractmethod
+    def get_direction(self) -> OptimizationDirection:
+        ...
+
+
+class Minimize:
+
+    def get_direction(self) -> OptimizationDirection:
+        return OptimizationDirection.MINIMIZE
+
+
+class Maximize:
+
+    def get_direction(self) -> OptimizationDirection:
+        return OptimizationDirection.MAXIMIZE

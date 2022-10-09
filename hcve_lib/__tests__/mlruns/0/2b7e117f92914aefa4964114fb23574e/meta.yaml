@@ -1,0 +1,15 @@
+artifact_uri: file:///home/sitnarf/projects/hcve_lib/hcve_lib/__tests__/mlruns/0/2b7e117f92914aefa4964114fb23574e/artifacts
+end_time: 1635272049242
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+name: ''
+run_id: 2b7e117f92914aefa4964114fb23574e
+run_uuid: 2b7e117f92914aefa4964114fb23574e
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1635272049155
+status: 3
+tags: []
+user_id: sitnarf

@@ -11,8 +11,6 @@ from optuna.trial import TrialState, FrozenTrial
 
 # noinspection PyUnresolvedReferences
 from deps.ignore_warnings import *
-from hcve_lib.custom_types import SplitPrediction
-from hcve_lib.evaluation_functions import c_index
 from hcve_lib.tracking import log_metrics_ci
 
 
@@ -21,7 +19,7 @@ class EarlyStoppingCallback(object):
         self,
         early_stopping_rounds: int,
         direction: str = "minimize",
-        stop_callback: Callable[[int], None] = None,
+        stop_callback: Callable = None,
     ) -> None:
         self.early_stopping_rounds = early_stopping_rounds
         self.stop_callback = stop_callback
@@ -48,7 +46,7 @@ class EarlyStoppingCallback(object):
 
         if self._iter >= self.early_stopping_rounds:
             if self.stop_callback:
-                self.stop_callback(self._iter)
+                self.stop_callback(iterations=self._iter)
             study.stop()
 
         return study
@@ -83,14 +81,11 @@ def optuna_report_mlflow(study, _):
                 'plot_hyperparam_importances.html',
             )
 
-        log_metrics_ci(study.best_trial.user_attrs['metrics'])
+        log_metrics_ci(
+            prefix='inner_',
+            metrics=study.best_trial.user_attrs['metrics'],
+        )
     except RuntimeError:
         pass
 
     return study
-
-
-def objective_c_index(estimator, X_test, y_true):
-    y_score = estimator.predict(X_test)
-    return c_index(
-        SplitPrediction(y_true=y_true, y_score=y_score, model=estimator))

@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, Tuple, Callable, Dict
+from typing import Any, Tuple, Callable
 
 from hcve_lib.custom_types import Estimator, Target, TargetTransformer, Method, ExceptionValue
 from hcve_lib.wrapped_sklearn import DFPipeline
@@ -8,72 +8,50 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 
-
-class Model:
-    model: BaseEstimator
-
-    def fit(self, X: DataFrame, y, *args, **kwargs):
-        self.model = self.get_estimator()
-        self.model.fit(X, y, *args, **kwargs)
-
-    def optimize(self):
-        raise NotImplementedError()
-
-    def predict_target(self, X: DataFrame):
-        raise NotImplementedError()
-
-    def predict_risk(self, X: DataFrame):
-        raise NotImplementedError()
-
-    def predict_survival_at_time(self, X: DataFrame, t: int):
-        raise NotImplementedError()
-
-    def get_estimator(self) -> BaseEstimator:
-        raise NotImplementedError()
-
-
-class RandomForest(Model):
-
-    # def get_optimize(self):
-    #     return Optmi
-
-    def __init__(self, random_state: int, configuration: Dict):
-        self.random_state = random_state
-        self.configuration = configuration
-
-    def get_esimator(
-        self,
-        X: DataFrame,
-        random_state: int,
-        configuration: Dict,
-        verbose: bool = False,
-    ) -> DFPipeline:
-        return make_pipeline(
-            [
-                (
-                    'estimator',
-                    RandomSurvivalForestT(
-                        transform_callback=to_survival_y_records, random_state=RANDOM_STATE, n_jobs=1
-                    ),
-                )
-            ],
-            X,
-            configuration=configuration,
-        )
-
-    @staticmethod
-    def optuna(trial: Trial) -> Tuple[Trial, Dict]:
-        hyperparameters = {
-            'estimator': {
-                'n_estimators': trial.suggest_int('estimator_n_estimators', 5, 200),
-                'max_depth': trial.suggest_int('estimator_max_depth', 1, 4),
-                'min_samples_split': trial.suggest_int('estimator_min_samples_split', 2, 30),
-                'min_samples_leaf': trial.suggest_int('estimator_min_samples_leaf', 1, 200),
-                'max_features': trial.suggest_categorical('estimator_max_features', ['auto', 'sqrt', 'log2']),
-                'oob_score': trial.suggest_categorical('estimator_oob_score', [True, False]),
-            }
-        }
-        return trial, hyperparameters
+#
+# class RandomForest(Model):
+#
+#     # def get_optimize(self):
+#     #     return Optmi
+#
+#     def __init__(self, random_state: int, configuration: Dict):
+#         self.random_state = random_state
+#         self.configuration = configuration
+#
+#     def get_esimator(
+#         self,
+#         X: DataFrame,
+#         random_state: int,
+#         configuration: Dict,
+#         verbose: bool = False,
+#     ) -> DFPipeline:
+#         return make_pipeline(
+#             [
+#                 (
+#                     'estimator',
+#                     RandomSurvivalForestT(
+#                         transform_callback=to_survival_y_records, random_state=RANDOM_STATE, n_jobs=1
+#                     ),
+#                 )
+#             ],
+#             X,
+#             configuration=configuration,
+#         )
+#
+#     @staticmethod
+#     def optuna(trial: Trial) -> Tuple[Trial, Dict]:
+#         hyperparameters = {
+#             'estimator': {
+#                 'n_estimators': trial.
+#                 suggest_int('estimator_n_estimators', 5, 200),
+#                 'max_depth': trial.suggest_int('estimator_max_depth', 1, 4),
+#                 'min_samples_split': trial.suggest_int('estimator_min_samples_split', 2, 30),
+#                 'min_samples_leaf': trial.suggest_int('estimator_min_samples_leaf', 1, 200),
+#                 'max_features': trial.suggest_categorical('estimator_max_features', ['auto', 'sqrt', 'log2']),
+#                 'oob_score': trial.suggest_categorical('estimator_oob_score', [True, False]),
+#             }
+#         }
+#         return trial, hyperparameters
 
 
 class EstimatorDecorator:

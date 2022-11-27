@@ -1,17 +1,22 @@
+from typing import Tuple, Dict
 from unittest.mock import Mock
 
 import numpy as np
 from _pytest.python_api import raises
 from numpy.testing import assert_array_equal
+from optuna import Trial
 from pandas import DataFrame, Series, Index
 from pandas.testing import assert_series_equal
 from pandas.testing import assert_frame_equal
 
+from hcve_lib.custom_types import Model
 from hcve_lib.cv import get_column_mask_filter, get_column_mask, get_removed_features_from_mask
 from hcve_lib.splitting import get_lo_splits, iloc_to_loc, get_1_to_1_splits, train_test_filter, \
     filter_missing_features, get_train_test, get_kfold_splits, get_splitting_per_group, get_group_indexes, \
     resample_prediction_test
 from hcve_lib.utils import cross_validate_apply_mask
+from hcve_lib.wrapped_sklearn import DFPipeline
+from unittest.mock import Mock
 
 
 def test_get_lo_splits():
@@ -45,9 +50,7 @@ def test_get_kfold_splits():
         n_splits=3,
         random_state=1,
     ) == {
-        0: [[20, 30], [10]],
-        1: [[10, 20], [30]],
-        2: [[10, 30], [20]]
+        0: [[20, 30], [10]], 1: [[10, 20], [30]], 2: [[10, 30], [20]]
     }
 
 
@@ -64,12 +67,8 @@ def test_get_1_to_1_splits():
         ),
         'a',
     ) == {
-        (1, 2): ([10, 30], [40, 50]),
-        (1, 3): ([10, 30], [60]),
-        (2, 1): ([40, 50], [10, 30]),
-        (2, 3): ([40, 50], [60]),
-        (3, 1): ([60], [10, 30]),
-        (3, 2): ([60], [40, 50])
+        (1, 2): ([10, 30], [40, 50]), (1, 3): ([10, 30], [60]), (2, 1): ([40, 50], [10, 30]), (2, 3): ([40, 50], [60]),
+        (3, 1): ([60], [10, 30]), (3, 2): ([60], [40, 50])
     }
 
 
@@ -81,7 +80,8 @@ def test_train_test_filter():
                 index=[10, 1, 2, 3, 4, 5],
             ),
             train_filter=lambda _data: _data['a'] == 1,
-        ))
+        )
+    )
     assert train_test_filter(
         DataFrame(
             {'a': [1, 1, 1, 2, 2, 3]},
@@ -112,13 +112,13 @@ def test_cross_validate_apply_filter():
                 0: ([0, 1], [2, 3]),
                 1: ([2, 3], [0, 1]),
             },
-            (lambda X_train, X_test:
-             (X_train.tolist() == [3, 4]) and (X_test.tolist() == [1, 2])),
-        )) == [(0, {
-            'x': False
-        }), (1, {
-            'x': True
-        })]
+            (lambda X_train, X_test: (X_train.tolist() == [3, 4]) and (X_test.tolist() == [1, 2])),
+        )
+    ) == [(0, {
+        'x': False
+    }), (1, {
+        'x': True
+    })]
 
 
 def test_filter_missing_features():
@@ -145,8 +145,7 @@ def test_cross_validate_apply_mask():
     assert_frame_equal(
         cross_validate_apply_mask(
             {
-                'a': True,
-                'b': False
+                'a': True, 'b': False
             },
             DataFrame({
                 'a': [1],
@@ -175,8 +174,7 @@ def test_get_column_mask():
     assert get_column_mask(
         X=DataFrame({'x': [10, 20, 30, 40]}),
         splits={
-            0: ([0, 1, 2], [3]),
-            1: ([0, 1, 3], [2])
+            0: ([0, 1, 2], [3]), 1: ([0, 1, 3], [2])
         },
     ) == {
         0: {
@@ -191,15 +189,13 @@ def test_get_column_mask():
     assert get_column_mask(
         X=DataFrame({'x': [10, 20, 30, 40]}),
         splits={
-            0: ([0, 1, 2], [3]),
-            1: ([0, 1, 3], [2])
+            0: ([0, 1, 2], [3]), 1: ([0, 1, 3], [2])
         },
         train_test_filter_callback=Mock(side_effect=[False, True]),
     ) == {
         0: {
             'x': False
-        },
-        1: {
+        }, 1: {
             'x': True
         }
     }
@@ -208,16 +204,13 @@ def test_get_column_mask():
 def test_get_removed_features_from_mask():
     assert get_removed_features_from_mask({
         'x': {
-            'a': True,
-            'b': False
+            'a': True, 'b': False
         },
         'y': {
-            'a': False,
-            'b': True
+            'a': False, 'b': True
         },
     }) == {
-        'x': ['a'],
-        'y': ['b']
+        'x': ['a'], 'y': ['b']
     }
 
 
@@ -255,10 +248,7 @@ def test_get_splitting_per_group():
         ),
         get_splits=get_splits,
     ) == {
-        (10, 'x'): ([10], [20]),
-        (10, 'y'): ([20], [10]),
-        (30, 'x'): ([40], [50, 60]),
-        (30, 'y'): ([50, 60], [40])
+        (10, 'x'): ([10], [20]), (10, 'y'): ([20], [10]), (30, 'x'): ([40], [50, 60]), (30, 'y'): ([50, 60], [40])
     }
 
 

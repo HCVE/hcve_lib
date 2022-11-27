@@ -2,6 +2,7 @@ from IPython.core.display import display
 from abc import ABC
 from dataclasses import dataclass
 from itertools import product
+
 from toolz.curried import get_in
 from typing import Union, Tuple, Optional, List, Callable, Any, Literal, Dict
 
@@ -9,11 +10,11 @@ import numpy
 import numpy as np
 from numpy import mean
 from pandas import DataFrame, Series
-from sklearn.metrics import brier_score_loss, confusion_matrix
+from sklearn.metrics import brier_score_loss, confusion_matrix, roc_auc_score, accuracy_score
 from sklearn.utils import resample
 
 from hcve_lib.custom_types import Prediction, Target, ExceptionValue, Splits, Metric, OptimizationDirection, Maximize, \
-    Minimize, ValueWithStatistics
+    Minimize, ValueWithStatistics, TargetData
 from hcve_lib.data import binarize_event
 from hcve_lib.evaluation_functions import target_to_survival_y_records
 from hcve_lib.functional import flatten, pipe, t
@@ -32,33 +33,36 @@ class SubsetMetric(Metric, ABC):
     is_train: bool = False
 
     def get_y(
-        self,
-        y: Target,
-        prediction: Prediction,
-        both: bool = False,
-    ):
+            self,
+            y: Target,
+            prediction: Prediction,
+            both: bool = False,
+    ) -> TargetData:
         y_train, y_test = get_y_split(y, prediction)
+        y_train_data = y_train.data
+        y_test_data = y_test.data
+
         if both:
-            return y_train, y_test
+            return y_train_data, y_test_data
         else:
-            return y_train if self.is_train else y_test
+            return y_train_data if self.is_train else y_test_data
 
 
 class StratifiedMetric(Metric):
 
     def __init__(
-        self,
-        metric: Metric,
-        splits: Splits,
+            self,
+            metric: Metric,
+            splits: Splits,
     ):
         super()
         self.metric = metric
         self.splits = splits
 
     def get_names(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[str]:
         return [
             f'{prefix}__{name}' for prefix, name in product(
@@ -68,9 +72,9 @@ class StratifiedMetric(Metric):
         ]
 
     def get_values(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         return pipe(
             self.get_values_(prediction, y),
@@ -97,11 +101,11 @@ class StratifiedMetric(Metric):
 class BootstrappedMetric(Metric):
 
     def __init__(
-        self,
-        metric: Metric,
-        random_state: int,
-        iterations: int = 100,
-        return_summary: bool = True,
+            self,
+            metric: Metric,
+            random_state: int,
+            iterations: int = 100,
+            return_summary: bool = True,
     ):
         super()
         self.metric = metric
@@ -110,16 +114,16 @@ class BootstrappedMetric(Metric):
         self.return_summary = return_summary
 
     def get_names(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[str]:
         return self.metric.get_names(prediction, y)
 
     def get_values(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[Union[ExceptionValue, float]]:
 
         metric_values = []
@@ -184,7 +188,7 @@ def statistic_from_bootstrap(values):
     return ValueWithStatistics(
         mean=mean(values),
         ci=(lower, upper),
-        std=(np.sum((values - np.mean(values))**2) / (len(values) - 2))**(1 / 2),
+        std=(np.sum((values - np.mean(values)) ** 2) / (len(values) - 2)) ** (1 / 2),
     )
 
 
@@ -192,24 +196,24 @@ def statistic_from_bootstrap(values):
 class WeightedCIndex(Maximize, SubsetMetric):
 
     def __init__(
-        self,
-        target: Literal['y_score', 'y_proba'] = 'y_score',
-        weight=None,
+            self,
+            target: Literal['y_score', 'y_proba'] = 'y_score',
+            weight=None,
     ):
         self.target = target
         self.weight = weight
 
     def get_names(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[str]:
         return ['c_index']
 
     def get_values(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         if len(prediction[self.target]) == 0:
             return [ExceptionValue(
@@ -244,10 +248,10 @@ class WeightedCIndex(Maximize, SubsetMetric):
 
 
 def get_y_proba_for_time(
-    prediction: Prediction,
-    X: DataFrame,
-    y: Target,
-    time: int,
+        prediction: Prediction,
+        X: DataFrame,
+        y: Target,
+        time: int,
 ) -> Series:
     y_proba = prediction['y_proba'].get(time)
     if len(y_proba.isna()) == len(y_proba):
@@ -256,10 +260,10 @@ def get_y_proba_for_time(
 
 
 def predict_proba_for_prediction(
-    prediction: Prediction,
-    X: DataFrame,
-    y: Target,
-    time: int,
+        prediction: Prediction,
+        X: DataFrame,
+        y: Target,
+        time: int,
 ) -> Prediction:
     return prediction['method'].predict(
         X,
@@ -272,27 +276,68 @@ def predict_proba_for_prediction(
     )
 
 
+class AUC(Maximize, SubsetMetric):
+    def get_names(
+            self,
+            prediction: Prediction,
+            y: Target,
+    ) -> List[str]:
+        return ['auc']
+
+    def get_values(
+            self,
+            prediction: Prediction,
+            y: Target,
+    ) -> List[Union[ExceptionValue, float]]:
+        try:
+            y_ = self.get_y(y, prediction)
+            return [roc_auc_score(y_, prediction['y_proba'])]
+        except ValueError as e:
+            return [ExceptionValue(exception=e)]
+
+
+class Accuracy(Maximize, SubsetMetric):
+    def get_names(
+            self,
+            prediction: Prediction,
+            y: Target,
+    ) -> List[str]:
+        return ['auc']
+
+    def get_values(
+            self,
+            prediction: Prediction,
+            y: Target,
+    ) -> List[Union[ExceptionValue, float]]:
+        try:
+            y_ = self.get_y(y, prediction)
+            return [accuracy_score(y_, prediction['y_proba'])]
+        except ValueError as e:
+            return [ExceptionValue(exception=e)]
+
+
 @dataclass
 class CIndex(Maximize, SubsetMetric):
 
     def __init__(
-        self,
-        target: Literal['y_score', 'y_proba'] = 'y_score',
+            self,
+            target: Literal['y_score', 'y_proba'] = 'y_score',
     ):
         self.target = target
 
     def get_names(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[str]:
         return ['c_index']
 
     def get_values(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[Union[ExceptionValue, float]]:
+        print(prediction)
         if len(prediction[self.target]) == 0:
             return [ExceptionValue(
                 prediction[self.target],
@@ -315,10 +360,10 @@ class CIndex(Maximize, SubsetMetric):
 
 
 def get_y_proba_for_time(
-    prediction: Prediction,
-    X: DataFrame,
-    y: Target,
-    time: int,
+        prediction: Prediction,
+        X: DataFrame,
+        y: Target,
+        time: int,
 ) -> Series:
     y_proba = prediction['y_proba'].get(time)
     if len(y_proba.isna()) == len(y_proba):
@@ -327,10 +372,10 @@ def get_y_proba_for_time(
 
 
 def predict_proba_for_prediction(
-    prediction: Prediction,
-    X: DataFrame,
-    y: Target,
-    time: int,
+        prediction: Prediction,
+        X: DataFrame,
+        y: Target,
+        time: int,
 ) -> Prediction:
     return prediction['method'].predict(
         X,
@@ -348,20 +393,20 @@ class Brier(Minimize, SubsetMetric):
     time: Optional[int]
 
     def __init__(
-        self,
-        X: DataFrame,
-        time: Optional[int] = None,
-        *args,
-        **kwargs,
+            self,
+            X: DataFrame,
+            time: Optional[int] = None,
+            *args,
+            **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.X = X
         self.time = time
 
     def get_values(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         y_train, y_test = self.get_y(y, prediction, both=True)
         y_train_ = target_to_survival_y_records(y_train)
@@ -387,15 +432,15 @@ class Brier(Minimize, SubsetMetric):
                 values.append(ExceptionValue(e))
 
     def get_names(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[str]:
         return [f'brier_{time}' for time in self.get_times(prediction)]
 
     def get_times(
-        self,
-        prediction: Prediction,
+            self,
+            prediction: Prediction,
     ) -> List[int]:
         if self.time:
             return [self.time]
@@ -411,28 +456,28 @@ class SimpleBrier(Minimize, SubsetMetric):
     time: Optional[int]
 
     def __init__(
-        self,
-        X: DataFrame,
-        time: Optional[int] = None,
-        *args,
-        **kwargs,
+            self,
+            X: DataFrame,
+            time: Optional[int] = None,
+            *args,
+            **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.X = X
         self.time = time
 
     def get_values(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         y_ = self.get_y(y, prediction)
         return [get_simple_brier_for_time(time, self.X, y_, prediction) for time in self.get_times(prediction)]
 
     def get_names(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[str]:
         return [f'simple_brier_{time}' for time in self.get_times(prediction)]
 
@@ -444,10 +489,10 @@ class SimpleBrier(Minimize, SubsetMetric):
 
 
 def get_simple_brier_for_time(
-    time: int,
-    X: DataFrame,
-    y: Target,
-    prediction: Prediction,
+        time: int,
+        X: DataFrame,
+        y: Target,
+        prediction: Prediction,
 ):
     try:
         return brier_score_loss(
@@ -462,59 +507,58 @@ def get_simple_brier_for_time(
     except Exception as e:
         return ExceptionValue(None, e)
 
-
-# class IntegratedBrier(Minimize, SubsetMetric):
-#     X: DataFrame
-#     time: Optional[int]
-#
-#     def __init__(
-#         self,
-#         X: DataFrame,
-#         time: Optional[int] = None,
-#         *args,
-#         **kwargs,
-#     ):
-#         super().__init__(*args, **kwargs)
-#         self.X = X
-#         self.time = time
-#
-#     def get_values(
-#         self,
-#         prediction: Prediction,
-#         y: Target,
-#     ) -> List[Union[ExceptionValue, float]]:
-#         y_train, y_test = self.get_y(y, prediction, both=True)
-#         y_train_ = target_to_survival_y_records(y_train)
-#         y_test_ = target_to_survival_y_records(y_test)
-#         values = []
-#
-#         for time in self.get_times(prediction):
-#             try:
-#                 values.append(
-#                     integrated_brier_score(
-#                         y_train_['data'],
-#                         y_test_['data'],
-#                         get_y_proba_for_time(
-#                             prediction,
-#                             self.X,
-#                             y,
-#                             time,
-#                         ).loc[y_test['data'].index],
-#                         time,
-#                     )[1][0])
-#             except Exception as e:
-#                 values.append(ExceptionValue(e))
+    # class IntegratedBrier(Minimize, SubsetMetric):
+    #     X: DataFrame
+    #     time: Optional[int]
+    #
+    #     def __init__(
+    #         self,
+    #         X: DataFrame,
+    #         time: Optional[int] = None,
+    #         *args,
+    #         **kwargs,
+    #     ):
+    #         super().__init__(*args, **kwargs)
+    #         self.X = X
+    #         self.time = time
+    #
+    #     def get_values(
+    #         self,
+    #         prediction: Prediction,
+    #         y: Target,
+    #     ) -> List[Union[ExceptionValue, float]]:
+    #         y_train, y_test = self.get_y(y, prediction, both=True)
+    #         y_train_ = target_to_survival_y_records(y_train)
+    #         y_test_ = target_to_survival_y_records(y_test)
+    #         values = []
+    #
+    #         for time in self.get_times(prediction):
+    #             try:
+    #                 values.append(
+    #                     integrated_brier_score(
+    #                         y_train_['data'],
+    #                         y_test_['data'],
+    #                         get_y_proba_for_time(
+    #                             prediction,
+    #                             self.X,
+    #                             y,
+    #                             time,
+    #                         ).loc[y_test['data'].index],
+    #                         time,
+    #                     )[1][0])
+    #             except Exception as e:
+    #                 values.append(ExceptionValue(e))
 
     def get_names(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[str]:
         return [f'brier_{time}' for time in self.get_times(prediction, y)]
 
     def get_times(
-        self,
-        prediction: Prediction,
+            self,
+            prediction: Prediction,
     ) -> List[int]:
         if self.time:
             return [self.time]
@@ -541,12 +585,12 @@ class AtTime:
 class BinaryMetricAtTime(SubsetMetric, AtTime):
 
     def __init__(
-        self,
-        binary_metric: Callable,
-        time: Optional[int] = None,
-        direction: OptimizationDirection = OptimizationDirection.MAXIMIZE,
-        *args,
-        **kwargs,
+            self,
+            binary_metric: Callable,
+            time: Optional[int] = None,
+            direction: OptimizationDirection = OptimizationDirection.MAXIMIZE,
+            *args,
+            **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.time = time
@@ -554,9 +598,9 @@ class BinaryMetricAtTime(SubsetMetric, AtTime):
         self.direction = direction
 
     def get_values(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[Any]:
         y_ = self.get_y(y, prediction)
         y_binarized = binarize_event(self.time, y_['data'])
@@ -575,9 +619,9 @@ class BinaryMetricAtTime(SubsetMetric, AtTime):
             raise KeyError(f'Only {prediction["y_proba"].keys()} available')
 
     def get_names(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[str]:
         return [f'{self.binary_metric.__name__}_{time}' for time in self.get_times(prediction, y)]
 
@@ -588,14 +632,14 @@ class BinaryMetricAtTime(SubsetMetric, AtTime):
 class BinaryMetricFromScore(SubsetMetric, AtTime):
 
     def __init__(
-        self,
-        binary_metric: Callable,
-        time: Union[Optional[int], str] = None,
-        direction: OptimizationDirection = OptimizationDirection.MAXIMIZE,
-        target=get_in(['y_score']),
-        sample_weight: Series = None,
-        *args,
-        **kwargs,
+            self,
+            binary_metric: Callable,
+            time: Union[Optional[int], str] = None,
+            direction: OptimizationDirection = OptimizationDirection.MAXIMIZE,
+            target=get_in(['y_score']),
+            sample_weight: Series = None,
+            *args,
+            **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.time = time
@@ -604,9 +648,9 @@ class BinaryMetricFromScore(SubsetMetric, AtTime):
         self.sample_weight = sample_weight
 
     def get_values(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[Any]:
         y_ = self.get_y(y, prediction)
         out = []
@@ -631,9 +675,9 @@ class BinaryMetricFromScore(SubsetMetric, AtTime):
         return out
 
     def get_names(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[str]:
         return [f'{self.binary_metric.__name__}_{time}' for time in self.get_times(prediction, y)]
 

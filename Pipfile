@@ -28,6 +28,9 @@ imblearn = "*"
 rpy2 = "*"
 statsmodels = "*"
 plotly = "*"
+pyaml = "*"
+notebook = "*"
+dill = "*"
 
 [dev-packages]
 pipenv-setup = "*"

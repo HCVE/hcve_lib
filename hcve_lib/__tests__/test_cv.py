@@ -1,123 +1,95 @@
-import numpy as np
-import pandas
+from typing import Tuple, Dict, List, Union
+from unittest import mock
+from unittest.mock import Mock
+
+from optuna import Trial
 from pandas import DataFrame, Series
-from pandas.testing import assert_series_equal, assert_frame_equal
-from sklearn.base import BaseEstimator
-from sklearn.model_selection import KFold
-from unittest.mock import Mock, call
+from statsmodels.compat.pandas import assert_frame_equal
 
-from hcve_lib.cv import cross_validate, optimize_per_split, series_to_target
-from hcve_lib.evaluation_functions import predict_proba
-from hcve_lib.splitting import filter_missing_features
+from hcve_lib.custom_types import Target, Estimator, Metric, Prediction, ExceptionValue, ValueWithCI, \
+    OptimizationDirection
+from hcve_lib.cv import cross_validate, CrossValidateParams, OptimizationParams
+from hcve_lib.functional import always
+from hcve_lib.metrics import Accuracy
+from hcve_lib.wrapped_sklearn import DFPipeline
 
 
-def _test_cross_validate():
-    Xs = []
-    ys = []
-    Xs_test = []
+# test whether the model was set with hyperparameters and trained on correct subsets
+def test_cross_validate_optimize():
+    class MockTransform(Estimator):
+        def fit_transform(self, X: DataFrame, y: Target):
+            return X
 
-    class DummyEstimator(BaseEstimator):
-        def __init__(self, param):
-            self.param = param
+        def transform(self, X: DataFrame):
+            return X
 
-        @staticmethod
-        def fit(X, y):
-            Xs.append(X)
-            ys.append(y)
+    class MockEstimator(Estimator):
+        def __init__(self, hyperparameter1=None):
+            self.hyperparameter1 = hyperparameter1
 
-        def predict_proba(self, X):
-            Xs_test.append(X)
-            return X.apply(lambda row: row['x'] * self.param, axis='columns')
+        def predict_proba(self, X: DataFrame):
+            return X['x']
 
-    get_pipeline = Mock(side_effect=[
-        DummyEstimator(2),
-        DummyEstimator(2),
-        DummyEstimator(3),
+        def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
+            return Mock(), {f'hyperparameter1': 10}
+
+        def set_params(self, **params):
+            breakpoint()
+
+    step1 = MockTransform()
+    step2 = MockEstimator()
+
+    class MockMetric(Metric):
+        def get_names(
+                self,
+                prediction: Prediction,
+                y: Target,
+        ) -> List[str]:
+            return ['metric1']
+
+        def get_values(
+                self,
+                prediction: Prediction,
+                y: Target,
+        ) -> List[Union[ExceptionValue, float, ValueWithCI]]:
+            return [0.6]
+
+        def get_direction(self) -> OptimizationDirection:
+            return OptimizationDirection.MAXIMIZE
+
+    X = DataFrame({'x': [1, 2, 3]}, index=['a', 'b', 'c'])
+    y = Target(Series([10, 20, 30], name='y', index=['a', 'b', 'c']))
+
+    def get_splits(X, y, random_state):
+        return {'split': (['a', 'b'], ['c'])}
+
+    pipeline = DFPipeline([
+        ('step1', step1),
+        ('step2', step2),
     ])
 
-    X_all = DataFrame({'x': list(range(3))})
-    y_all = Series(list(range(3)))
+    with mock.patch.object(pipeline, 'set_params') as set_params:
+        with mock.patch.object(pipeline, 'fit') as fit:
+            cross_validate(
+                lambda random_state: pipeline,
+                X,
+                y,
+                random_state=1,
+                get_splits=get_splits,
+                optimize=True,
+                optimize_params=OptimizationParams(
+                    n_trials=1,
+                    objective_metric=MockMetric(),
+                    get_splits=lambda *args, **kwargs: {'split1': (['a'], ['b'])},
+                ),
+                n_jobs=1,
+            )
 
-    result = cross_validate(
-        X_all,
-        y_all,
-        get_pipeline,
-        predict=predict_proba,
-        splits=KFold(n_splits=3).split(X_all),
-        n_jobs=1,
-        train_test_filter_callback=filter_missing_features,
-    )
+            # right hyperparameters set
+            assert len(set_params.call_args_list) == 2
+            assert set_params.call_args_list[0].kwargs == {'step2__hyperparameter1': 10}
+            assert len(fit.call_args_list) == 2
 
-    for X_fold, X_test_fold, y_fold in zip(Xs, Xs_test, ys):
-        assert (Series(X_fold.index == y_fold.index).all())
-        assert len(X_test_fold.index.intersection(X_fold.index)) == 0
-
-    y_trues = pandas.concat([fold['y_true'] for fold in result])
-    assert_series_equal(y_trues, y_all)
-
-    y_scores = pandas.concat([fold['y_score'] for fold in result])
-    assert_series_equal(y_scores, Series([0, 2, 6]))
-
-
-def test_optimize_cv():
-    optimize_input = [Mock(), Mock()]
-    get_optimize = Mock(side_effect=optimize_input)
-    get_splits = Mock(side_effect=lambda *args: {
-        'a': ([0, 1, 2], [3]),
-        'b': ([0, 1, 3], [2]),
-    })
-    optimize_per_split(
-        get_optimize,
-        get_splits,
-        DataFrame({'a': [1, 2, 3]}),
-        Series([10, 20, 30]),
-        n_jobs=1,
-    )
-    get_optimize.assert_called()
-
-    for optimize in optimize_input:
-        optimize.fit.assert_called_once()
-
-
-def test_predict_proba():
-    class MockMethod:
-        predict_proba = Mock(side_effect=[np.array([[0.1, 0.9]])])
-
-    model = MockMethod()
-    prediction = predict_proba(
-        DataFrame({'x': [1, 2]}, index=[10, 20]),
-        {
-            'name': 'a',
-            'data': Series([1, 2], index=[10, 20]),
-        },
-        ([10], [20]),
-        model,
-        random_state=0,
-    )
-
-    assert prediction['X_columns'] == ['x']
-    assert prediction['model'] == model
-    assert prediction['split'] == ([10], [20])
-    assert prediction['y_column'] == 'a'
-    assert_frame_equal(
-        prediction['y_score'],
-        DataFrame(
-            {
-                0: [0.1],
-                1: [0.9]
-            },
-            index=[20],
-        ),
-    )
-    assert len(model.predict_proba.call_args_list) == 1
-    assert_frame_equal(
-        model.predict_proba.call_args_list[0][0][0],
-        DataFrame({'x': 2}, index=[20]),
-    )
-
-
-def test_series_to_target():
-    series = Series([1, 2, 3], name='a')
-    target = series_to_target(series)
-    assert target['name'] == 'a'
-    assert_series_equal(target['data'], series)
+            # right data subset (1. evaluating optimization and 2. fitting optimized model on the whole train set)
+            assert_frame_equal(fit.call_args_list[0].args[0], DataFrame({'x': [1]}, index=['a']))
+            assert_frame_equal(fit.call_args_list[1].args[0], DataFrame({'x': [1, 2]}, index=['a', 'b']))

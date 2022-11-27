@@ -4,6 +4,7 @@ from collections import namedtuple
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import auto, Enum
+from logging import Logger
 from typing import TypedDict, Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable, Callable, Type
 
 import numpy as np
@@ -38,10 +39,7 @@ class DictAccess:
 class Printable:
 
     def __str__(self):
-        return '\n'.join([
-            f'{key}: {value}' for key, value in self.__dict__.items()
-            if not key.startswith('_')
-        ])
+        return '\n'.join([f'{key}: {value}' for key, value in self.__dict__.items() if not key.startswith('_')])
 
 
 class ClassMapping(Mapping):
@@ -81,27 +79,74 @@ class TargetTransformer(BaseEstimator):
 class Estimator(BaseEstimator):
 
     @abstractmethod
-    def fit(self, X, y, **kwargs):
+    def fit(self, X, y, *args, **kwargs):
         ...
 
     @abstractmethod
-    def predict(self, X, **kwargs):
+    def predict(self, X: DataFrame):
         ...
 
     @abstractmethod
-    def predict_proba(self, X, **kwargs):
+    def predict_proba(self, X: DataFrame):
         ...
 
     @abstractmethod
-    def predict_survival_function(self, X, **kwargs):
+    def predict_survival_at_time(self, X: DataFrame, time: int):
         ...
 
-    @abstractmethod
-    def predict_survival(self, X, *args, **kwargs):
-        ...
+    def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
+        return trial, {}
 
-    @abstractmethod
-    def score(self, X, y):
+
+class Model(Estimator):
+    estimator: Estimator
+
+    def __init__(
+            self,
+            random_state: int,
+            logger: Logger = None,
+            log_mlflow: bool = True,
+    ):
+        self.random_state = random_state
+        self.logger = logger
+        self.log_mlflow = log_mlflow
+
+    def fit(self, X: DataFrame, y, *args, **kwargs):
+        self.estimator = self.get_estimator()
+        self.estimator.fit(X, y, *args, **kwargs)
+
+    def predict(self, X: DataFrame):
+        return self.estimator.predict(X)
+
+    def predict_proba(self, X: DataFrame):
+        return self.estimator.predict_proba(X)
+
+    def predict_survival_at_time(self, X: DataFrame, time: int):
+        return self.estimator.predict_survival_at_time(X, time)
+
+    def get_estimator(self) -> Estimator:
+        raise NotImplementedError
+
+    def set_params(self, **kwargs):
+        self.estimator.set_params(**kwargs)
+
+    def get_params(self, **kwargs):
+        return self.estimator.get_params(**kwargs)
+
+
+class Pipeline:
+    steps: List[Tuple[str, Any]]
+    optimize: bool
+
+    def __init__(
+            self,
+            steps: List[Tuple[str, Any]],
+            optimize: bool = False,
+    ):
+        self.steps = steps
+        self.optimize = optimize
+
+    def fit(self):
         ...
 
 
@@ -190,7 +235,7 @@ SurvivalPairTarget = namedtuple('SurvivalPairTarget', ('tte', 'label'))
 
 TargetData = Union[DataFrame, Series, np.recarray]
 
-Index = List[int]
+Index = List[Any]
 
 TrainTestIndex = Tuple[Index, Index]
 
@@ -201,20 +246,38 @@ Splits = Dict[Hashable, Index]
 TrainTestSplitter = Callable[..., TrainTestSplits]
 
 
-class Target(TypedDict):
-    name: str
-    data: TargetData
+@dataclass
+class Target:
+    _data: TargetData
+    _name: Optional[str]
+
+    def __init__(self, data: TargetData, name: Optional[str] = None):
+        self._data = data
+        self._name = name
+
+    @property
+    def name(self):
+        if self._name is not None:
+            return self._name
+        else:
+            return self._data.name
+
+    @property
+    def data(self):
+        return self._data
+
+    def update_data(self, data):
+        cloned = Target(data=data, name=self.name)
+        return cloned
 
 
 class Prediction(TypedDict, total=False):
-    y_score: Any
-    y_proba: Dict[Any, Any]
+    y_proba: Any
+    y_survival_times: Dict[int, float]
     y_column: str
     X_columns: List[str]
-    model: Estimator
+    model: 'Model'
     split: TrainTestIndex
-    random_state: int
-    method: Type['Method']
 
 
 class Method(ABC):
@@ -222,10 +285,10 @@ class Method(ABC):
     @staticmethod
     @abstractmethod
     def get_estimator(
-        X: DataFrame,
-        random_state: int,
-        configuration: Dict,
-        verbose=0,
+            X: DataFrame,
+            random_state: int,
+            configuration: Dict,
+            verbose=0,
     ):
         ...
 
@@ -237,12 +300,12 @@ class Method(ABC):
     @staticmethod
     @abstractmethod
     def predict(
-        X: DataFrame,
-        y: Target,
-        split: TrainTestIndex,
-        model: Estimator,
-        method: Type['Method'],
-        random_state: int,
+            X: DataFrame,
+            y: Target,
+            split: TrainTestIndex,
+            model: Estimator,
+            method: Type['Method'],
+            random_state: int,
     ) -> Prediction:
         ...
 
@@ -255,9 +318,9 @@ class ExceptionValue:
     value: Any
 
     def __init__(
-        self,
-        value: Any = None,
-        exception: Exception = None,
+            self,
+            value: Any = None,
+            exception: Exception = None,
     ):
         self.traceback = traceback.format_exc()
         self.value = value
@@ -291,17 +354,17 @@ class Metric(ABC):
 
     @abstractmethod
     def get_names(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[str]:
         ...
 
     @abstractmethod
     def get_values(
-        self,
-        prediction: Prediction,
-        y: Target,
+            self,
+            prediction: Prediction,
+            y: Target,
     ) -> List[Union[ExceptionValue, float, ValueWithCI]]:
         ...
 

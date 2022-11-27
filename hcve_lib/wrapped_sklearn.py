@@ -1,5 +1,6 @@
+from optuna import Trial
 from sksurv.tree import SurvivalTree
-from typing import Any, Optional, List
+from typing import Any, Optional, List, Tuple, Dict
 
 import numpy as np
 from sklearn.pipeline import Pipeline
@@ -18,6 +19,7 @@ from sksurv.linear_model import CoxnetSurvivalAnalysis, CoxPHSurvivalAnalysis
 # noinspection PyAttributeOutsideInit,PyUnresolvedReferences
 from sksurv.meta import Stacking
 
+from hcve_lib.custom_types import Estimator
 from hcve_lib.functional import dict_subset
 
 
@@ -177,7 +179,7 @@ class DFXGBClassifier(DFWrapped, XGBClassifier):
     ...
 
 
-class DFPipeline(Pipeline):
+class DFPipeline(Pipeline, Estimator):
 
     def get_feature_names(self):
         return self.steps[-1][1].fit_feature_names
@@ -190,12 +192,23 @@ class DFPipeline(Pipeline):
         Xt = self.transform_steps(X)
         return self.steps[-1][1].predict_proba(Xt, *args, **kwargs)
 
+    def predict_target(self, X, **predict_params):
+        return self.predict(X, **predict_params)
+
     def transform_steps(self, Xt):
         for _, name, transform in self._iter(with_final=False):
             Xt = transform.transform(Xt)
         return Xt
 
-    def __repr__(self):
+    def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
+        prefix_ = (prefix + '_') if prefix else ''
+        return trial, {
+            name: step.suggest_optuna(trial, f'{prefix_}{name}_')[1]
+            for (name, step) in self.steps
+            if hasattr(step, 'suggest_optuna')
+        }
+
+    def __repr__(self, **kwargs):
         return 'model'
 
 

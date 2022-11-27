@@ -35,7 +35,8 @@ def get_lo_splits(
                 subtract_lists(list(all_indexes), subset.index.tolist()),
                 subset.index.tolist(),
             )
-            for key, subset in groups
+            for key,
+            subset in groups
         },
         valfilter(lambda split: len(split[0]) > 0 and len(split[1]) > 0),
     )
@@ -53,8 +54,10 @@ def get_1_to_1_splits(
         groups,
         2,
     )
-    return {(key1, key2): (subset1.index.tolist(), subset2.index.tolist())
-            for ((key1, subset1), (key2, subset2)) in permutations}
+    return {
+        (key1, key2): (subset1.index.tolist(), subset2.index.tolist())
+        for ((key1, subset1), (key2, subset2)) in permutations
+    }
 
 
 @accept_extra_parameters
@@ -65,10 +68,7 @@ def get_group_splits(
     flatten_data = data.apply(identity).loc[X.index]
     all_indexes = range(0, len(flatten_data))
     groups = map_groups_iloc(data, flatten_data)
-    return {
-        key: (subtract_lists(list(all_indexes), subset), subset)
-        for key, subset in groups
-    }
+    return {key: (subtract_lists(list(all_indexes), subset), subset) for key, subset in groups}
 
 
 @accept_extra_parameters
@@ -82,9 +82,10 @@ def get_splitting_per_group(
         get_splits = get_kfold_splits
     groups = X.groupby(data[group_by_feature])
     return pipe(
-        ([((name, name_inner), split)
-          for name_inner, split in get_splits(group_df).items()]
-         for name, group_df in groups),
+        (
+            [((name, name_inner), split) for name_inner, split in get_splits(group_df).items()] for name,
+            group_df in groups
+        ),
         flatten,
         dict,
     )
@@ -96,14 +97,12 @@ def get_lm_splits(
     data: DataFrameGroupBy,
 ) -> TrainTestSplits:
     lco_splits: TrainTestSplits = get_lco_splits(X, data)
-    return {
-        key: pipe(
-            fold_input,
-            reversed,
-            list,
-        )
-        for key, fold_input in lco_splits.items()
-    }
+    return {key: pipe(
+        fold_input,
+        reversed,
+        list,
+    )
+            for key, fold_input in lco_splits.items()}
 
 
 @accept_extra_parameters
@@ -155,8 +154,7 @@ def get_kfold_stratified_splits(
     n_splits: int = 5,
 ) -> TrainTestSplits:
     return pipe(
-        StratifiedKFold(n_splits=n_splits,
-                        shuffle=True).split(X, y['data']['label']),
+        StratifiedKFold(n_splits=n_splits, shuffle=True).split(X, y['data']['label']),
         list,
         map(mapl(partial(iloc_to_loc, X))),
         list_to_dict_index,
@@ -171,6 +169,8 @@ def get_train_test(
     train_size=None,
     random_state=None,
     shuffle=True,
+    *args,
+    **kwargs,
 ) -> TrainTestSplits:
     data_train, data_test = train_test_split(
         X,
@@ -178,7 +178,8 @@ def get_train_test(
         train_size=train_size,
         random_state=random_state,
         shuffle=shuffle,
-        stratify=y['data']['label'],
+        *args,
+        **kwargs,
     )
     data_train_index = data_train.index.tolist()
     data_test_index = data_test.index.tolist()
@@ -192,7 +193,6 @@ def train_test_filter(
     train_filter: Callable,
     test_filter: Callable = None,
 ) -> TrainTestSplits:
-
     train_mask = train_filter(data)
     train_data = data[train_mask]
 
@@ -246,10 +246,8 @@ def get_splitter(splitter_name: str) -> Callable:
         raise Exception('Splitting not know')
 
 
-def train_test_fold(data, fold: Prediction,
-                    metadata) -> Tuple[DataFrame, Target]:
-    return data[fold['X_columns']], get_survival_y(data, fold['y_column'],
-                                                   metadata)
+def train_test_fold(data, fold: Prediction, metadata) -> Tuple[DataFrame, Target]:
+    return data[fold['X_columns']], get_survival_y(data, fold['y_column'], metadata)
 
 
 def get_group_indexes(
@@ -275,9 +273,8 @@ def resample_prediction_test(
                     index,
                     y_proba,
                     ignore_not_present=True,
-                ) if (y_proba is not None and isinstance(
-                    y_proba,
-                    (Series, DataFrame))) else ExceptionValue(value=y_proba),
+                ) if (y_proba is not None and isinstance(y_proba,
+                                                         (Series, DataFrame))) else ExceptionValue(value=y_proba),
             ),
         ),
     )

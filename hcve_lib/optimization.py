@@ -1,5 +1,5 @@
 import operator
-from collections import Callable
+from typing import Callable
 
 import mlflow
 import numpy as np
@@ -8,13 +8,11 @@ import toolz
 from mlflow import set_tag
 from optuna import Study
 from optuna.trial import TrialState, FrozenTrial
-
-# noinspection PyUnresolvedReferences
-from deps.ignore_warnings import *
 from hcve_lib.tracking import log_metrics_ci
 
 
 class EarlyStoppingCallback(object):
+
     def __init__(
         self,
         early_stopping_rounds: int,

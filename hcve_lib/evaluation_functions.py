@@ -32,7 +32,7 @@ HashableT = TypeVar('HashableT', bound=Hashable)
 
 
 def compute_metrics_ci(
-    predictions: Prediction,
+    result: Result,
     metrics: List[Metric],
     y: Target,
     skip_metrics: List[str] = None,
@@ -40,7 +40,7 @@ def compute_metrics_ci(
     metrics_per_split: Dict = compute_metrics_result(
         metrics,
         y,
-        predictions,
+        result,
         skip_metrics=skip_metrics,
     )
 

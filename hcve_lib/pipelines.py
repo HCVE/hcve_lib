@@ -1,57 +1,15 @@
 from functools import partial
-from typing import Any, Tuple, Callable
+from typing import Any, Tuple, Callable, Dict
 
-from hcve_lib.custom_types import Estimator, Target, TargetTransformer, Method, ExceptionValue
-from hcve_lib.wrapped_sklearn import DFPipeline
+from optuna import Trial
 from pandas import DataFrame, Series
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
+from xgboost import XGBRegressor
 
-#
-# class RandomForest(Model):
-#
-#     # def get_optimize(self):
-#     #     return Optmi
-#
-#     def __init__(self, random_state: int, configuration: Dict):
-#         self.random_state = random_state
-#         self.configuration = configuration
-#
-#     def get_esimator(
-#         self,
-#         X: DataFrame,
-#         random_state: int,
-#         configuration: Dict,
-#         verbose: bool = False,
-#     ) -> DFPipeline:
-#         return make_pipeline(
-#             [
-#                 (
-#                     'estimator',
-#                     RandomSurvivalForestT(
-#                         transform_callback=to_survival_y_records, random_state=RANDOM_STATE, n_jobs=1
-#                     ),
-#                 )
-#             ],
-#             X,
-#             configuration=configuration,
-#         )
-#
-#     @staticmethod
-#     def optuna(trial: Trial) -> Tuple[Trial, Dict]:
-#         hyperparameters = {
-#             'estimator': {
-#                 'n_estimators': trial.
-#                 suggest_int('estimator_n_estimators', 5, 200),
-#                 'max_depth': trial.suggest_int('estimator_max_depth', 1, 4),
-#                 'min_samples_split': trial.suggest_int('estimator_min_samples_split', 2, 30),
-#                 'min_samples_leaf': trial.suggest_int('estimator_min_samples_leaf', 1, 200),
-#                 'max_features': trial.suggest_categorical('estimator_max_features', ['auto', 'sqrt', 'log2']),
-#                 'oob_score': trial.suggest_categorical('estimator_oob_score', [True, False]),
-#             }
-#         }
-#         return trial, hyperparameters
+from hcve_lib.custom_types import Estimator, Target, TargetTransformer, Method, ExceptionValue, Model
+from hcve_lib.wrapped_sklearn import DFPipeline, DFRandomForestRegressor
 
 
 class EstimatorDecorator:
@@ -87,10 +45,10 @@ class TransformTarget:
 class TransformerTarget(BaseEstimator):
 
     def __init__(
-        self,
-        inner: Estimator,
-        transformer: TargetTransformer,
-        inverse: bool = True,
+            self,
+            inner: Estimator,
+            transformer: TargetTransformer,
+            inverse: bool = True,
     ):
         self.inner = inner
         self.transformer = transformer
@@ -137,11 +95,11 @@ def subsample_data(X: DataFrame) -> DataFrame:
 class Callback(BaseEstimator, TransformerMixin):
 
     def __init__(
-        self,
-        fit_callback: Callable[[DataFrame, Target], Any] = None,
-        transform_callback: Callable[[DataFrame], Any] = None,
-        breakpoint_fit: bool = False,
-        breakpoint_transform: bool = False,
+            self,
+            fit_callback: Callable[[DataFrame, Target], Any] = None,
+            transform_callback: Callable[[DataFrame], Any] = None,
+            breakpoint_fit: bool = False,
+            breakpoint_transform: bool = False,
     ):
         self.breakpoint_fit = breakpoint_fit
         self.breakpoint_transform = breakpoint_transform
@@ -185,8 +143,115 @@ class LifeTime(EstimatorDecorator, BaseEstimator):
             return ExceptionValue(e)
 
     def predict_survival_function(
-        self,
-        X: DataFrame,
+            self,
+            X: DataFrame,
     ) -> Callable[[int], float]:
         survival_functions = self._estimator.predict_survival_function(X)
         return (partial(self.add_age, fn, age) for age, fn in zip(X['AGE'], survival_functions))
+
+
+class XGBoost(Model):
+
+    def get_estimator(self) -> BaseEstimator:
+        return XGBRegressor()
+
+    def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
+        hyperparameters = {
+            'n_estimators': trial.suggest_int(f'{prefix}_n_estimators', 5, 200),
+            'max_depth': trial.suggest_int(f'{prefix}_max_depth', 1, 10),
+            'learning_rate': trial.suggest_loguniform(f'{prefix}_learning_rate', 0.001, 1),
+            'subsample': trial.suggest_uniform(f'{prefix}_estimator_subsample', 0.1, 1),
+            'colsample_bytree': trial.suggest_uniform(f'{prefix}_colsample_bytree', 0.1, 1),
+            'min_split_loss': trial.suggest_uniform(f'{prefix}_min_split_loss', 0.1, 10),
+            'min_child_weight': trial.suggest_int(f'{prefix}_min_child_weight', 1, 100),
+            'reg_alpha': trial.suggest_uniform(f'{prefix}_reg_alpha', 0, 10),
+            'reg_lambda': trial.suggest_uniform(f'{prefix}_reg_alpha', 0, 10),
+        }
+        return trial, hyperparameters
+
+    # noinspection PyUnresolvedReferences
+    @staticmethod
+    def get_streamlit_configuration(current_config: Dict):
+        import streamlit as st
+        new_config = {}
+
+        new_config['n_estimators'] = st.slider(
+            "Number trees (n_tree)",
+            min_value=1,
+            max_value=2000,
+            value=current_config.get('n_estimators', 100),
+            key='n_estimators'
+        )
+
+        max_depth = st.select_slider(
+            'Tree depth (max_depth)',
+            [*range(1, 20), 'Unlimited', ],
+            value=current_config.get('max_depth', 'Unlimited'),
+        )
+
+        new_config['max_depth'] = None if max_depth == 'Unlimited' else max_depth
+
+        new_config['learning_rate'] = st.select_slider(
+            'Fraction of samples for each tree (subsample)',
+            np.arange(0.1, 1, 0.1),
+            value=current_config.get('learning_rate', 0.8),
+        )
+
+        new_config['subsample'] = st.select_slider(
+            'Fraction of samples for each tree (subsample)',
+            np.arange(0.1, 1, 0.1),
+            value=current_config.get('subsample', 0.8),
+        )
+
+        return new_config
+
+
+class RandomForest(Model):
+
+    def get_estimator(self) -> BaseEstimator:
+        return DFRandomForestRegressor()
+
+    def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
+        hyperparameters = {
+            'n_estimators': trial.suggest_int(f'{prefix}_n_estimators', 5, 200),
+            'max_depth': trial.suggest_int(f'{prefix}_max_depth', 1, 10),
+            'min_samples_split': trial.suggest_int(f'{prefix}_min_samples_split', 2, 100),
+            'max_features': trial.suggest_categorical(f'{prefix}_max_features', ['auto', 'sqrt', 'log2']),
+            'oob_score': trial.suggest_categorical(f'{prefix}_oob_score', [True, False]),
+        }
+        return trial, hyperparameters
+
+    # noinspection PyUnresolvedReferences
+    @staticmethod
+    def get_streamlit_configuration(current_config: Dict):
+        import streamlit as st
+        new_config = {}
+
+        new_config['n_estimators'] = st.slider(
+            "Number trees (n_tree)",
+            min_value=1,
+            max_value=2000,
+            value=current_config.get('n_estimators', 100),
+            key='n_estimators'
+        )
+
+        max_depth = st.select_slider(
+            'Tree depth (max_depth)',
+            [*range(1, 20), 'Unlimited', ],
+            value=current_config.get('max_depth', 'Unlimited'),
+        )
+
+        new_config['max_depth'] = None if max_depth == 'Unlimited' else max_depth
+
+        new_config['min_samples_split'] = st.select_slider(
+            'Minimum sample for decision (min_samples_split)',
+            [*range(1, 20)],
+            value=current_config.get('min_samples_split', 2),
+        )
+
+        new_config['max_features'] = st.select_slider(
+            'Subset of features for decision (max_features)',
+            ["log2", "sqrt", *range(1, 20)],
+            value=current_config.get('max_features', 'sqrt'),
+        )
+        return new_config

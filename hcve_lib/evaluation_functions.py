@@ -514,27 +514,27 @@ def merge_standardize_prediction(result: Result) -> Prediction:
 
 
 def merge_predictions(result: Result) -> Prediction:
-    y_score = pandas.concat([prediction['y_score'] for cohort, prediction in result.items()])
+    y_pred = pandas.concat([prediction['y_pred'] for cohort, prediction in result.items()])
 
     return Prediction(
-        y_score=y_score,
-        split=(y_score.index, y_score.index),
-        y_proba=pipe(
-            {
-                # TODO: throwing exceptions
-                # time: prediction if isinstance(prediction, ExceptionValue) else prediction.get('y_proba', {})
-                # for time,
-                # prediction in result.items()
-            },
-            transpose_dict,
-            partial(
-                valmap,
-                lambda y_probas: try_except(
-                    lambda: pandas.concat(y_probas.values()),
-                    {Exception: lambda e: e},
-                ),
-            ),
-        ),
+        y_pred=y_pred,
+        split=(list(y_pred.index), list(y_pred.index)),
+        # y_proba=pipe(
+        #     {
+        #         # TODO: throwing exceptions
+        #         # time: prediction if isinstance(prediction, ExceptionValue) else prediction.get('y_proba', {})
+        #         # for time,
+        #         # prediction in result.items()
+        #     },
+        #     transpose_dict,
+        #     partial(
+        #         valmap,
+        #         lambda y_probas: try_except(
+        #             lambda: pandas.concat(y_probas.values()),
+        #             {Exception: lambda e: e},
+        #         ),
+        #     ),
+        # ),
     )
 
 

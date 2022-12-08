@@ -1,4 +1,5 @@
 from optuna import Trial
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sksurv.tree import SurvivalTree
 from typing import Any, Optional, List, Tuple, Dict
 
@@ -19,7 +20,7 @@ from sksurv.linear_model import CoxnetSurvivalAnalysis, CoxPHSurvivalAnalysis
 # noinspection PyAttributeOutsideInit,PyUnresolvedReferences
 from sksurv.meta import Stacking
 
-from hcve_lib.custom_types import Estimator
+from hcve_lib.custom_types import Estimator, Target
 from hcve_lib.functional import dict_subset
 
 
@@ -79,12 +80,12 @@ class DFWrapped:
             return X_out.columns  # type: ignore
         except AttributeError:
             try:
-                return super().get_feature_names()  # type: ignore
+                return ( \
+                    super().get_feature_names_out(X.columns)  # type: ignore
+                )
             except (AttributeError, ValueError) as e:
                 try:
-                    return ( \
-                        super().get_feature_names_out(X.columns)  # type: ignore
-                    )
+                    return super().get_feature_names()  # type: ignore
                 except (AttributeError, NotFittedError):
                     if isinstance(self, ColumnTransformer):
                         raise e
@@ -104,12 +105,12 @@ def series_count_inf(series: Series) -> int:
 
 
 def use_df_fn(
-    input_data_frame: DataFrame,
-    output_data: Any,
-    reuse_columns=True,
-    reuse_index=True,
-    reuse_dtypes=False,
-    columns: Optional[List] = None,
+        input_data_frame: DataFrame,
+        output_data: Any,
+        reuse_columns=True,
+        reuse_index=True,
+        reuse_dtypes=False,
+        columns: Optional[List] = None,
 ) -> DataFrame:
     df_arguments = {}
 
@@ -180,6 +181,11 @@ class DFXGBClassifier(DFWrapped, XGBClassifier):
 
 
 class DFPipeline(Pipeline, Estimator):
+    y_name: Optional[str]
+
+    def fit(self, X: DataFrame, y: Target = None, **fit_params) -> None:
+        self.y_name = y.name
+        super().fit(X, y.data)
 
     def get_feature_names(self):
         return self.steps[-1][1].fit_feature_names
@@ -207,6 +213,14 @@ class DFPipeline(Pipeline, Estimator):
             for (name, step) in self.steps
             if hasattr(step, 'suggest_optuna')
         }
+
+    def get_streamlit_configuration(self, config: Dict):
+        config = {
+            name: step.get_streamlit_configuration(config.get(name, {}))
+            for (name, step) in self.steps
+            if hasattr(step, 'get_streamlit_configuration')
+        }
+        return config
 
     def __repr__(self, **kwargs):
         return 'model'
@@ -240,4 +254,12 @@ class DFBinMapper(DFWrapped, _BinMapper):
 
 
 class DFFunctionTransformer(DFWrapped, FunctionTransformer):
+    ...
+
+
+class DFRandomForestClassifier(DFWrapped, RandomForestClassifier):
+    ...
+
+
+class DFRandomForestRegressor(DFWrapped, RandomForestRegressor):
     ...

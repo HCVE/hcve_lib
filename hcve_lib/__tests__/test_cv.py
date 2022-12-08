@@ -70,20 +70,12 @@ def test_cross_validate_optimize():
 
     with mock.patch.object(pipeline, 'set_params') as set_params:
         with mock.patch.object(pipeline, 'fit') as fit:
-            cross_validate(
-                lambda random_state: pipeline,
-                X,
-                y,
-                random_state=1,
-                get_splits=get_splits,
-                optimize=True,
-                optimize_params=OptimizationParams(
-                    n_trials=1,
-                    objective_metric=MockMetric(),
-                    get_splits=lambda *args, **kwargs: {'split1': (['a'], ['b'])},
-                ),
-                n_jobs=1,
-            )
+            cross_validate(lambda random_state: pipeline, X, y, get_splits=get_splits, random_state=1, optimize=True,
+                           optimize_params=OptimizationParams(
+                               n_trials=1,
+                               objective_metric=MockMetric(),
+                               get_splits=lambda *args, **kwargs: {'split1': (['a'], ['b'])},
+                           ), n_jobs=1)
 
             # right hyperparameters set
             assert len(set_params.call_args_list) == 2

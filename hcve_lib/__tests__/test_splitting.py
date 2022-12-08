@@ -1,22 +1,17 @@
-from typing import Tuple, Dict
 from unittest.mock import Mock
 
 import numpy as np
 from _pytest.python_api import raises
 from numpy.testing import assert_array_equal
-from optuna import Trial
 from pandas import DataFrame, Series, Index
-from pandas.testing import assert_series_equal
 from pandas.testing import assert_frame_equal
+from pandas.testing import assert_series_equal
 
-from hcve_lib.custom_types import Model
 from hcve_lib.cv import get_column_mask_filter, get_column_mask, get_removed_features_from_mask
 from hcve_lib.splitting import get_lo_splits, iloc_to_loc, get_1_to_1_splits, train_test_filter, \
-    filter_missing_features, get_train_test, get_kfold_splits, get_splitting_per_group, get_group_indexes, \
+    filter_missing_features, get_kfold_splits, get_splitting_per_group, get_group_indexes, \
     resample_prediction_test
 from hcve_lib.utils import cross_validate_apply_mask
-from hcve_lib.wrapped_sklearn import DFPipeline
-from unittest.mock import Mock
 
 
 def test_get_lo_splits():

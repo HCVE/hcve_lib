@@ -12,6 +12,48 @@ from optuna import Trial
 from pandas import Series, DataFrame
 from sklearn.base import BaseEstimator
 
+SurvivalPairTarget = namedtuple('SurvivalPairTarget', ('tte', 'label'))
+
+TargetData = Union[DataFrame, Series, np.recarray]
+
+Index = List[Any]
+
+TrainTestIndex = Tuple[Index, Index]
+
+TrainTestSplits = Dict[Hashable, TrainTestIndex]
+
+Splits = Dict[Hashable, Index]
+
+TrainTestSplitter = Callable[..., TrainTestSplits]
+
+
+@dataclass
+class TargetObject:
+    _data: TargetData
+    _name: Optional[str]
+
+    def __init__(self, data: TargetData, name: Optional[str] = None):
+        self._data = data
+        self._name = name
+
+    @property
+    def name(self):
+        if self._name is not None:
+            return self._name
+        else:
+            return self._data.name
+
+    @property
+    def data(self):
+        return self._data
+
+    def update_data(self, data):
+        cloned = TargetObject(data=data, name=self.name)
+        return cloned
+
+
+Target = TargetObject | Series
+
 
 class IndexAccess(ABC):
 
@@ -97,8 +139,11 @@ class Estimator(BaseEstimator):
     def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
         return trial, {}
 
+    # def transform(self, X: DataFrame):
+    #     return X
 
-class Model(Estimator):
+
+class Model(Estimator, ABC):
     estimator: Estimator
 
     def __init__(
@@ -110,10 +155,15 @@ class Model(Estimator):
         self.random_state = random_state
         self.logger = logger
         self.log_mlflow = log_mlflow
+        self.estimator = self.get_estimator()
 
-    def fit(self, X: DataFrame, y, *args, **kwargs):
+    def fit(self, X: DataFrame, y: TargetData, *args, **kwargs):
         self.estimator = self.get_estimator()
         self.estimator.fit(X, y, *args, **kwargs)
+        return self
+
+    def transform(self, X: DataFrame):
+        return X
 
     def predict(self, X: DataFrame):
         return self.estimator.predict(X)
@@ -124,6 +174,7 @@ class Model(Estimator):
     def predict_survival_at_time(self, X: DataFrame, time: int):
         return self.estimator.predict_survival_at_time(X, time)
 
+    @abstractmethod
     def get_estimator(self) -> Estimator:
         raise NotImplementedError
 
@@ -132,6 +183,15 @@ class Model(Estimator):
 
     def get_params(self, **kwargs):
         return self.estimator.get_params(**kwargs)
+
+    def __getattr__(self, item):
+        if hasattr(self.estimator, item):
+            return getattr(self.estimator, item)
+        else:
+            raise AttributeError(f'AttributeError: object has no attribute \'{item}\'')
+
+    def __getitem__(self, item):
+        return self.estimator[item]
 
 
 class Pipeline:
@@ -231,49 +291,8 @@ class ConfusionMetrics(DataStructure):
             self.f1 = 0
 
 
-SurvivalPairTarget = namedtuple('SurvivalPairTarget', ('tte', 'label'))
-
-TargetData = Union[DataFrame, Series, np.recarray]
-
-Index = List[Any]
-
-TrainTestIndex = Tuple[Index, Index]
-
-TrainTestSplits = Dict[Hashable, TrainTestIndex]
-
-Splits = Dict[Hashable, Index]
-
-TrainTestSplitter = Callable[..., TrainTestSplits]
-
-
-@dataclass
-class Target:
-    _data: TargetData
-    _name: Optional[str]
-
-    def __init__(self, data: TargetData, name: Optional[str] = None):
-        self._data = data
-        self._name = name
-
-    @property
-    def name(self):
-        if self._name is not None:
-            return self._name
-        else:
-            return self._data.name
-
-    @property
-    def data(self):
-        return self._data
-
-    def update_data(self, data):
-        cloned = Target(data=data, name=self.name)
-        return cloned
-
-
 class Prediction(TypedDict, total=False):
-    y_proba: Any
-    y_survival_times: Dict[int, float]
+    y_pred: Any
     y_column: str
     X_columns: List[str]
     model: 'Model'

@@ -1,19 +1,13 @@
 from dataclasses import dataclass
-from itertools import product
-from typing import Union, List, Literal
+from typing import Union, List
 
-import numpy
-import numpy as np
-from numpy import mean
+from itertools import product
 from sklearn.utils import resample
 
-from hcve_lib.custom_types import Prediction, Target, ExceptionValue, Splits, Metric, OptimizationDirection, Maximize, \
-    ValueWithStatistics
+from hcve_lib.custom_types import Prediction, Target, ExceptionValue, Splits, Metric, OptimizationDirection
 from hcve_lib.functional import flatten, pipe
 from hcve_lib.splitting import resample_prediction_test
 from hcve_lib.utils import get_y_split, loc, transpose_list
-from rpy2 import robjects
-from rpy2.interactive.packages import importr
 
 
 @dataclass

@@ -52,14 +52,8 @@ def test_Model():
         def get_estimator(self) -> BaseEstimator:
             return LinearRegression()
 
-    result = cross_validate(
-        lambda random_state: TestModel(),
-        data, ['x'],
-        'y',
-        get_splits=partial(get_train_test, test_size=0.5),
-        random_state=54,
-        n_jobs=1
-    )
+    result = cross_validate(lambda random_state: TestModel(), data, ['x'],
+                            get_splits=partial(get_train_test, test_size=0.5), random_state='y', n_jobs=1)
 
     assert result['train_test']['split'] == ([0, 1, 7, 2, 5], [4, 8, 6, 3, 9])
     assert result['train_test']['X_columns'] == ['x']

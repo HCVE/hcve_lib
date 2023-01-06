@@ -1,14 +1,17 @@
 import sys
 from typing import List, Dict
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
+
+from hcve_lib.custom_types import Result, Prediction
 from hcve_lib.functional import itemmap_recursive, map_recursive
 from hcve_lib.utils import get_class_ratios, decamelize_arguments, camelize_return, map_column_names, \
     cumulative_count, inverse_cumulative_count, key_value_swap, index_data, list_to_dict_by_keys, subtract_lists, \
     map_groups_iloc, remove_prefix, remove_column_prefix, transpose_dict, map_groups_loc, loc, split_data, \
     get_fraction_missing, get_keys, sort_columns_by_order, is_noneish, sort_index_by_order, SurvivalResample, \
-    transpose_list, binarize, get_fractions, run_parallel, is_numeric
+    transpose_list, binarize, get_fractions, run_parallel, is_numeric, get_models_from_repeats, get_jobs
 from imblearn.under_sampling import RandomUnderSampler
 from numpy.testing import assert_array_equal
 from pandas import Series, DataFrame, Int64Index
@@ -21,7 +24,6 @@ def test_get_class_ratio():
 
 
 def test_decamelize_arguments():
-
     @decamelize_arguments
     def test_function(arg1: Dict, arg2: List):
         return arg1, arg2
@@ -32,17 +34,16 @@ def test_decamelize_arguments():
             'secondVariable': 2
         }],
     ) == (
-        {
-            'one_variable': 1
-        },
-        [{
-            'second_variable': 2
-        }],
-    )
+               {
+                   'one_variable': 1
+               },
+               [{
+                   'second_variable': 2
+               }],
+           )
 
 
 def test_camelize_return():
-
     @camelize_return
     def test_function(arg1: Dict, arg2: List):
         return arg1, arg2
@@ -53,13 +54,13 @@ def test_camelize_return():
             'second_variable': 2
         }],
     ) == (
-        {
-            'oneVariable': 1
-        },
-        [{
-            'secondVariable': 2
-        }],
-    )
+               {
+                   'oneVariable': 1
+               },
+               [{
+                   'secondVariable': 2
+               }],
+           )
 
 
 def test_map_columns():
@@ -83,11 +84,11 @@ def test_cumulative_count():
         5,
         8,
     ]))) == [
-        (0, 0.25),
-        (3, 0.5),
-        (5, 0.75),
-        (8, 1.0),
-    ]
+               (0, 0.25),
+               (3, 0.5),
+               (5, 0.75),
+               (8, 1.0),
+           ]
 
     assert list(cumulative_count(Series([
         np.nan,
@@ -95,10 +96,10 @@ def test_cumulative_count():
         5,
         8,
     ]))) == [
-        (3, 0.25),
-        (5, 0.5),
-        (8, 0.75),
-    ]
+               (3, 0.25),
+               (5, 0.5),
+               (8, 0.75),
+           ]
 
 
 def test_inverse_cumulative_count():
@@ -108,11 +109,11 @@ def test_inverse_cumulative_count():
         5,
         8,
     ]))) == [
-        (0, 1.),
-        (3, 0.75),
-        (5, 0.5),
-        (8, 0.25),
-    ]
+               (0, 1.),
+               (3, 0.75),
+               (5, 0.5),
+               (8, 0.25),
+           ]
 
 
 def test_key_value_swap():
@@ -208,13 +209,13 @@ def test_transpose_dict():
             'a': 'z', 'b': 3
         },
     }) == {
-        'a': {
-            0: 'x', 1: 'y', 2: 'z'
-        },
-        'b': {
-            0: 1, 1: 2, 2: 3
-        },
-    }
+               'a': {
+                   0: 'x', 1: 'y', 2: 'z'
+               },
+               'b': {
+                   0: 1, 1: 2, 2: 3
+               },
+           }
 
 
 def test_transpose_list():
@@ -271,7 +272,6 @@ def test_loc():
 
 
 def test_split_data():
-
     X_train, y_train, X_test, y_test = split_data(
         X=DataFrame(
             {
@@ -282,13 +282,13 @@ def test_split_data():
         ),
         y={
             'data':
-            DataFrame(
-                {
-                    'tte': [0, 10, 200, 30, 40],
-                    'label': [0, 0, 0, 1, 1]
-                },
-                index=[10, 20, 30, 40, 50],
-            ),
+                DataFrame(
+                    {
+                        'tte': [0, 10, 200, 30, 40],
+                        'label': [0, 0, 0, 1, 1]
+                    },
+                    index=[10, 20, 30, 40, 50],
+                ),
         },
         prediction={
             'split': ([10, 50], [20, 30]),
@@ -335,7 +335,6 @@ def test_split_data():
 
 
 def test_split_data_remove_extended():
-
     X_train, y_train, X_test, y_test = split_data(
         DataFrame(
             {
@@ -346,13 +345,13 @@ def test_split_data_remove_extended():
         ),
         {
             'data':
-            DataFrame(
-                {
-                    'tte': [0, 10, 200, 30, 40],
-                    'label': [0, 0, 0, 1, 1]
-                },
-                index=[10, 20, 30, 40, 50],
-            ),
+                DataFrame(
+                    {
+                        'tte': [0, 10, 200, 30, 40],
+                        'label': [0, 0, 0, 1, 1]
+                    },
+                    index=[10, 20, 30, 40, 50],
+                ),
         },
         {
             'split': ([10, 50], [20, 30, 40]),
@@ -407,11 +406,11 @@ def test_map_recursive():
         },
         lambda num, _: num + 1 if isinstance(num, int) else num,
     ) == {
-        'a': {
-            'b': [3, 4],
-            'c': 5,
-        }
-    }
+               'a': {
+                   'b': [3, 4],
+                   'c': 5,
+               }
+           }
 
 
 def test_get_keys():
@@ -428,8 +427,8 @@ def test_itemmap_recursive():
         },
         lambda k, v, l: (k + 'b', v + 1),
     ) == {
-        'xb': 2, 'yb': 3
-    }
+               'xb': 2, 'yb': 3
+           }
 
     assert itemmap_recursive(
         (1, 2, 3),
@@ -449,17 +448,17 @@ def test_itemmap_recursive():
         },
         lambda k, v, l: (k + 'b', v + 1 if isinstance(v, int) else v),
     ) == {
-        'xb': {
-            'yb': 2
-        },
-    }
+               'xb': {
+                   'yb': 2
+               },
+           }
 
     assert itemmap_recursive(
         {'x': [1, 2, 3]},
         lambda k, v, l: (str(k) + 'b', v + l if isinstance(v, int) else v),
     ) == {
-        'xb': [2, 3, 4],
-    }
+               'xb': [2, 3, 4],
+           }
 
 
 def test_sort_columns_by_order():
@@ -556,3 +555,30 @@ def test_is_numeric():
 # TODO
 def test_get_categorical_columns():
     categories = get_categorical_columns(DataFrame({'x': [1], 'y': ['cat']}, dtypes={'x': int, 'y': 'category'}))
+
+
+def test_get_models_from_repeats():
+    model1 = Mock()
+    model1.feature_importances_ = [0.1, 0.5]
+
+    forests = get_models_from_repeats([{'split1': {'model': model1}}])
+    print(forests)
+
+
+@patch('multiprocessing.cpu_count', Mock(return_value=10))
+def test_get_jobs():
+    granted, residual = get_jobs(4, 10)
+    assert granted == 4
+    assert residual == 6
+
+    granted, residual = get_jobs(-1, 8)
+    assert granted == 8
+    assert residual == 2
+
+    granted, residual = get_jobs(12, 8)
+    assert granted == 10
+    assert residual == 1
+
+    granted, residual = get_jobs(-1)
+    assert granted == 10
+    assert residual == 1

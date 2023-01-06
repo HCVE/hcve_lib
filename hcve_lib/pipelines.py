@@ -1,4 +1,4 @@
-from functools import partial
+from functools import partial, reduce
 from typing import Any, Tuple, Callable, Dict
 
 from optuna import Trial
@@ -6,10 +6,11 @@ from pandas import DataFrame, Series
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
-from xgboost import XGBRegressor
-
+from xgboost import XGBRegressor, XGBClassifier
+import numpy as np
 from hcve_lib.custom_types import Estimator, Target, TargetTransformer, Method, ExceptionValue, Model
-from hcve_lib.wrapped_sklearn import DFPipeline, DFRandomForestRegressor
+from hcve_lib.wrapped_sklearn import DFPipeline, DFRandomForestRegressor, DFRandomForestClassifier, DFXGBClassifier, \
+    DFXGBRegressor
 
 
 class EstimatorDecorator:
@@ -152,9 +153,6 @@ class LifeTime(EstimatorDecorator, BaseEstimator):
 
 class XGBoost(Model):
 
-    def get_estimator(self) -> BaseEstimator:
-        return XGBRegressor()
-
     def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
         hyperparameters = {
             'n_estimators': trial.suggest_int(f'{prefix}_n_estimators', 5, 200),
@@ -192,31 +190,44 @@ class XGBoost(Model):
         new_config['max_depth'] = None if max_depth == 'Unlimited' else max_depth
 
         new_config['learning_rate'] = st.select_slider(
-            'Fraction of samples for each tree (subsample)',
+            'Learning rate',
             np.arange(0.1, 1, 0.1),
             value=current_config.get('learning_rate', 0.8),
         )
 
         new_config['subsample'] = st.select_slider(
-            'Fraction of samples for each tree (subsample)',
+            'Fraction of samples for each XGB tree (subsample)',
             np.arange(0.1, 1, 0.1),
             value=current_config.get('subsample', 0.8),
+        )
+
+        new_config['colsample_bytree'] = st.select_slider(
+            'Fraction of variables for each XGB tree (colsample_bytree)',
+            np.arange(0.1, 1, 0.1),
+            value=current_config.get('colsample_bytree', 0.8),
         )
 
         return new_config
 
 
-class RandomForest(Model):
-
+class XGBoostRegressor(XGBoost):
     def get_estimator(self) -> BaseEstimator:
-        return DFRandomForestRegressor()
+        return DFXGBRegressor(random_state=self.random_state, seed=self.random_state)
+
+
+class XBoostClassifier(XGBoost):
+    def get_estimator(self) -> BaseEstimator:
+        return DFXGBClassifier(random_state=self.random_state, seed=self.random_state)
+
+
+class RandomForest(Model):
 
     def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
         hyperparameters = {
-            'n_estimators': trial.suggest_int(f'{prefix}_n_estimators', 5, 200),
+            'n_estimators': trial.suggest_int(f'{prefix}_n_estimators', 5, 2000),
             'max_depth': trial.suggest_int(f'{prefix}_max_depth', 1, 10),
             'min_samples_split': trial.suggest_int(f'{prefix}_min_samples_split', 2, 100),
-            'max_features': trial.suggest_categorical(f'{prefix}_max_features', ['auto', 'sqrt', 'log2']),
+            'max_features': trial.suggest_categorical(f'{prefix}_max_features', ['sqrt', 'log2']),
             'oob_score': trial.suggest_categorical(f'{prefix}_oob_score', [True, False]),
         }
         return trial, hyperparameters
@@ -230,11 +241,10 @@ class RandomForest(Model):
         new_config['n_estimators'] = st.slider(
             "Number trees (n_tree)",
             min_value=1,
-            max_value=2000,
+            max_value=5000,
             value=current_config.get('n_estimators', 100),
             key='n_estimators'
         )
-
         max_depth = st.select_slider(
             'Tree depth (max_depth)',
             [*range(1, 20), 'Unlimited', ],
@@ -245,13 +255,85 @@ class RandomForest(Model):
 
         new_config['min_samples_split'] = st.select_slider(
             'Minimum sample for decision (min_samples_split)',
-            [*range(1, 20)],
+            [*range(1, 50)],
             value=current_config.get('min_samples_split', 2),
         )
 
         new_config['max_features'] = st.select_slider(
             'Subset of features for decision (max_features)',
-            ["log2", "sqrt", *range(1, 20)],
+            ["log2", "sqrt", *range(1, 100)],
             value=current_config.get('max_features', 'sqrt'),
         )
         return new_config
+
+
+class RandomForestRegressor(RandomForest):
+    def get_estimator(self) -> BaseEstimator:
+        return DFRandomForestRegressor(random_state=self.random_state)
+
+
+class RandomForestClassifier(RandomForest):
+    def get_estimator(self) -> BaseEstimator:
+        return DFRandomForestClassifier(random_state=self.random_state)
+
+
+class RepeatedEnsemble(Estimator):
+    def __init__(self, get_pipeline: Callable, repeats: int = 10, random_state: int = None):
+        self.get_pipeline = get_pipeline
+        self.repeats = repeats
+        self.params = {}
+        self.random_state = random_state
+        self.estimators = []
+        for repeat in range(self.repeats):
+            self.estimators.append(self.get_pipeline(random_state=self.random_state + (repeat * 10000)))
+
+    def get_estimator(self):
+        return self.get_pipeline(random_state=self.random_state)
+
+    def fit(self, X, y, *args, **kwargs):
+        self.estimators = []
+        for repeat in range(self.repeats):
+            pipeline = self.get_pipeline(random_state=self.random_state + (repeat * 10000), X=X)
+            pipeline.set_params(**self.params)
+            pipeline.fit(X, y)
+            self.estimators.append(pipeline)
+
+    def transform(self, X: DataFrame):
+        return self.estimators[0].transform(X)
+
+    def predict(self, X: DataFrame):
+        return self.estimators[0].predict(X)
+
+    def predict_proba(self, X: DataFrame):
+        y_probas = self.predict_proba_separate(X)
+        y_probas_averaged = reduce(lambda sum_df, next_df: sum_df + next_df, y_probas) / len(y_probas)
+        return y_probas_averaged
+
+    def predict_proba_separate(self, X: DataFrame):
+        y_preds = []
+        for estimator in self.estimators:
+            y_preds.append(estimator.predict_proba(X))
+        return y_preds
+
+    def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
+        return self.estimators[0].suggest_optuna(trial, prefix)
+
+    def set_params(self, **kwargs):
+        self.params = kwargs
+        for estimator in self.estimators:
+            estimator.set_params(**self.params)
+
+    def get_params(self, **kwargs):
+        if self.params is not None:
+            return self.params
+        else:
+            return self.get_estimator().get_params(**kwargs)
+
+    def __getattr__(self, item):
+        if hasattr(self.estimators[0], item):
+            return getattr(self.estimators[0], item)
+        else:
+            raise AttributeError(f'AttributeError: object has no attribute \'{item}\'')
+
+    def __getitem__(self, item):
+        return self.estimator[item]

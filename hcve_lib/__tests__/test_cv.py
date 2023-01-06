@@ -6,11 +6,11 @@ from optuna import Trial
 from pandas import DataFrame, Series
 from statsmodels.compat.pandas import assert_frame_equal
 
-from hcve_lib.custom_types import Target, Estimator, Metric, Prediction, ExceptionValue, ValueWithCI, \
-    OptimizationDirection
+from hcve_lib.custom_types import Target, Estimator, Prediction, ExceptionValue, ValueWithCI
 from hcve_lib.cv import cross_validate, CrossValidateParams, OptimizationParams
 from hcve_lib.functional import always
 from hcve_lib.metrics import Accuracy
+from hcve_lib.metrics_types import Metric, OptimizationDirection
 from hcve_lib.wrapped_sklearn import DFPipeline
 
 

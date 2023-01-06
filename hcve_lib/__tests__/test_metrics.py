@@ -5,10 +5,10 @@ import numpy as np
 from numpy import mean
 from pandas import Series, DataFrame
 from pandas._testing import assert_series_equal
-from sklearn.metrics import f1_score
 
-from hcve_lib.custom_types import Prediction, Target, ExceptionValue, Metric, OptimizationDirection
-from hcve_lib.metrics import StratifiedMetric, SimpleBrier, BootstrappedMetric, BinaryMetricAtTime
+from hcve_lib.custom_types import Prediction, Target, ExceptionValue
+from hcve_lib.metrics import StratifiedMetric, SimpleBrier, BootstrappedMetric, BinaryMetricAtTime, FunctionMetric
+from hcve_lib.metrics_types import Metric, OptimizationDirection
 
 
 def test_StratifiedMetric():
@@ -93,7 +93,7 @@ def test_BootstrappedMetric():
     }]
 
     # STRATIFICATION
-    
+
 
 def test_SimpleBrier():
     brier = SimpleBrier(time=100, is_train=True)
@@ -147,3 +147,26 @@ def test_BinaryMetricAtTime():
 
     assert_series_equal(y_pred, Series([0, 1, 1], index=[1, 2, 3]))
     assert_series_equal(y_true, Series([1, 1, 0], index=[1, 2, 3]))
+
+
+def test_FunctionMetric():
+    def dummy_metric(y_true: Series, y_pred: Series):
+        return (y_true == y_pred).sum()
+
+    assert FunctionMetric(dummy_metric).get_names({}, Series()) == ['dummy_metric']
+
+    prediction = Prediction(
+        y_pred=Series([1, 2, 3], index=[10, 20, 30]),
+        split=([], [10, 20, 30]),
+    )
+    y = Series([1, 3, 3], index=[10, 20, 30])
+    metric = FunctionMetric(dummy_metric)
+    assert metric.get_names(
+        prediction,
+        y,
+    ) == ['dummy_metric']
+
+    assert metric.get_values(
+        prediction,
+        y,
+    ) == [2]

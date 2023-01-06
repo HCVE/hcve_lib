@@ -13,6 +13,8 @@ from logging import Logger
 from numbers import Real
 from pathlib import Path
 from pprint import pprint
+
+import pandas as pd
 from toolz import valmap
 from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional, Sequence, Hashable, cast, \
     Union
@@ -24,8 +26,8 @@ from IPython import get_ipython
 from filelock import FileLock, UnixFileLock
 from flask_socketio import SocketIO
 from frozendict import frozendict
-from hcve_lib.custom_types import SurvivalPairTarget, Prediction, Target, TrainTestIndex
-from hcve_lib.functional import pipe, unzip
+from hcve_lib.custom_types import SurvivalPairTarget, Prediction, Target, TrainTestIndex, Result, Estimator
+from hcve_lib.functional import pipe, unzip, flatten
 from humps import decamelize, camelize
 from imblearn.over_sampling.base import BaseOverSampler
 from matplotlib import pyplot
@@ -33,7 +35,7 @@ from numpy import ndarray, recarray, isnan
 from pandas import Series, DataFrame, Index
 from pandas.core.groupby import DataFrameGroupBy
 
-empty_dict: Mapping = frozendict()
+empty_dict: Dict = frozendict()
 
 
 class LockedShelve:
@@ -175,7 +177,6 @@ def camelize_adjusted(string: str) -> str:
 
 
 def decamelize_arguments(function: Callable) -> Callable:
-
     def decamelize_arguments_(*args, **kwargs):
         return function(
             *[decamelize_recursive(arg) for arg in args],
@@ -187,7 +188,6 @@ def decamelize_arguments(function: Callable) -> Callable:
 
 
 def camelize_return(function: Callable) -> Callable:
-
     def camelize_return_(*args, **kwargs):
         return camelize_recursive(function(*args, **kwargs))
 
@@ -195,7 +195,6 @@ def camelize_return(function: Callable) -> Callable:
 
 
 def to_plain_decorator(function: Callable) -> Callable:
-
     def to_plain_decorator_(*args, **kwargs):
         return to_plain(function(*args, **kwargs))
 
@@ -203,9 +202,7 @@ def to_plain_decorator(function: Callable) -> Callable:
 
 
 def get_event_listener(socketio: SocketIO):
-
     def event_listener_1(*socketio_args, **socketio_kwargs) -> Callable:
-
         def event_listener_2(function: Callable):
             return pipe(
                 function,
@@ -300,10 +297,10 @@ def index_data(indexes: Iterable[int], data: IndexData) -> IndexData:
 
 
 def loc(
-    index: Index | List[int],
-    data: IndexData,
-    ignore_not_present: bool = False,
-    logger: Logger = None,
+        index: Index | List[int],
+        data: IndexData,
+        ignore_not_present: bool = False,
+        logger: Logger = None,
 ) -> IndexData:
     if isinstance(data, (DataFrame, Series)):
         if ignore_not_present:
@@ -332,8 +329,8 @@ ListToDictValue = TypeVar('ListToDictValue')
 
 
 def list_to_dict_by_keys(
-    input_list: Iterable[ListToDictValue],
-    keys: Iterable[ListToDictKey],
+        input_list: Iterable[ListToDictValue],
+        keys: Iterable[ListToDictKey],
 ) -> Dict[ListToDictKey, ListToDictValue]:
     return {key: value for key, value in zip(keys, input_list)}
 
@@ -348,15 +345,15 @@ SubtractListT = TypeVar('SubtractListT')
 
 
 def subtract_lists(
-    list1: List[SubtractListT],
-    list2: List[SubtractListT],
+        list1: List[SubtractListT],
+        list2: List[SubtractListT],
 ) -> List[SubtractListT]:
     return [value for value in list1 if value not in list2]
 
 
 def map_groups_iloc(
-    groups: DataFrameGroupBy,
-    flatten_data: DataFrame,
+        groups: DataFrameGroupBy,
+        flatten_data: DataFrame,
 ) -> Iterable[Tuple[Any, List[int]]]:
     current_index = 0
     for key, group in groups:
@@ -404,7 +401,7 @@ TransposeDictValue = TypeVar('TransposeDictValue')
 
 TransposeDictInput = Dict[
     TransposeDictT1, \
-    Dict[TransposeDictT2, TransposeDictValue]
+        Dict[TransposeDictT2, TransposeDictValue]
 ]
 
 
@@ -464,9 +461,9 @@ def \
 
 
 def get_X_split(
-    X: DataFrame,
-    fold: Prediction,
-    logger: Logger = None,
+        X: DataFrame,
+        fold: Prediction,
+        logger: Logger = None,
 ):
     split_train, split_test = filter_split_in_index(fold['split'], X.index)
 
@@ -497,13 +494,13 @@ def get_X_split(
 
 
 def get_y_split(
-    y: Target,
-    fold: Prediction,
-    logger: Logger = None,
+        y: Target,
+        fold: Prediction,
+        logger: Logger = None,
 ):
     split_train, split_test = filter_split_in_index(
         fold['split'],
-        y.data.index,
+        y.index,
     )
 
     if logger is not None:
@@ -522,7 +519,7 @@ def get_y_split(
 
     if logger:
         log_additional_removed(
-            y.data,
+            y,
             fold['y_proba'],
             logger,
             'from y test set',
@@ -563,8 +560,8 @@ def get_tte(target: Union[DataFrame, Dict]) -> np.ndarray:
 
 
 def cross_validate_apply_mask(
-    mask: Dict[str, bool],
-    data: DataFrame,
+        mask: Dict[str, bool],
+        data: DataFrame,
 ) -> DataFrame:
     new_data = data.copy()
     if set(mask.keys()) != set(data.columns):
@@ -656,15 +653,15 @@ GetKeysSubsetT = TypeVar(
 
 
 def get_keys(
-    keys: Iterable[Hashable],
-    dictionary: GetKeysSubsetT,
+        keys: Iterable[Hashable],
+        dictionary: GetKeysSubsetT,
 ) -> GetKeysSubsetT:
     return {key: dictionary[key] for key in keys}  # type: ignore
 
 
 def sort_columns_by_order(
-    data_frame: DataFrame,
-    order: List[str],
+        data_frame: DataFrame,
+        order: List[str],
 ) -> DataFrame:
     columns_not_present = [column for column in order if column not in data_frame]
 
@@ -675,8 +672,8 @@ def sort_columns_by_order(
 
 
 def sort_index_by_order(
-    data_frame: DataFrame,
-    order: List[str],
+        data_frame: DataFrame,
+        order: List[str],
 ) -> DataFrame:
     index_not_present = [index for index in order if index not in data_frame.index]
 
@@ -830,3 +827,45 @@ class DictSubSet:
 
     def __repr__(self):
         return repr(self.items)
+
+
+# TODO: test
+def get_models_from_repeats(results: List[Result]) -> List[Estimator]:
+    return list(flatten([get_models_from_result(result) for result in results]))
+
+
+# TODO: test
+def get_models_from_result(result: Result) -> List[Estimator]:
+    return [prediction['model'].estimators[0][-1].estimator for prediction in result.values()]
+
+
+def get_tree_importance(models: List[Estimator]) -> DataFrame:
+    importances = [forest.feature_importances_ for forest in models]
+
+    forest_importances = pd.DataFrame({num: importance for num, importance in enumerate(importances)},
+                                      index=models[0].fit_feature_names)
+
+    forest_importance_avg = forest_importances.mean(axis=1)
+    forest_importance_std = forest_importances.std(axis=1)
+
+    return DataFrame({
+        'mean': forest_importance_avg,
+        'std': forest_importance_std
+    }).sort_values('mean')
+
+
+def is_numerical(o):
+    return 'float' in str(o.dtype) or 'int' in str(o.dtype)
+
+
+def get_jobs(n_jobs, maximum=None):
+    cpu_count_value = multiprocessing.cpu_count()
+    if n_jobs == -1:
+        if maximum is None:
+            jobs_taken = cpu_count_value
+        else:
+            jobs_taken = min(cpu_count_value, maximum)
+    else:
+        jobs_taken = min(cpu_count_value, n_jobs)
+
+    return jobs_taken, max(1, cpu_count_value - jobs_taken)

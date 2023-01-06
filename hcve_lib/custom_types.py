@@ -3,7 +3,7 @@ from abc import abstractmethod, ABC
 from collections import namedtuple
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import auto, Enum
+from enum import Enum
 from logging import Logger
 from typing import TypedDict, Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable, Callable, Type
 
@@ -29,11 +29,11 @@ TrainTestSplitter = Callable[..., TrainTestSplits]
 
 @dataclass
 class TargetObject:
-    _data: TargetData
+    _inner: TargetData
     _name: Optional[str]
 
     def __init__(self, data: TargetData, name: Optional[str] = None):
-        self._data = data
+        self._inner = data
         self._name = name
 
     @property
@@ -41,15 +41,26 @@ class TargetObject:
         if self._name is not None:
             return self._name
         else:
-            return self._data.name
+            return self._inner.name
 
     @property
     def data(self):
-        return self._data
+        return self._inner
 
     def update_data(self, data):
         cloned = TargetObject(data=data, name=self.name)
         return cloned
+
+    def __getattr__(self, item):
+        print(self._inner)
+        print(item)
+        if hasattr(self._inner, item):
+            return getattr(self._inner, item)
+        else:
+            raise AttributeError(f'AttributeError: object has no attribute \'{item}\'')
+
+    def __getitem__(self, item):
+        return self._inner[item]
 
 
 Target = TargetObject | Series
@@ -145,6 +156,7 @@ class Estimator(BaseEstimator):
 
 class Model(Estimator, ABC):
     estimator: Estimator
+    params: Dict
 
     def __init__(
             self,
@@ -156,9 +168,11 @@ class Model(Estimator, ABC):
         self.logger = logger
         self.log_mlflow = log_mlflow
         self.estimator = self.get_estimator()
+        self.params = {}
 
     def fit(self, X: DataFrame, y: TargetData, *args, **kwargs):
         self.estimator = self.get_estimator()
+        self.estimator.set_params(**self.params)
         self.estimator.fit(X, y, *args, **kwargs)
         return self
 
@@ -179,6 +193,7 @@ class Model(Estimator, ABC):
         raise NotImplementedError
 
     def set_params(self, **kwargs):
+        self.params = kwargs
         self.estimator.set_params(**kwargs)
 
     def get_params(self, **kwargs):
@@ -362,43 +377,3 @@ class StrEnum(Enum):
             return False
 
         return self.name == other.name and self.value == other.value
-
-
-class OptimizationDirection(StrEnum):
-    MAXIMIZE = auto()
-    MINIMIZE = auto()
-
-
-class Metric(ABC):
-
-    @abstractmethod
-    def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
-    ) -> List[str]:
-        ...
-
-    @abstractmethod
-    def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
-    ) -> List[Union[ExceptionValue, float, ValueWithCI]]:
-        ...
-
-    @abstractmethod
-    def get_direction(self) -> OptimizationDirection:
-        ...
-
-
-class Minimize:
-
-    def get_direction(self) -> OptimizationDirection:
-        return OptimizationDirection.MINIMIZE
-
-
-class Maximize:
-
-    def get_direction(self) -> OptimizationDirection:
-        return OptimizationDirection.MAXIMIZE

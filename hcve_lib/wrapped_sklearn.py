@@ -14,7 +14,7 @@ from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer, KNNImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler, OrdinalEncoder, FunctionTransformer
-from xgboost import XGBClassifier
+from xgboost import XGBClassifier, XGBRegressor
 
 from sksurv.linear_model import CoxnetSurvivalAnalysis, CoxPHSurvivalAnalysis
 # noinspection PyAttributeOutsideInit,PyUnresolvedReferences
@@ -52,7 +52,7 @@ class DFWrapped:
     def predict_proba(self, X, *args, **kwargs):
         self.save_fit_features(X)
         y_proba = super().predict_proba(X, *args, **kwargs)  # type: ignore
-        return y_proba
+        return DataFrame(y_proba, index=X.index).iloc[:, 1]
 
     def transform(self, X, *args, **kwargs):
         try:
@@ -67,7 +67,12 @@ class DFWrapped:
         self.fit_feature_names = self.get_fit_features(X)
 
     def get_params(self, *args, **kwargs):
-        return super().get_params(*args, **kwargs)
+        try:
+            return super().get_params(*args, **kwargs)
+        except AttributeError:
+            return {
+                'random_state': None,
+            }
 
     def get_feature_names(self):
         try:
@@ -180,12 +185,16 @@ class DFXGBClassifier(DFWrapped, XGBClassifier):
     ...
 
 
+class DFXGBRegressor(DFWrapped, XGBRegressor):
+    ...
+
+
 class DFPipeline(Pipeline, Estimator):
     y_name: Optional[str]
 
     def fit(self, X: DataFrame, y: Target = None, **fit_params) -> None:
         self.y_name = y.name
-        super().fit(X, y.data)
+        super().fit(X, y)
 
     def get_feature_names(self):
         return self.steps[-1][1].fit_feature_names

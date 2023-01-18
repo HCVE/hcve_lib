@@ -1,14 +1,17 @@
 from functools import partial, reduce
-from typing import Any, Tuple, Callable, Dict
+from typing import Any, Tuple, Callable, Dict, List, Iterable
 
+import numpy as np
+import pandas
 from optuna import Trial
 from pandas import DataFrame, Series
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
-from xgboost import XGBRegressor, XGBClassifier
-import numpy as np
-from hcve_lib.custom_types import Estimator, Target, TargetTransformer, Method, ExceptionValue, Model
+
+from hcve_lib.custom_types import Estimator, Target, TargetTransformer, Method, ExceptionValue, Model, TargetType, \
+    Result
+from hcve_lib.utils import is_numerical
 from hcve_lib.wrapped_sklearn import DFPipeline, DFRandomForestRegressor, DFRandomForestClassifier, DFXGBClassifier, \
     DFXGBRegressor
 
@@ -46,10 +49,10 @@ class TransformTarget:
 class TransformerTarget(BaseEstimator):
 
     def __init__(
-            self,
-            inner: Estimator,
-            transformer: TargetTransformer,
-            inverse: bool = True,
+        self,
+        inner: Estimator,
+        transformer: TargetTransformer,
+        inverse: bool = True,
     ):
         self.inner = inner
         self.transformer = transformer
@@ -96,11 +99,11 @@ def subsample_data(X: DataFrame) -> DataFrame:
 class Callback(BaseEstimator, TransformerMixin):
 
     def __init__(
-            self,
-            fit_callback: Callable[[DataFrame, Target], Any] = None,
-            transform_callback: Callable[[DataFrame], Any] = None,
-            breakpoint_fit: bool = False,
-            breakpoint_transform: bool = False,
+        self,
+        fit_callback: Callable[[DataFrame, Target], Any] = None,
+        transform_callback: Callable[[DataFrame], Any] = None,
+        breakpoint_fit: bool = False,
+        breakpoint_transform: bool = False,
     ):
         self.breakpoint_fit = breakpoint_fit
         self.breakpoint_transform = breakpoint_transform
@@ -144,8 +147,8 @@ class LifeTime(EstimatorDecorator, BaseEstimator):
             return ExceptionValue(e)
 
     def predict_survival_function(
-            self,
-            X: DataFrame,
+        self,
+        X: DataFrame,
     ) -> Callable[[int], float]:
         survival_functions = self._estimator.predict_survival_function(X)
         return (partial(self.add_age, fn, age) for age, fn in zip(X['AGE'], survival_functions))
@@ -183,7 +186,10 @@ class XGBoost(Model):
 
         max_depth = st.select_slider(
             'Tree depth (max_depth)',
-            [*range(1, 20), 'Unlimited', ],
+            [
+                *range(1, 20),
+                'Unlimited',
+            ],
             value=current_config.get('max_depth', 'Unlimited'),
         )
 
@@ -209,15 +215,13 @@ class XGBoost(Model):
 
         return new_config
 
-
-class XGBoostRegressor(XGBoost):
-    def get_estimator(self) -> BaseEstimator:
-        return DFXGBRegressor(random_state=self.random_state, seed=self.random_state)
-
-
-class XBoostClassifier(XGBoost):
-    def get_estimator(self) -> BaseEstimator:
-        return DFXGBClassifier(random_state=self.random_state, seed=self.random_state)
+    def get_estimator(self) -> Estimator:
+        if self.target_type == TargetType.REGRESSION:
+            return DFXGBRegressor(random_state=self.random_state, seed=self.random_state)
+        elif self.target_type == TargetType.CLASSIFICATION:
+            return DFXGBClassifier(random_state=self.random_state, seed=self.random_state)
+        else:
+            raise NotImplementedError
 
 
 class RandomForest(Model):
@@ -247,7 +251,10 @@ class RandomForest(Model):
         )
         max_depth = st.select_slider(
             'Tree depth (max_depth)',
-            [*range(1, 20), 'Unlimited', ],
+            [
+                *range(1, 20),
+                'Unlimited',
+            ],
             value=current_config.get('max_depth', 'Unlimited'),
         )
 
@@ -266,18 +273,17 @@ class RandomForest(Model):
         )
         return new_config
 
-
-class RandomForestRegressor(RandomForest):
-    def get_estimator(self) -> BaseEstimator:
-        return DFRandomForestRegressor(random_state=self.random_state)
-
-
-class RandomForestClassifier(RandomForest):
-    def get_estimator(self) -> BaseEstimator:
-        return DFRandomForestClassifier(random_state=self.random_state)
+    def get_estimator(self) -> Estimator:
+        if self.target_type == TargetType.REGRESSION:
+            return DFRandomForestRegressor(random_state=self.random_state)
+        elif self.target_type == TargetType.CLASSIFICATION:
+            return DFRandomForestClassifier(random_state=self.random_state)
+        else:
+            raise NotImplementedError
 
 
 class RepeatedEnsemble(Estimator):
+
     def __init__(self, get_pipeline: Callable, repeats: int = 10, random_state: int = None):
         self.get_pipeline = get_pipeline
         self.repeats = repeats
@@ -329,6 +335,18 @@ class RepeatedEnsemble(Estimator):
         else:
             return self.get_estimator().get_params(**kwargs)
 
+    def get_feature_importance(self) -> Series:
+        feature_importances = []
+        for estimator in self.estimators:
+            feature_importances.append(estimator.get_feature_importance())
+        return pandas.concat(feature_importances, axis=1)
+
+    def get_p_value_feature_importance(self, X: DataFrame, y: Target) -> Series:
+        feature_importances = []
+        for estimator in self.estimators:
+            feature_importances.append(estimator.get_p_value_feature_importance(X, y))
+        return pandas.concat(feature_importances, axis=1)
+
     def __getattr__(self, item):
         if hasattr(self.estimators[0], item):
             return getattr(self.estimators[0], item)
@@ -337,3 +355,36 @@ class RepeatedEnsemble(Estimator):
 
     def __getitem__(self, item):
         return self.estimator[item]
+
+
+def get_target_type(y: Target) -> TargetType:
+    if is_numerical(y):
+        return TargetType.REGRESSION
+    else:
+        return TargetType.CLASSIFICATION
+
+
+def aggregate_results(
+    results: List[Result] | Result,
+    callback: Callable[[Estimator], Any],
+) -> DataFrame:
+    if isinstance(results, list):
+        results_ = results
+    else:
+        results_ = [results]
+
+    model_output = {}
+
+    for repeat_n, result, in enumerate(results_):
+        for split_name, prediction in result.items():
+            model_output[f'{repeat_n}_{split_name}'] = callback(prediction)
+
+    return pandas.concat(model_output, axis=1)
+
+
+def get_results_feature_importance(results: List[Result] | Result) -> DataFrame:
+    return aggregate_results(results, lambda prediction: prediction['model'].get_feature_importance()).copy()
+
+
+def get_results_p_value_feature_importance(results: List[Result] | Result, X: DataFrame, y: Target) -> DataFrame:
+    return aggregate_results(results, lambda prediction: prediction['model'].get_p_value_feature_importance(X, y))

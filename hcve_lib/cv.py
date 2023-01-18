@@ -46,17 +46,17 @@ CROSS_VALIDATE_KEY = 'cross_validate'
 
 
 def objective_predictive_performance(
-        trial: Trial,
-        get_pipeline: Callable,
-        random_state: int,
-        X: DataFrame,
-        y: Target | Series,
-        get_splits: TrainTestSplitter,
-        hyperparameters: Dict,
-        log_mlflow: bool = False,
-        logger: logging.Logger = None,
-        objective_metric: Metric = ROC_AUC(),
-        predict_method: str = 'predict_proba',
+    trial: Trial,
+    get_pipeline: Callable,
+    random_state: int,
+    X: DataFrame,
+    y: Target | Series,
+    get_splits: TrainTestSplitter,
+    hyperparameters: Dict,
+    log_mlflow: bool = False,
+    logger: logging.Logger = None,
+    objective_metric: Metric = ROC_AUC(),
+    predict_method: str = 'predict_proba',
 ):
     start_time = process_time()
 
@@ -129,19 +129,19 @@ class Optimize:
     study_name = None
 
     def __init__(
-            self,
-            get_pipeline: Callable,
-            objective_evaluate: Callable,
-            random_state: int,
-            get_splits=None,
-            optimize_params: OptimizationParams = OptimizationParams(),
-            mlflow_callback=None,
-            optimize_callbacks: List[Callable] = None,
-            study_name: str = None,
-            catch_exceptions: bool = True,
-            logger: logging.Logger = None,
-            direction: str = 'maximize',
-            predict_method: str = 'predict_proba',
+        self,
+        get_pipeline: Callable,
+        objective_evaluate: Callable,
+        random_state: int,
+        get_splits=None,
+        optimize_params: OptimizationParams = OptimizationParams(),
+        mlflow_callback=None,
+        optimize_callbacks: List[Callable] = None,
+        study_name: str = None,
+        catch_exceptions: bool = True,
+        logger: logging.Logger = None,
+        direction: str = 'maximize',
+        predict_method: str = 'predict_proba',
     ):
         self.objective_evaluate = objective_evaluate
         self.optimize_params = optimize_params
@@ -233,17 +233,17 @@ def _objective_instantiate(self, trial, hyperparameters):
 
 
 def objective_variance(
-        trial: Trial,
-        get_pipeline: Callable,
-        random_state: int,
-        X: DataFrame,
-        y: Target | Series,
-        get_splits: TrainTestSplitter,
-        hyperparameters: Dict,
-        log_mlflow: bool = False,
-        logger: logging.Logger = None,
-        objective_metric: Metric = ROC_AUC(),
-        predict_method: str = 'predict_proba',
+    trial: Trial,
+    get_pipeline: Callable,
+    random_state: int,
+    X: DataFrame,
+    y: Target | Series,
+    get_splits: TrainTestSplitter,
+    hyperparameters: Dict,
+    log_mlflow: bool = False,
+    logger: logging.Logger = None,
+    objective_metric: Metric = ROC_AUC(),
+    predict_method: str = 'predict_proba',
 ):
     start_time = process_time()
 
@@ -271,12 +271,12 @@ def objective_variance(
 
 
 def optimize_per_split(
-        get_optimize: Callable[..., Optimize],
-        get_splits: Callable[[DataFrame, Target], Dict[Hashable, TrainTestIndex]],
-        X: DataFrame,
-        y: Target,
-        mlflow_track: bool = False,
-        n_jobs: int = -1,
+    get_optimize: Callable[..., Optimize],
+    get_splits: Callable[[DataFrame, Target], Dict[Hashable, TrainTestIndex]],
+    X: DataFrame,
+    y: Target,
+    mlflow_track: bool = False,
+    n_jobs: int = -1,
 ) -> Dict[Hashable, Optimize]:
     if n_jobs == -1:
         n_jobs = min(cpu_count(), len(get_splits(X, y)))
@@ -291,19 +291,18 @@ def optimize_per_split(
             y,
             mlflow_track,
         )
-        for fold_name,
-        fold in splits.items()
+        for fold_name, fold in splits.items()
     }
 
     return run_parallel(cross_validate_fit, fold_data, n_jobs)
 
 
 def optimize_per_group(
-        get_optimize: Callable[[], Optimize],
-        X: DataFrameGroupBy,
-        y: Target,
-        mlflow_track: bool = False,
-        n_jobs: int = -1,
+    get_optimize: Callable[[], Optimize],
+    X: DataFrameGroupBy,
+    y: Target,
+    mlflow_track: bool = False,
+    n_jobs: int = -1,
 ) -> Dict[Hashable, Optimize]:
     if n_jobs == -1:
         n_jobs = cpu_count()
@@ -315,8 +314,7 @@ def optimize_per_group(
             loc(group_X.index, y),
             mlflow_track,
         )
-        for group_name,
-        group_X in X
+        for group_name, group_X in X
     }
     return run_parallel(cross_validate_fit, fold_data, n_jobs)
 
@@ -325,10 +323,10 @@ ExecutePerGroupT = TypeVar('ExecutePerGroupT')
 
 
 def execute_per_group(
-        callback: Callable[[str, DataFrame, Target], ExecutePerGroupT],
-        X_group_by: DataFrameGroupBy,
-        y: Target,
-        n_jobs: int = -1,
+    callback: Callable[[str, DataFrame, Target], ExecutePerGroupT],
+    X_group_by: DataFrameGroupBy,
+    y: Target,
+    n_jobs: int = -1,
 ) -> Dict[Hashable, ExecutePerGroupT]:
     if n_jobs == -1:
         n_jobs = cpu_count()
@@ -336,7 +334,7 @@ def execute_per_group(
         group_X,
         loc(group_X.index, y),
     )
-        for group_name, group_X in X_group_by}
+                 for group_name, group_X in X_group_by}
     return run_parallel(callback, fold_data, n_jobs)
 
 
@@ -347,12 +345,10 @@ class OptimizeEstimator(Optimize, Estimator):
         super().fit(X, y, *args, **kwargs)
 
         trials_ = pipe(
-            self.study.trials,
-            partial(
+            self.study.trials, partial(
                 filter,
                 lambda _trial: not is_noneish(_trial.value),
-            ),
-            partial(
+            ), partial(
                 sorted,
                 key=lambda _trial: _trial.value,
                 reverse=True,
@@ -396,16 +392,16 @@ OnRepeatResults = Callable[[Result, int], None]
 
 
 def repeated_cross_validate(
-        n_repeats: int,
-        random_state: int,
-        get_repeat_mlflow_context: GetRepeatContext = noop_context_manager,
-        on_repeat_result: OnRepeatResults = noop,
-        n_jobs: Optional[int] = None,
-        *args: object,
-        **kwargs: object,
+    n_repeats: int,
+    random_state: int,
+    get_repeat_mlflow_context: GetRepeatContext = noop_context_manager,
+    on_repeat_result: OnRepeatResults = noop,
+    n_jobs: Optional[int] = None,
+    *args: object,
+    **kwargs: object,
 ) -> List[Result]:
     n_jobs, n_jobs_rest = get_jobs(n_jobs, maximum=n_repeats)
-
+    print('repeated_cross_validate', n_jobs, n_jobs_rest)
     data_for_repeats = {
         repeat_index: statements(
             run_random_state := random_state + repeat_index * 1000,
@@ -418,13 +414,14 @@ def repeated_cross_validate(
                 partial(on_repeat_result, random_state=run_random_state),
                 args,
                 toolz.merge(kwargs, {
-                    'random_state': run_random_state, 'n_jobs': n_jobs_rest
+                    'random_state': run_random_state,
+                    'n_jobs': n_jobs_rest
                 }),
             ),
         )
         for repeat_index in range(n_repeats)
     }
-
+    print('n_jobs', n_jobs)
     return pipe(
         run_parallel(
             run_cross_validate_repeat,
@@ -436,10 +433,10 @@ def repeated_cross_validate(
 
 
 def run_cross_validate_repeat(
-        get_context: Callable[[], AbstractContextManager],
-        on_result: Callable[[Result], None],
-        args,
-        kwargs,
+    get_context: Callable[[], AbstractContextManager],
+    on_result: Callable[[Result], None],
+    args,
+    kwargs,
 ):
     with get_context():
         result = cross_validate(**kwargs)
@@ -461,28 +458,23 @@ class CrossValidateParams:
 
 
 def cross_validate(
-        get_pipeline: Callable,
-        X: DataFrame,
-        y: Target,
-        get_splits: TrainTestSplitter,
-        random_state: Optional[int] = None,
-        predict_method: Optional[str] = None,
-        logger: Optional[logging.Logger] = None,
-        fit_params: Dict = empty_dict,
-        train_test_filter_callback: Optional[Callable] = None,
-        optimize: bool = False,
-        optimize_params: OptimizationParams = OptimizationParams(),
-        optimize_callbacks: Dict[str, Callable] = empty_dict,
-        precomputed_hyperparameters: Mapping[str, Dict] | Dict = None,
-        n_batches: int = 1,
-        mlflow: bool = False,
-        n_jobs: int = -1,
+    get_pipeline: Callable,
+    X: DataFrame,
+    y: Target,
+    get_splits: TrainTestSplitter,
+    random_state: Optional[int] = None,
+    predict_method: Optional[str] = 'predict',
+    logger: Optional[logging.Logger] = None,
+    fit_params: Dict = empty_dict,
+    train_test_filter_callback: Optional[Callable] = None,
+    optimize: bool = False,
+    optimize_params: OptimizationParams = OptimizationParams(),
+    optimize_callbacks: Dict[str, Callable] = empty_dict,
+    precomputed_hyperparameters: Mapping[str, Dict] | Dict = None,
+    n_batches: int = 1,
+    mlflow: bool = False,
+    n_jobs: int = -1,
 ) -> Result:
-    if predict_method is None:
-        if is_numerical(y):
-            predict_method = 'predict'
-        else:
-            predict_method = 'predict_proba'
 
     random_seed(random_state)
 
@@ -579,9 +571,9 @@ def get_removed_features_from_mask(column_masks: Dict[Hashable, Dict[Hashable, b
 
 
 def get_column_mask(
-        splits: TrainTestSplits,
-        X: DataFrame,
-        train_test_filter_callback: Callable[[Series, Series], bool] = None,
+    splits: TrainTestSplits,
+    X: DataFrame,
+    train_test_filter_callback: Callable[[Series, Series], bool] = None,
 ) -> Dict[Hashable, Dict[Hashable, bool]]:
     if train_test_filter_callback:
         return dict(get_column_mask_filter(
@@ -594,16 +586,16 @@ def get_column_mask(
 
 
 def get_columns_mask_default(
-        X: DataFrame,
-        splits: TrainTestSplits,
+    X: DataFrame,
+    splits: TrainTestSplits,
 ) -> Dict[Hashable, Dict[Hashable, bool]]:
     return valmap(lambda _: {column: False for column in X.columns}, splits)
 
 
 def get_column_mask_filter(
-        X: DataFrame,
-        splits: TrainTestSplits,
-        _train_test_filter: Callable[[DataFrame, DataFrame], bool],
+    X: DataFrame,
+    splits: TrainTestSplits,
+    _train_test_filter: Callable[[DataFrame, DataFrame], bool],
 ) -> Iterable[Tuple[Hashable, Dict[Hashable, bool]]]:
     for fold_name, (train, test) in splits.items():
         X_train = X.loc[train]
@@ -621,20 +613,16 @@ def get_column_mask_filter(
 
 
 def get_nested_optimization(
-        X: DataFrame,
-        random_state: int,
-        get_pipeline: Callable,
-        predict_method: str = 'predict_proba',
-        optimize_params: OptimizationParams = OptimizationParams(),
-        logger: Logger = None,
+    X: DataFrame,
+    random_state: int,
+    get_pipeline: Callable,
+    predict_method: str = 'predict_proba',
+    optimize_params: OptimizationParams = OptimizationParams(),
+    logger: Logger = None,
 ):
     direction = optimize_params.direction
 
-    objective_evaluate: OptimizeEvaluate = cast(
-        OptimizeEvaluate, partial(
-            optimize_params.objective,
-        )
-    )
+    objective_evaluate: OptimizeEvaluate = cast(OptimizeEvaluate, partial(optimize_params.objective, ))
 
     callbacks = []
 
@@ -665,21 +653,21 @@ def get_nested_optimization(
 
 
 def cross_validate_train(
-        X: DataFrame,
-        y: Target,
-        models: Dict[Hashable, Estimator],
-        splits_dict: TrainTestSplits,
-        filtered_columns: Dict[Hashable, Dict[Hashable, bool]],
-        random_state: int,
-        n_jobs: int = -1,
-        mlflow: bool = False,
-        logger: logging.Logger = None,
-        fit_params: Mapping = empty_dict,
+    X: DataFrame,
+    y: Target,
+    models: Dict[Hashable, Estimator],
+    splits_dict: TrainTestSplits,
+    filtered_columns: Dict[Hashable, Dict[Hashable, bool]],
+    random_state: int,
+    n_jobs: int = -1,
+    mlflow: bool = False,
+    logger: logging.Logger = None,
+    fit_params: Mapping = empty_dict,
 ) -> Dict[Hashable, Estimator]:
-    if n_jobs == -1:
-        n_jobs = cpu_count()
-    fold_data = [
-        (
+    print('cross_validate_train n_jobs', n_jobs)
+    n_jobs, _ = get_jobs(n_jobs, maximum=len(models))
+    fold_data = {
+        fold_name: (
             fold_name,
             models[fold_name],
             cross_validate_preprocess(
@@ -690,32 +678,15 @@ def cross_validate_train(
             random_state,
             mlflow,
             fit_params,
-        ) for fold_name, (train_split, test_split) in splits_dict.items()
-    ]
-
-    if n_jobs == 1:
-        models = list_to_dict_by_keys(
-            itertools.starmap(
-                cross_validate_fit,
-                fold_data,
-            ),
-            splits_dict.keys(),
         )
-    else:
-        with Pool(min(len(splits_dict), n_jobs)) as p:
-            models = list_to_dict_by_keys(
-                p.starmap(
-                    cross_validate_fit,
-                    fold_data,
-                ),
-                splits_dict.keys(),
-            )
-    return models
+        for fold_name, (train_split, test_split) in splits_dict.items()
+    }
+    return run_parallel(cross_validate_fit, fold_data, n_jobs)
 
 
 def cross_validate_preprocess(
-        data: DataFrame,
-        mask: Dict[Hashable, bool],
+    data: DataFrame,
+    mask: Dict[Hashable, bool],
 ):
     return pipe(
         data,
@@ -724,13 +695,13 @@ def cross_validate_preprocess(
 
 
 def cross_validate_predict(
-        X: DataFrame,
-        y: Target,
-        splits: TrainTestSplits,
-        random_state: int,
-        filtered_columns: Dict[Hashable, Dict[Hashable, bool]],
-        models: Dict[Hashable, Model],
-        predict_method: str,
+    X: DataFrame,
+    y: Target,
+    splits: TrainTestSplits,
+    random_state: int,
+    filtered_columns: Dict[Hashable, Dict[Hashable, bool]],
+    models: Dict[Hashable, Model],
+    predict_method: str,
 ) -> Iterable[Prediction]:
     for name, split in splits.items():
         model = models[name]
@@ -759,20 +730,20 @@ def cross_validate_predict(
 
 
 def cross_validate_fit(
-        split_name: str,
-        estimator: Estimator,
-        X: DataFrame,
-        y: Target,
-        random_state: int,
-        mlflow_track: bool = False,
-        fit_kwargs: Mapping = empty_dict,
+    split_name: str,
+    estimator: Estimator,
+    X: DataFrame,
+    y: Target,
+    random_state: int,
+    mlflow_track: bool = False,
+    fit_kwargs: Mapping = empty_dict,
 ) -> Estimator:
     random_seed(random_state)
     if mlflow_track:
         with start_run(
-                run_name=str(split_name),
-                nested=True,
-                experiment_id=get_active_experiment_id(),
+            run_name=str(split_name),
+            nested=True,
+            experiment_id=get_active_experiment_id(),
         ):
             estimator.fit(X, y, **fit_kwargs)
     else:

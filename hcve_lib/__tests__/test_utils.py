@@ -24,6 +24,7 @@ def test_get_class_ratio():
 
 
 def test_decamelize_arguments():
+
     @decamelize_arguments
     def test_function(arg1: Dict, arg2: List):
         return arg1, arg2
@@ -34,16 +35,17 @@ def test_decamelize_arguments():
             'secondVariable': 2
         }],
     ) == (
-               {
-                   'one_variable': 1
-               },
-               [{
-                   'second_variable': 2
-               }],
-           )
+        {
+            'one_variable': 1
+        },
+        [{
+            'second_variable': 2
+        }],
+    )
 
 
 def test_camelize_return():
+
     @camelize_return
     def test_function(arg1: Dict, arg2: List):
         return arg1, arg2
@@ -54,25 +56,27 @@ def test_camelize_return():
             'second_variable': 2
         }],
     ) == (
-               {
-                   'oneVariable': 1
-               },
-               [{
-                   'secondVariable': 2
-               }],
-           )
+        {
+            'oneVariable': 1
+        },
+        [{
+            'secondVariable': 2
+        }],
+    )
 
 
 def test_map_columns():
     assert_frame_equal(
         map_column_names(
             DataFrame({
-                'a': [1], 'b': [2]
+                'a': [1],
+                'b': [2]
             }),
             lambda k: k + 'x',
         ),
         DataFrame({
-            'ax': [1], 'bx': [2]
+            'ax': [1],
+            'bx': [2]
         }),
     )
 
@@ -84,11 +88,11 @@ def test_cumulative_count():
         5,
         8,
     ]))) == [
-               (0, 0.25),
-               (3, 0.5),
-               (5, 0.75),
-               (8, 1.0),
-           ]
+        (0, 0.25),
+        (3, 0.5),
+        (5, 0.75),
+        (8, 1.0),
+    ]
 
     assert list(cumulative_count(Series([
         np.nan,
@@ -96,10 +100,10 @@ def test_cumulative_count():
         5,
         8,
     ]))) == [
-               (3, 0.25),
-               (5, 0.5),
-               (8, 0.75),
-           ]
+        (3, 0.25),
+        (5, 0.5),
+        (8, 0.75),
+    ]
 
 
 def test_inverse_cumulative_count():
@@ -109,11 +113,11 @@ def test_inverse_cumulative_count():
         5,
         8,
     ]))) == [
-               (0, 1.),
-               (3, 0.75),
-               (5, 0.5),
-               (8, 0.25),
-           ]
+        (0, 1.),
+        (3, 0.75),
+        (5, 0.5),
+        (8, 0.25),
+    ]
 
 
 def test_key_value_swap():
@@ -183,10 +187,14 @@ def test_remove_prefix():
 def test_remove_column_prefix():
     assert_frame_equal(
         remove_column_prefix(DataFrame({
-            'a': [1], 'categorical__b': ['a'], 'continuous__c': [3]
+            'a': [1],
+            'categorical__b': ['a'],
+            'continuous__c': [3]
         })),
         DataFrame({
-            'a': [1], 'b': ['a'], 'c': [3]
+            'a': [1],
+            'b': ['a'],
+            'c': [3]
         }),
     )
 
@@ -200,22 +208,29 @@ def test_percent_missing():
 def test_transpose_dict():
     assert transpose_dict({
         0: {
-            'a': 'x', 'b': 1
+            'a': 'x',
+            'b': 1
         },
         1: {
-            'a': 'y', 'b': 2
+            'a': 'y',
+            'b': 2
         },
         2: {
-            'a': 'z', 'b': 3
+            'a': 'z',
+            'b': 3
         },
     }) == {
-               'a': {
-                   0: 'x', 1: 'y', 2: 'z'
-               },
-               'b': {
-                   0: 1, 1: 2, 2: 3
-               },
-           }
+        'a': {
+            0: 'x',
+            1: 'y',
+            2: 'z'
+        },
+        'b': {
+            0: 1,
+            1: 2,
+            2: 3
+        },
+    }
 
 
 def test_transpose_list():
@@ -281,14 +296,13 @@ def test_split_data():
             index=[10, 20, 30, 40, 50],
         ),
         y={
-            'data':
-                DataFrame(
-                    {
-                        'tte': [0, 10, 200, 30, 40],
-                        'label': [0, 0, 0, 1, 1]
-                    },
-                    index=[10, 20, 30, 40, 50],
-                ),
+            'data': DataFrame(
+                {
+                    'tte': [0, 10, 200, 30, 40],
+                    'label': [0, 0, 0, 1, 1]
+                },
+                index=[10, 20, 30, 40, 50],
+            ),
         },
         prediction={
             'split': ([10, 50], [20, 30]),
@@ -309,7 +323,8 @@ def test_split_data():
     )
     assert_frame_equal(y_train['data'], DataFrame(
         {
-            'tte': [0, 40], 'label': [0, 1]
+            'tte': [0, 40],
+            'label': [0, 1]
         },
         index=[10, 50],
     ))
@@ -327,7 +342,8 @@ def test_split_data():
         y_test['data'],
         DataFrame(
             {
-                'tte': [200], 'label': [0]
+                'tte': [200],
+                'label': [0]
             },
             index=[30],
         ),
@@ -344,14 +360,13 @@ def test_split_data_remove_extended():
             index=[10, 20, 30, 40, 50],
         ),
         {
-            'data':
-                DataFrame(
-                    {
-                        'tte': [0, 10, 200, 30, 40],
-                        'label': [0, 0, 0, 1, 1]
-                    },
-                    index=[10, 20, 30, 40, 50],
-                ),
+            'data': DataFrame(
+                {
+                    'tte': [0, 10, 200, 30, 40],
+                    'label': [0, 0, 0, 1, 1]
+                },
+                index=[10, 20, 30, 40, 50],
+            ),
         },
         {
             'split': ([10, 50], [20, 30, 40]),
@@ -370,7 +385,8 @@ def test_split_data_remove_extended():
     )
     assert_frame_equal(y_train['data'], DataFrame(
         {
-            'tte': [0, 40], 'label': [0, 1]
+            'tte': [0, 40],
+            'label': [0, 1]
         },
         index=[10, 50],
     ))
@@ -386,7 +402,8 @@ def test_split_data_remove_extended():
     )
     assert_frame_equal(y_test['data'], DataFrame(
         {
-            'tte': [10, 30], 'label': [0, 1]
+            'tte': [10, 30],
+            'label': [0, 1]
         },
         index=[20, 40],
     ))
@@ -406,11 +423,11 @@ def test_map_recursive():
         },
         lambda num, _: num + 1 if isinstance(num, int) else num,
     ) == {
-               'a': {
-                   'b': [3, 4],
-                   'c': 5,
-               }
-           }
+        'a': {
+            'b': [3, 4],
+            'c': 5,
+        }
+    }
 
 
 def test_get_keys():
@@ -423,12 +440,14 @@ def test_itemmap_recursive():
 
     assert itemmap_recursive(
         {
-            'x': 1, 'y': 2
+            'x': 1,
+            'y': 2
         },
         lambda k, v, l: (k + 'b', v + 1),
     ) == {
-               'xb': 2, 'yb': 3
-           }
+        'xb': 2,
+        'yb': 3
+    }
 
     assert itemmap_recursive(
         (1, 2, 3),
@@ -448,24 +467,26 @@ def test_itemmap_recursive():
         },
         lambda k, v, l: (k + 'b', v + 1 if isinstance(v, int) else v),
     ) == {
-               'xb': {
-                   'yb': 2
-               },
-           }
+        'xb': {
+            'yb': 2
+        },
+    }
 
     assert itemmap_recursive(
         {'x': [1, 2, 3]},
         lambda k, v, l: (str(k) + 'b', v + l if isinstance(v, int) else v),
     ) == {
-               'xb': [2, 3, 4],
-           }
+        'xb': [2, 3, 4],
+    }
 
 
 def test_sort_columns_by_order():
     assert_frame_equal(
         sort_columns_by_order(
             DataFrame({
-                'a': [1], 'b': [2], 'c': [3]
+                'a': [1],
+                'b': [2],
+                'c': [3]
             }),
             ['x', 'a', 'c'],
         ),
@@ -567,18 +588,26 @@ def test_get_models_from_repeats():
 
 @patch('multiprocessing.cpu_count', Mock(return_value=10))
 def test_get_jobs():
-    granted, residual = get_jobs(4, 10)
+    granted, residual = get_jobs(4, 6)
     assert granted == 4
-    assert residual == 6
+    assert residual == 4
+
+    granted, residual = get_jobs(7, 8)
+    assert granted == 7
+    assert residual == 3
 
     granted, residual = get_jobs(-1, 8)
     assert granted == 8
     assert residual == 2
 
     granted, residual = get_jobs(12, 8)
-    assert granted == 10
-    assert residual == 1
+    assert granted == 8
+    assert residual == 2
 
     granted, residual = get_jobs(-1)
     assert granted == 10
+    assert residual == 1
+
+    granted, residual = get_jobs(1, 8)
+    assert granted == 1
     assert residual == 1

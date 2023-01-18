@@ -177,6 +177,7 @@ def camelize_adjusted(string: str) -> str:
 
 
 def decamelize_arguments(function: Callable) -> Callable:
+
     def decamelize_arguments_(*args, **kwargs):
         return function(
             *[decamelize_recursive(arg) for arg in args],
@@ -188,6 +189,7 @@ def decamelize_arguments(function: Callable) -> Callable:
 
 
 def camelize_return(function: Callable) -> Callable:
+
     def camelize_return_(*args, **kwargs):
         return camelize_recursive(function(*args, **kwargs))
 
@@ -195,6 +197,7 @@ def camelize_return(function: Callable) -> Callable:
 
 
 def to_plain_decorator(function: Callable) -> Callable:
+
     def to_plain_decorator_(*args, **kwargs):
         return to_plain(function(*args, **kwargs))
 
@@ -202,7 +205,9 @@ def to_plain_decorator(function: Callable) -> Callable:
 
 
 def get_event_listener(socketio: SocketIO):
+
     def event_listener_1(*socketio_args, **socketio_kwargs) -> Callable:
+
         def event_listener_2(function: Callable):
             return pipe(
                 function,
@@ -297,10 +302,10 @@ def index_data(indexes: Iterable[int], data: IndexData) -> IndexData:
 
 
 def loc(
-        index: Index | List[int],
-        data: IndexData,
-        ignore_not_present: bool = False,
-        logger: Logger = None,
+    index: Index | List[int],
+    data: IndexData,
+    ignore_not_present: bool = False,
+    logger: Logger = None,
 ) -> IndexData:
     if isinstance(data, (DataFrame, Series)):
         if ignore_not_present:
@@ -329,8 +334,8 @@ ListToDictValue = TypeVar('ListToDictValue')
 
 
 def list_to_dict_by_keys(
-        input_list: Iterable[ListToDictValue],
-        keys: Iterable[ListToDictKey],
+    input_list: Iterable[ListToDictValue],
+    keys: Iterable[ListToDictKey],
 ) -> Dict[ListToDictKey, ListToDictValue]:
     return {key: value for key, value in zip(keys, input_list)}
 
@@ -345,15 +350,15 @@ SubtractListT = TypeVar('SubtractListT')
 
 
 def subtract_lists(
-        list1: List[SubtractListT],
-        list2: List[SubtractListT],
+    list1: List[SubtractListT],
+    list2: List[SubtractListT],
 ) -> List[SubtractListT]:
     return [value for value in list1 if value not in list2]
 
 
 def map_groups_iloc(
-        groups: DataFrameGroupBy,
-        flatten_data: DataFrame,
+    groups: DataFrameGroupBy,
+    flatten_data: DataFrame,
 ) -> Iterable[Tuple[Any, List[int]]]:
     current_index = 0
     for key, group in groups:
@@ -461,9 +466,9 @@ def \
 
 
 def get_X_split(
-        X: DataFrame,
-        fold: Prediction,
-        logger: Logger = None,
+    X: DataFrame,
+    fold: Prediction,
+    logger: Logger = None,
 ):
     split_train, split_test = filter_split_in_index(fold['split'], X.index)
 
@@ -494,9 +499,9 @@ def get_X_split(
 
 
 def get_y_split(
-        y: Target,
-        fold: Prediction,
-        logger: Logger = None,
+    y: Target,
+    fold: Prediction,
+    logger: Logger = None,
 ):
     split_train, split_test = filter_split_in_index(
         fold['split'],
@@ -560,8 +565,8 @@ def get_tte(target: Union[DataFrame, Dict]) -> np.ndarray:
 
 
 def cross_validate_apply_mask(
-        mask: Dict[str, bool],
-        data: DataFrame,
+    mask: Dict[str, bool],
+    data: DataFrame,
 ) -> DataFrame:
     new_data = data.copy()
     if set(mask.keys()) != set(data.columns):
@@ -653,15 +658,15 @@ GetKeysSubsetT = TypeVar(
 
 
 def get_keys(
-        keys: Iterable[Hashable],
-        dictionary: GetKeysSubsetT,
+    keys: Iterable[Hashable],
+    dictionary: GetKeysSubsetT,
 ) -> GetKeysSubsetT:
     return {key: dictionary[key] for key in keys}  # type: ignore
 
 
 def sort_columns_by_order(
-        data_frame: DataFrame,
-        order: List[str],
+    data_frame: DataFrame,
+    order: List[str],
 ) -> DataFrame:
     columns_not_present = [column for column in order if column not in data_frame]
 
@@ -672,8 +677,8 @@ def sort_columns_by_order(
 
 
 def sort_index_by_order(
-        data_frame: DataFrame,
-        order: List[str],
+    data_frame: DataFrame,
+    order: List[str],
 ) -> DataFrame:
     index_not_present = [index for index in order if index not in data_frame.index]
 
@@ -842,16 +847,15 @@ def get_models_from_result(result: Result) -> List[Estimator]:
 def get_tree_importance(models: List[Estimator]) -> DataFrame:
     importances = [forest.feature_importances_ for forest in models]
 
-    forest_importances = pd.DataFrame({num: importance for num, importance in enumerate(importances)},
-                                      index=models[0].fit_feature_names)
+    forest_importances = pd.DataFrame(
+        {num: importance
+         for num, importance in enumerate(importances)}, index=models[0].fit_feature_names
+    )
 
     forest_importance_avg = forest_importances.mean(axis=1)
     forest_importance_std = forest_importances.std(axis=1)
 
-    return DataFrame({
-        'mean': forest_importance_avg,
-        'std': forest_importance_std
-    }).sort_values('mean')
+    return DataFrame({'mean': forest_importance_avg, 'std': forest_importance_std}).sort_values('mean')
 
 
 def is_numerical(o):
@@ -866,6 +870,8 @@ def get_jobs(n_jobs, maximum=None):
         else:
             jobs_taken = min(cpu_count_value, maximum)
     else:
-        jobs_taken = min(cpu_count_value, n_jobs)
+        jobs_taken = min(cpu_count_value, n_jobs, maximum)
 
-    return jobs_taken, max(1, cpu_count_value - jobs_taken)
+    return jobs_taken, max(
+        1, cpu_count_value - jobs_taken if n_jobs == -1 else min(n_jobs, cpu_count_value - jobs_taken)
+    )

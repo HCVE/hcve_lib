@@ -3,7 +3,7 @@ from abc import abstractmethod, ABC
 from collections import namedtuple
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, auto
 from logging import Logger
 from typing import TypedDict, Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable, Callable, Type
 
@@ -25,6 +25,28 @@ TrainTestSplits = Dict[Hashable, TrainTestIndex]
 Splits = Dict[Hashable, Index]
 
 TrainTestSplitter = Callable[..., TrainTestSplits]
+
+
+class StrEnum(Enum):
+
+    def _generate_next_value_(name, start, count, last_values):
+        return name
+
+    def __str__(self):
+        return self._name_
+
+    def __eq__(self, other):
+        if type(self).__qualname__ != type(other).__qualname__:
+            return False
+
+        return self.name == other.name and self.value == other.value
+
+
+class TargetType(StrEnum):
+    REGRESSION = auto()
+    CLASSIFICATION = auto()
+    TIME_TO_EVENT = auto()
+    NA = auto()
 
 
 @dataclass
@@ -129,44 +151,46 @@ class TargetTransformer(BaseEstimator):
         ...
 
 
-class Estimator(BaseEstimator):
+class Estimator(BaseEstimator, DictAccess):
 
-    @abstractmethod
     def fit(self, X, y, *args, **kwargs):
         ...
 
-    @abstractmethod
     def predict(self, X: DataFrame):
         ...
 
-    @abstractmethod
     def predict_proba(self, X: DataFrame):
         ...
 
-    @abstractmethod
-    def predict_survival_at_time(self, X: DataFrame, time: int):
+    def predict_survival_at_time(self, X: DataFrame, time: int, *args, **kwargs):
         ...
 
     def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
         return trial, {}
 
-    # def transform(self, X: DataFrame):
-    #     return X
+    def transform(self, X: DataFrame):
+        return X
+
+    def get_feature_importance(self):
+        raise NotImplementedError
 
 
 class Model(Estimator, ABC):
     estimator: Estimator
     params: Dict
+    target_type: TargetType
 
     def __init__(
-            self,
-            random_state: int,
-            logger: Logger = None,
-            log_mlflow: bool = True,
+        self,
+        random_state: int,
+        logger: Logger = None,
+        log_mlflow: bool = True,
+        target_type: TargetType = TargetType.NA
     ):
         self.random_state = random_state
         self.logger = logger
         self.log_mlflow = log_mlflow
+        self.target_type = target_type
         self.estimator = self.get_estimator()
         self.params = {}
 
@@ -179,17 +203,22 @@ class Model(Estimator, ABC):
     def transform(self, X: DataFrame):
         return X
 
-    def predict(self, X: DataFrame):
-        return self.estimator.predict(X)
-
-    def predict_proba(self, X: DataFrame):
-        return self.estimator.predict_proba(X)
-
-    def predict_survival_at_time(self, X: DataFrame, time: int):
-        return self.estimator.predict_survival_at_time(X, time)
+    def predict(self, X: DataFrame, *args, **kwargs):
+        if self.target_type == TargetType.CLASSIFICATION:
+            return self.estimator.predict_proba(X, *args, **kwargs)
+        elif self.target_type == TargetType.REGRESSION:
+            return self.estimator.predict(X, *args, **kwargs)
+        elif self.target_type == TargetType.TIME_TO_EVENT:
+            return self.estimator.predict_survival_at_time(X, *args, **kwargs)
 
     @abstractmethod
     def get_estimator(self) -> Estimator:
+        raise NotImplementedError
+
+    def get_feature_importance(self) -> Series:
+        raise NotImplementedError
+
+    def get_p_value_feature_importance(self, X: DataFrame, y: Target) -> Series:
         raise NotImplementedError
 
     def set_params(self, **kwargs):
@@ -214,9 +243,9 @@ class Pipeline:
     optimize: bool
 
     def __init__(
-            self,
-            steps: List[Tuple[str, Any]],
-            optimize: bool = False,
+        self,
+        steps: List[Tuple[str, Any]],
+        optimize: bool = False,
     ):
         self.steps = steps
         self.optimize = optimize
@@ -319,10 +348,10 @@ class Method(ABC):
     @staticmethod
     @abstractmethod
     def get_estimator(
-            X: DataFrame,
-            random_state: int,
-            configuration: Dict,
-            verbose=0,
+        X: DataFrame,
+        random_state: int,
+        configuration: Dict,
+        verbose=0,
     ):
         ...
 
@@ -334,12 +363,12 @@ class Method(ABC):
     @staticmethod
     @abstractmethod
     def predict(
-            X: DataFrame,
-            y: Target,
-            split: TrainTestIndex,
-            model: Estimator,
-            method: Type['Method'],
-            random_state: int,
+        X: DataFrame,
+        y: Target,
+        split: TrainTestIndex,
+        model: Estimator,
+        method: Type['Method'],
+        random_state: int,
     ) -> Prediction:
         ...
 
@@ -352,9 +381,9 @@ class ExceptionValue:
     value: Any
 
     def __init__(
-            self,
-            value: Any = None,
-            exception: Exception = None,
+        self,
+        value: Any = None,
+        exception: Exception = None,
     ):
         self.traceback = traceback.format_exc()
         self.value = value
@@ -362,18 +391,3 @@ class ExceptionValue:
 
     def __repr__(self):
         return f'Value:\n {self.value}\n\n Exception:\n{self.exception}\n\n {self.traceback}'
-
-
-class StrEnum(Enum):
-
-    def _generate_next_value_(name, start, count, last_values):
-        return name
-
-    def __str__(self):
-        return self._name_
-
-    def __eq__(self, other):
-        if type(self).__qualname__ != type(other).__qualname__:
-            return False
-
-        return self.name == other.name and self.value == other.value

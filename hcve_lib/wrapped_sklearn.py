@@ -36,7 +36,6 @@ class DFWrapped:
         X_out = super().fit_transform(X, *args, **kwargs)
         self.fit_feature_names = self.get_fit_features(X, X_out)
         out = use_df_fn(X, X_out, columns=self.fit_feature_names)
-
         return out
 
     def fit_predict(self, X, y, *args, **kwargs):
@@ -52,7 +51,10 @@ class DFWrapped:
     def predict_proba(self, X, *args, **kwargs):
         self.save_fit_features(X)
         y_proba = super().predict_proba(X, *args, **kwargs)  # type: ignore
-        return DataFrame(y_proba, index=X.index).iloc[:, 1]
+        return DataFrame(y_proba, index=X.index)
+
+    def get_feature_importance(self):
+        raise NotImplementedError
 
     def transform(self, X, *args, **kwargs):
         try:
@@ -60,7 +62,7 @@ class DFWrapped:
             self.fit_feature_names = self.get_fit_features(X, X_out)
             out = use_df_fn(X, X_out, columns=self.fit_feature_names)
             return out
-        except AttributeError:
+        except AttributeError as e:
             return X
 
     def save_fit_features(self, X):
@@ -110,12 +112,12 @@ def series_count_inf(series: Series) -> int:
 
 
 def use_df_fn(
-        input_data_frame: DataFrame,
-        output_data: Any,
-        reuse_columns=True,
-        reuse_index=True,
-        reuse_dtypes=False,
-        columns: Optional[List] = None,
+    input_data_frame: DataFrame,
+    output_data: Any,
+    reuse_columns=True,
+    reuse_index=True,
+    reuse_dtypes=False,
+    columns: Optional[List] = None,
 ) -> DataFrame:
     df_arguments = {}
 
@@ -231,6 +233,12 @@ class DFPipeline(Pipeline, Estimator):
         }
         return config
 
+    def __getattr__(self, item):
+        if hasattr(self[-1], item):
+            return getattr(self[-1], item)
+        else:
+            raise AttributeError(f'AttributeError: object has no attribute \'{item}\'')
+
     def __repr__(self, **kwargs):
         return 'model'
 
@@ -267,8 +275,12 @@ class DFFunctionTransformer(DFWrapped, FunctionTransformer):
 
 
 class DFRandomForestClassifier(DFWrapped, RandomForestClassifier):
-    ...
+
+    def get_feature_importance(self):
+        return Series(super().feature_importances_, index=self.get_feature_names())
 
 
 class DFRandomForestRegressor(DFWrapped, RandomForestRegressor):
-    ...
+
+    def get_feature_importance(self):
+        return Series(super().feature_importances_, index=self.get_feature_names())

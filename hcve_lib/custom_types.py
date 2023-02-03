@@ -74,8 +74,6 @@ class TargetObject:
         return cloned
 
     def __getattr__(self, item):
-        print(self._inner)
-        print(item)
         if hasattr(self._inner, item):
             return getattr(self._inner, item)
         else:
@@ -85,7 +83,7 @@ class TargetObject:
         return self._inner[item]
 
 
-Target = TargetObject | Series
+Target = TargetObject | Series | DataFrame
 
 
 class IndexAccess(ABC):
@@ -173,6 +171,10 @@ class Estimator(BaseEstimator, DictAccess):
 
     def get_feature_importance(self):
         raise NotImplementedError
+
+    @classmethod
+    def get_name(cls):
+        return cls.__name__
 
 
 class Model(Estimator, ABC):

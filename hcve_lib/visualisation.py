@@ -1,3 +1,4 @@
+import json
 from functools import partial
 from math import ceil
 from numbers import Rational
@@ -111,7 +112,7 @@ def show_dtale(data: DataFrame, metadata: Metadata) -> None:
 
 
 def print_formatted(something: Any) -> None:
-    print(yaml.dump(something))
+    print(yaml.dump(json.loads(json.dumps(something))))
 
 
 def display_tree(what: Any, levels: int = 5) -> None:

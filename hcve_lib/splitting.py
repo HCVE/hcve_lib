@@ -4,20 +4,20 @@ from typing import Callable, Sequence, List, Tuple, Dict
 
 from pandas import DataFrame, Index, Series
 from pandas.core.groupby import DataFrameGroupBy
-from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+from sklearn.model_selection import KFold, StratifiedKFold, train_test_split, LeaveOneOut
 from toolz import identity, merge
 from toolz.curried import valfilter, map
 
 from hcve_lib.custom_types import Target, TrainTestSplits, Prediction, ExceptionValue
 from hcve_lib.data import get_survival_y
 from hcve_lib.functional import pipe, mapl, accept_extra_parameters, flatten, valmap_
-from hcve_lib.utils import subtract_lists, map_groups_iloc, list_to_dict_index, get_fraction_missing, partial2, loc, \
-    empty_dict, filter_in_index, filter_split_in_index
+from hcve_lib.utils import subtract_lists, map_groups_iloc, list_to_dict_index, get_fraction_missing, partial, loc, \
+    empty_dict
 
 
 @accept_extra_parameters
-def get_lco_splits(X: DataFrame, data: DataFrame) -> TrainTestSplits:
-    return get_lo_splits(X, data, 'STUDY')
+def get_lco_splits(X: DataFrame, data: DataFrame, column: str = 'STUDY') -> TrainTestSplits:
+    return get_lo_splits(X, data, column)
 
 
 @accept_extra_parameters
@@ -35,8 +35,7 @@ def get_lo_splits(
                 subtract_lists(list(all_indexes), subset.index.tolist()),
                 subset.index.tolist(),
             )
-            for key,
-            subset in groups
+            for key, subset in groups
         },
         valfilter(lambda split: len(split[0]) > 0 and len(split[1]) > 0),
     )
@@ -83,8 +82,9 @@ def get_splitting_per_group(
     groups = X.groupby(data[group_by_feature])
     return pipe(
         (
-            [((name, name_inner), split) for name_inner, split in get_splits(group_df).items()] for name,
-            group_df in groups
+            [((name, name_inner), split)
+             for name_inner, split in get_splits(group_df).items()]
+            for name, group_df in groups
         ),
         flatten,
         dict,
@@ -126,6 +126,18 @@ def get_healthabc_ascot_split(data: DataFrame) -> TrainTestSplits:
             'HEALTHABC',
         ]),
         test_filter=lambda _data: _data['STUDY'] == 'ASCOT',
+    )
+
+
+@accept_extra_parameters
+def get_loo_splits(
+    X: DataFrame,
+) -> TrainTestSplits:
+    return pipe(
+        LeaveOneOut().split(X),
+        list,
+        map(mapl(partial(iloc_to_loc, X))),
+        list_to_dict_index,
     )
 
 
@@ -235,13 +247,13 @@ def get_splitter(splitter_name: str) -> Callable:
     elif splitter_name == 'healtahc_ascot':
         return get_healthabc_ascot_split
     elif splitter_name == 'lm':
-        return partial2(get_1_to_1_splits, group_by_column='STUDY')
+        return partial(get_1_to_1_splits, group_by_column='STUDY')
     elif splitter_name == 'cohort_10_fold':
         return get_splitting_per_group
     elif splitter_name == "10_fold":
-        return partial2(get_kfold_stratified_splits, n_splits=10)
+        return partial(get_kfold_stratified_splits, n_splits=10)
     elif splitter_name == "5_fold":
-        return partial2(get_kfold_stratified_splits, n_splits=5)
+        return partial(get_kfold_stratified_splits, n_splits=5)
     else:
         raise Exception('Splitting not know')
 
@@ -262,19 +274,11 @@ def resample_prediction_test(
     index: Index,
     prediction: Prediction,
 ) -> Prediction:
+    y_pred = loc(index, prediction['y_pred'], ignore_not_present=True)
     return merge(
         prediction,
         dict(
-            split=(prediction['split'][0], list(index)),
-            y_score=loc(index, prediction['y_score'], ignore_not_present=True),
-            y_proba=valmap_(
-                prediction.get('y_proba', empty_dict),
-                lambda y_proba: loc(
-                    index,
-                    y_proba,
-                    ignore_not_present=True,
-                ) if (y_proba is not None and isinstance(y_proba,
-                                                         (Series, DataFrame))) else ExceptionValue(value=y_proba),
-            ),
+            split=(prediction['split'][0], list(y_pred.index)),
+            y_pred=y_pred,
         ),
     )

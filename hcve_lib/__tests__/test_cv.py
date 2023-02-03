@@ -7,9 +7,7 @@ from pandas import DataFrame, Series
 from statsmodels.compat.pandas import assert_frame_equal, assert_series_equal
 
 from hcve_lib.custom_types import Target, Estimator, Prediction, ExceptionValue, ValueWithCI
-from hcve_lib.cv import cross_validate, CrossValidateParams, OptimizationParams
-from hcve_lib.functional import always
-from hcve_lib.metrics import Accuracy
+from hcve_lib.cv import cross_validate_single_repeat_, OptimizationParams
 from hcve_lib.metrics_types import Metric, OptimizationDirection
 from hcve_lib.wrapped_sklearn import DFPipeline
 
@@ -33,12 +31,7 @@ def test_cross_validate():
     X = DataFrame({'x': [1, 2, 3]}, index=['a', 'b', 'c'])
     y = Series([10, 20, 30], name='y', index=['a', 'b', 'c'])
 
-    result = cross_validate(
-        lambda _1, _2: MockEstimator(),
-        X,
-        y,
-        get_splits,
-    )
+    result = cross_validate_single_repeat_(lambda _1, _2: MockEstimator(), X, y, get_splits)
     assert_series_equal(Series([3], index=['c'], name='x'), result['split']['y_pred'])
 
 
@@ -102,7 +95,7 @@ def test_cross_validate_optimize():
 
     with mock.patch.object(pipeline, 'set_params') as set_params:
         with mock.patch.object(pipeline, 'fit') as fit:
-            cross_validate(
+            cross_validate_single_repeat_(
                 lambda random_state: pipeline,
                 X,
                 y,

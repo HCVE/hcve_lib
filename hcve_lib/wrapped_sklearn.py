@@ -12,7 +12,7 @@ from sklearn.ensemble._hist_gradient_boosting.binning import _BinMapper
 from sklearn.exceptions import NotFittedError
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer, KNNImputer
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, LinearRegression, ElasticNet
 from sklearn.preprocessing import StandardScaler, OrdinalEncoder, FunctionTransformer
 from xgboost import XGBClassifier, XGBRegressor
 
@@ -21,6 +21,7 @@ from sksurv.linear_model import CoxnetSurvivalAnalysis, CoxPHSurvivalAnalysis
 from sksurv.meta import Stacking
 
 from hcve_lib.custom_types import Estimator, Target
+from hcve_lib.data import to_survival_y_records
 from hcve_lib.functional import dict_subset
 
 
@@ -112,12 +113,12 @@ def series_count_inf(series: Series) -> int:
 
 
 def use_df_fn(
-    input_data_frame: DataFrame,
-    output_data: Any,
-    reuse_columns=True,
-    reuse_index=True,
-    reuse_dtypes=False,
-    columns: Optional[List] = None,
+        input_data_frame: DataFrame,
+        output_data: Any,
+        reuse_columns=True,
+        reuse_index=True,
+        reuse_dtypes=False,
+        columns: Optional[List] = None,
 ) -> DataFrame:
     df_arguments = {}
 
@@ -242,6 +243,9 @@ class DFPipeline(Pipeline, Estimator):
     def __repr__(self, **kwargs):
         return 'model'
 
+    def get_final(self):
+        return self
+
 
 class DFLogisticRegression(DFWrapped, LogisticRegression):
 
@@ -250,7 +254,20 @@ class DFLogisticRegression(DFWrapped, LogisticRegression):
         return Series(self.coef_[0], index=self.get_feature_names())
 
 
-class DFCoxnetSurvivalAnalysis(DFWrapped, CoxnetSurvivalAnalysis):
+class DFElasticNet(DFWrapped, ElasticNet):
+
+    @property
+    def coefficients(self):
+        return Series(self.coef_[0], index=self.get_feature_names())
+
+
+class ToSurvivalRecord:
+
+    def fit(self, X: DataFrame, y: Target):
+        super().fit(X, to_survival_y_records(y))
+
+
+class DFCoxnetSurvivalAnalysis(DFWrapped, ToSurvivalRecord, CoxnetSurvivalAnalysis):
     ...
 
 

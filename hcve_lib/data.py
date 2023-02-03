@@ -5,7 +5,7 @@ from typing import TypedDict, List, Iterator, Optional, Iterable, Tuple, Any, Di
 import numpy as np
 from pandas import DataFrame, Series
 
-from hcve_lib.custom_types import SurvivalPairTarget, Target
+from hcve_lib.custom_types import SurvivalPairTarget, Target, TargetObject
 from hcve_lib.functional import pipe, map_columns_
 from hcve_lib.utils import key_value_swap
 
@@ -156,11 +156,6 @@ def get_identifiers(metadata: Iterable[MetadataItem]) -> Iterator[str]:
             yield item['identifier_tte']
 
 
-def sanitize_data_inplace(data: DataFrame) -> DataFrame:
-    data.columns = [column.upper() for column in data.columns]
-    data['VISIT'] = data['VISIT'].str.upper()
-
-
 def get_targets(metadata: Metadata) -> Iterator[MetadataItem]:
     return pipe(
         metadata,
@@ -206,7 +201,7 @@ def get_survival_y(
     metadata_item: Optional[MetadataItem] = find_item(target_feature, metadata)
 
     if metadata_item:
-        return Target(
+        return TargetObject(
             name=target_feature,
             data=data[[
                 metadata_item['identifier'],
@@ -224,10 +219,11 @@ def get_survival_y(
 
 
 def to_survival_y_records(survival_y: Target) -> np.recarray:
-    return survival_y['data'].to_records(
+    return survival_y.to_records(
         index=False,
         column_dtypes={
-            'label': np.bool_, 'tte': np.int32
+            'label': np.bool_,
+            'tte': np.int32
         },
     )
 

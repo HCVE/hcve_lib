@@ -11,7 +11,7 @@ from sklearn.preprocessing import FunctionTransformer
 from statsmodels.compat.pandas import assert_frame_equal
 
 from hcve_lib.custom_types import Model
-from hcve_lib.cv import cross_validate
+from hcve_lib.cv import cross_validate_single_repeat_
 from hcve_lib.pipelines import prepend_timeline, aggregate_results
 from hcve_lib.splitting import get_train_test
 from hcve_lib.wrapped_sklearn import DFPipeline
@@ -53,7 +53,7 @@ def test_Model():
         def get_estimator(self) -> BaseEstimator:
             return LinearRegression()
 
-    result = cross_validate(
+    result = cross_validate_single_repeat_(
         lambda random_state: TestModel(),
         data, ['x'],
         get_splits=partial(get_train_test, test_size=0.5),

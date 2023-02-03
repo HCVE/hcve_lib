@@ -4,7 +4,7 @@ from statsmodels.compat.pandas import assert_series_equal
 from hcve_lib.custom_types import Prediction
 from hcve_lib.evaluation_functions import compute_metric_groups, get_2_level_groups, compute_metrics_prediction, \
     get_splits_by_class, get_target_label, get_splits_by_age, average_group_scores, get_inverse_weight, \
-    compute_repeated_metrics_ci
+    compute_metrics
 from hcve_lib.utils import get_class_ratios, get_fractions
 
 
@@ -190,6 +190,4 @@ def test_get_inverse_weight():
 
 
 def test_compute_repeated_metrics_ci():
-    compute_repeated_metrics_ci({
-
-    })
+    compute_metrics(,,,

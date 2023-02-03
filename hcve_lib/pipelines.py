@@ -11,9 +11,10 @@ from sklearn.preprocessing import FunctionTransformer
 
 from hcve_lib.custom_types import Estimator, Target, TargetTransformer, Method, ExceptionValue, Model, TargetType, \
     Result
-from hcve_lib.utils import is_numerical
+from hcve_lib.utils import is_numerical, estimate_categorical_columns, remove_column_prefix
 from hcve_lib.wrapped_sklearn import DFPipeline, DFRandomForestRegressor, DFRandomForestClassifier, DFXGBClassifier, \
-    DFXGBRegressor
+    DFXGBRegressor, DFLogisticRegression, DFCoxnetSurvivalAnalysis, DFColumnTransformer, DFSimpleImputer, \
+    DFOrdinalEncoder, DFStandardScaler, DFElasticNet
 
 
 class EstimatorDecorator:
@@ -49,10 +50,10 @@ class TransformTarget:
 class TransformerTarget(BaseEstimator):
 
     def __init__(
-        self,
-        inner: Estimator,
-        transformer: TargetTransformer,
-        inverse: bool = True,
+            self,
+            inner: Estimator,
+            transformer: TargetTransformer,
+            inverse: bool = True,
     ):
         self.inner = inner
         self.transformer = transformer
@@ -99,11 +100,11 @@ def subsample_data(X: DataFrame) -> DataFrame:
 class Callback(BaseEstimator, TransformerMixin):
 
     def __init__(
-        self,
-        fit_callback: Callable[[DataFrame, Target], Any] = None,
-        transform_callback: Callable[[DataFrame], Any] = None,
-        breakpoint_fit: bool = False,
-        breakpoint_transform: bool = False,
+            self,
+            fit_callback: Callable[[DataFrame, Target], Any] = None,
+            transform_callback: Callable[[DataFrame], Any] = None,
+            breakpoint_fit: bool = False,
+            breakpoint_transform: bool = False,
     ):
         self.breakpoint_fit = breakpoint_fit
         self.breakpoint_transform = breakpoint_transform
@@ -147,8 +148,8 @@ class LifeTime(EstimatorDecorator, BaseEstimator):
             return ExceptionValue(e)
 
     def predict_survival_function(
-        self,
-        X: DataFrame,
+            self,
+            X: DataFrame,
     ) -> Callable[[int], float]:
         survival_functions = self._estimator.predict_survival_function(X)
         return (partial(self.add_age, fn, age) for age, fn in zip(X['AGE'], survival_functions))
@@ -160,13 +161,13 @@ class XGBoost(Model):
         hyperparameters = {
             'n_estimators': trial.suggest_int(f'{prefix}_n_estimators', 5, 200),
             'max_depth': trial.suggest_int(f'{prefix}_max_depth', 1, 10),
-            'learning_rate': trial.suggest_loguniform(f'{prefix}_learning_rate', 0.001, 1),
-            'subsample': trial.suggest_uniform(f'{prefix}_estimator_subsample', 0.1, 1),
-            'colsample_bytree': trial.suggest_uniform(f'{prefix}_colsample_bytree', 0.1, 1),
-            'min_split_loss': trial.suggest_uniform(f'{prefix}_min_split_loss', 0.1, 10),
+            'learning_rate': trial.suggest_float(f'{prefix}_learning_rate', 0.001, 1, log=True),
+            'subsample': trial.suggest_float(f'{prefix}_estimator_subsample', 0.1, 1),
+            'colsample_bytree': trial.suggest_float(f'{prefix}_colsample_bytree', 0.1, 1),
+            'min_split_loss': trial.suggest_float(f'{prefix}_min_split_loss', 0.1, 10),
             'min_child_weight': trial.suggest_int(f'{prefix}_min_child_weight', 1, 100),
-            'reg_alpha': trial.suggest_uniform(f'{prefix}_reg_alpha', 0, 10),
-            'reg_lambda': trial.suggest_uniform(f'{prefix}_reg_alpha', 0, 10),
+            'reg_alpha': trial.suggest_float(f'{prefix}_reg_alpha', 0, 10),
+            'reg_lambda': trial.suggest_float(f'{prefix}_reg_alpha', 0, 10),
         }
         return trial, hyperparameters
 
@@ -231,8 +232,7 @@ class RandomForest(Model):
             'n_estimators': trial.suggest_int(f'{prefix}_n_estimators', 5, 2000),
             'max_depth': trial.suggest_int(f'{prefix}_max_depth', 1, 10),
             'min_samples_split': trial.suggest_int(f'{prefix}_min_samples_split', 2, 100),
-            'max_features': trial.suggest_categorical(f'{prefix}_max_features', ['sqrt', 'log2']),
-            'oob_score': trial.suggest_categorical(f'{prefix}_oob_score', [True, False]),
+            'max_features': trial.suggest_categorical(f'{prefix}_max_features', ['sqrt', 'log2', *range(1, 50)]),
         }
         return trial, hyperparameters
 
@@ -282,6 +282,70 @@ class RandomForest(Model):
             raise NotImplementedError
 
 
+class LinearModel(Model):
+
+    def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
+        if self.target_type == TargetType.REGRESSION:
+            hyperparameters = {'alpha': trial.suggest_float(f'{prefix}_alpha', 0.1, 100., log=True),
+                               'l1_ratio': trial.suggest_float(f'{prefix}_l1_ratio', 0, 1)}
+        else:
+            hyperparameters = {
+                'penalty': trial.suggest_categorical(f'{prefix}_penalty', ['l1', 'l2', 'elasticnet']),
+                'C': trial.suggest_float(f'{prefix}_C', 0.01, 10 ** 3, log=True),
+            }
+
+            if hyperparameters['penalty'] == 'elasticnet':
+                hyperparameters['l1_ratio'] = trial.suggest_float(f'{prefix}_l1_ratio', 0, 1)
+
+            if hyperparameters['penalty'] in ('elasticnet', 'l1'):
+                hyperparameters['solver'] = 'saga'
+
+        return trial, hyperparameters
+
+    def get_estimator(self) -> Estimator:
+        if self.target_type == TargetType.REGRESSION:
+            return DFElasticNet(random_state=self.random_state, max_iter=1000)
+        elif self.target_type == TargetType.CLASSIFICATION:
+            return DFLogisticRegression(random_state=self.random_state, max_iter=1000)
+        else:
+            raise NotImplementedError
+
+    @staticmethod
+    def get_streamlit_configuration(current_config: Dict):
+        import streamlit as st
+        new_config = {}
+
+        new_config['alpha'] = st.slider(
+            "alpha",
+            min_value=0,
+            max_value=5000,
+            value=current_config.get('alpha', 1),
+            key='alpha'
+        )
+
+        new_config['l1_ratio'] = st.select_slider(
+            'l1_ratio',
+            [
+                *np.arange(0, 1.1, 0.1),
+            ],
+            value=current_config.get('l1_ratio', 1.),
+        )
+        return new_config
+
+
+class CoxNet(Model):
+
+    def get_estimator(self):
+        return DFCoxnetSurvivalAnalysis(fit_baseline_model=True, n_alphas=1),
+
+    def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
+        hyperparameters = {
+            'l1_ratio': 1 - trial.suggest_loguniform(f'{prefix}_l1_ratio', 0.1, 1),
+            'alphas': [trial.suggest_loguniform(f'{prefix}_alphas', 10 ** -2, 1)],
+        }
+        return trial, hyperparameters
+
+
 class RepeatedEnsemble(Estimator):
 
     def __init__(self, get_pipeline: Callable, repeats: int = 10, random_state: int = None):
@@ -307,19 +371,19 @@ class RepeatedEnsemble(Estimator):
     def transform(self, X: DataFrame):
         return self.estimators[0].transform(X)
 
-    def predict(self, X: DataFrame):
-        return self.estimators[0].predict(X)
-
     def predict_proba(self, X: DataFrame):
-        y_probas = self.predict_proba_separate(X)
+        y_probas = self.predict(X)
         y_probas_averaged = reduce(lambda sum_df, next_df: sum_df + next_df, y_probas) / len(y_probas)
         return y_probas_averaged
 
-    def predict_proba_separate(self, X: DataFrame):
+    def predict(self, X: DataFrame):
         y_preds = []
         for estimator in self.estimators:
-            y_preds.append(estimator.predict_proba(X))
-        return y_preds
+            y_preds.append(estimator.predict(X))
+
+        y_preds_averaged = reduce(lambda sum_df, next_df: sum_df + next_df, y_preds) / len(y_preds)
+
+        return y_preds_averaged
 
     def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
         return self.estimators[0].suggest_optuna(trial, prefix)
@@ -356,6 +420,10 @@ class RepeatedEnsemble(Estimator):
     def __getitem__(self, item):
         return self.estimator[item]
 
+    # TODO
+    def get_final(self):
+        return self.estimators[0]
+
 
 def get_target_type(y: Target) -> TargetType:
     if is_numerical(y):
@@ -365,8 +433,8 @@ def get_target_type(y: Target) -> TargetType:
 
 
 def aggregate_results(
-    results: List[Result] | Result,
-    callback: Callable[[Estimator], Any],
+        results: List[Result] | Result,
+        callback: Callable[[Estimator], Any],
 ) -> DataFrame:
     if isinstance(results, list):
         results_ = results
@@ -388,3 +456,34 @@ def get_results_feature_importance(results: List[Result] | Result) -> DataFrame:
 
 def get_results_p_value_feature_importance(results: List[Result] | Result, X: DataFrame, y: Target) -> DataFrame:
     return aggregate_results(results, lambda prediction: prediction['model'].get_p_value_feature_importance(X, y))
+
+
+def get_supervised_pipeline(X: DataFrame, y: Target, random_state: int,
+                            get_estimator: Callable[..., Estimator], ) -> DFPipeline:
+    categorical = estimate_categorical_columns(X)
+    continuous = list(set(X.columns) - set(categorical))
+
+    return DFPipeline(
+        [
+            (
+                'impute',
+                DFColumnTransformer(
+                    [
+                        ('categorical', DFSimpleImputer(strategy='most_frequent'), categorical),
+                        ('continuous', DFSimpleImputer(strategy='mean'), continuous)
+                    ],
+                )
+            ),
+            ('remove_prefix', FunctionTransformer(remove_column_prefix)),
+            (
+                'encode',
+                DFColumnTransformer(
+                    [('categorical', DFOrdinalEncoder(), categorical)],
+                    remainder='passthrough',
+                )
+            ),
+            ('remove_prefix2', FunctionTransformer(remove_column_prefix)),
+            ('scaler', DFStandardScaler()),
+            ('estimator', get_estimator(target_type=get_target_type(y), random_state=random_state)),
+        ]
+    )

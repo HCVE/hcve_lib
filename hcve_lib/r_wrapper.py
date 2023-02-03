@@ -21,19 +21,19 @@ class REstimator(Estimator):
         self.r_function = path_parsed.group(2)
         self.source()
 
-    def fit(self, X, y, *args, **kwargs):
-        data, X_column, y_column = transform_df(X, y)
-        self.feature_names_in_ = X.columns
-        self.model = robjects.globalenv[self.r_function](data, X_column, y_column)
-        return self
-
     def predict(self, X: DataFrame):
         return self.predict_proba(X)
 
     def predict_proba(self, X: DataFrame):
         X_renamed = X.rename(columns=sanitize_name)
         self.source()
-        return Series(r_to_dict(robjects.r['predict'](self.model, X_renamed))['predictions'], index=X.index)
+        r_result = robjects.r['predict'](self.model, X_renamed)
+        y_pred = r_to_dict(r_result)['predictions']
+        df = DataFrame(y_pred, index=X.index)
+        if len(df.columns) == 1:
+            return Series(y_pred, index=X.index)
+        else:
+            return df
 
     def get_feature_importance(self):
         self.source()
@@ -46,7 +46,6 @@ class REstimator(Estimator):
 def transform_df(X: DataFrame, y: Target) -> Tuple[DataFrame, List[str], str]:
     X_renamed = X.rename(columns=sanitize_name)
     y_renamed = Series(y, name=sanitize_name(y.name))
-    print('y_renamed', y_renamed.name)
     return pandas.concat([X_renamed, y_renamed], axis=1), list(X_renamed.columns), str(y_renamed.name)
 
 

@@ -20,11 +20,12 @@ from toolz import pluck, merge, itemmap, valmap, merge_with
 from hcve_lib.custom_types import ClassificationMetrics, ValueWithStatistics, \
     ClassificationMetricsWithStatistics, GenericConfusionMatrix, ConfusionMetrics, ValueWithCI, \
     ConfusionMatrix, Target, Result, ExceptionValue, Splits, TrainTestIndex, Estimator, Method
+from hcve_lib.metrics import get_standard_metrics
 from hcve_lib.metrics_types import Metric
 from hcve_lib.custom_types import Prediction
-from hcve_lib.data import to_survival_y_records
-from hcve_lib.functional import pass_args, pipe, star_args, t, valmap_, try_except, flatten
+from hcve_lib.functional import pass_args, pipe, star_args, try_except
 from hcve_lib.stats import confidence_interval
+from hcve_lib.tracking import log_metrics
 from hcve_lib.utils import transpose_dict, map_groups_loc, split_data, get_y_split, loc
 from sksurv.metrics import concordance_index_censored
 
@@ -33,23 +34,42 @@ from hcve_lib.wrapped_sklearn import DFStandardScaler
 HashableT = TypeVar('HashableT', bound=Hashable)
 
 
-def compute_repeated_metrics_ci(
-        metrics: List[Metric],
-        results: List[Result],
-        y: Target,
-        skip_metrics: List[str] = None,
+def log_repeat_metrics(
+    result: Result,
+    y: Target,
+    metrics: List[Metric] = None,
 ) -> Dict[HashableT, ValueWithCI]:
+    if metrics is None:
+        metrics = get_standard_metrics(y)
+
+    metrics = compute_metrics_result(
+        result,
+        y,
+        metrics,
+    )
+    log_metrics(metrics)
+    return metrics
+
+
+def compute_metrics(
+    results: List[Result],
+    y: Target,
+    metrics: List[Metric] = None,
+    skip_metrics: List[str] = None,
+) -> Dict[HashableT, ValueWithCI]:
+    if metrics is None:
+        metrics = get_standard_metrics(y)
+
     metrics_runs = []
 
     for result in results:
-        metrics_runs.append(compute_metrics_result(
-            metrics,
-            y,
-            result,
-            skip_metrics=skip_metrics,
-        ))
+        metrics_runs.append(compute_metrics_result_per_prediction(result, y, metrics, skip_metrics=skip_metrics))
 
-    metrics_renamed = [{f'{split}_{num}': pred for split, pred in result.items()} for num, result in enumerate(metrics_runs) ]
+    metrics_renamed = [
+        {f'{split}_{num}': pred
+         for split, pred in result.items()}
+        for num, result in enumerate(metrics_runs)
+    ]
     metrics_merged = toolz.merge(metrics_renamed)
 
     return pipe(
@@ -60,22 +80,23 @@ def compute_repeated_metrics_ci(
             star_args(
                 lambda metric_name, metrics_values: (
                     metric_name,
-                    compute_metric_ci(metrics_values.values()),
+                    compute_metric_statistics(metrics_values.values()),
                 ),
             ),
         ),
     )
 
-def compute_metrics_ci(
+
+def compute_metrics_result(
     result: Result,
-    metrics: List[Metric],
     y: Target,
+    metrics: List[Metric],
     skip_metrics: List[str] = None,
 ) -> Dict[HashableT, ValueWithCI]:
-    metrics_per_split: Dict = compute_metrics_result(
-        metrics,
-        y,
+    metrics_per_split: Dict = compute_metrics_result_per_prediction(
         result,
+        y,
+        metrics,
         skip_metrics=skip_metrics,
     )
 
@@ -87,31 +108,18 @@ def compute_metrics_ci(
             star_args(
                 lambda metric_name, metrics_values: (
                     metric_name,
-                    compute_metric_ci(metrics_values.values()),
+                    compute_metric_statistics(metrics_values.values()),
                 ),
             ),
         ),
     )
 
 
-def compute_metric_ci(values: Iterable[Optional[float]]) -> Union[ValueWithStatistics, ExceptionValue]:
-    values_ = [value for value in values if isinstance(value, (float, int))]
-    try:
-        return ValueWithStatistics(
-            mean=mean(values_) if len(values_) > 0 else np.nan,
-            ci=confidence_interval(values_)[1] if len(values_) > 1 else (np.nan, np.nan),
-            std=std(values_) if len(values_) > 1 else np.nan,
-        )
-    except TypeError as e:
-        print(traceback.format_exc())
-        return ExceptionValue(value=values_, exception=e)
-
-
-def compute_metrics_result(
-        metrics: List[Metric],
-        y: Target,
-        result: Result,
-        skip_metrics: List[str] = None,
+def compute_metrics_result_per_prediction(
+    result: Result,
+    y: Target,
+    metrics: List[Metric],
+    skip_metrics: List[str] = None,
 ) -> Dict[HashableT, Dict[str, Union[float, ExceptionValue]]]:
     return {
         key: compute_metrics_prediction(
@@ -124,11 +132,24 @@ def compute_metrics_result(
     }
 
 
+def compute_metric_statistics(values: Iterable[Optional[float]]) -> Union[ValueWithStatistics, ExceptionValue]:
+    values_ = [value for value in values if isinstance(value, (float, int))]
+    try:
+        return ValueWithStatistics(
+            mean=mean(values_) if len(values_) > 0 else np.nan,
+            ci=confidence_interval(values_)[1] if len(values_) > 1 else (np.nan, np.nan),
+            std=std(values_) if len(values_) > 1 else np.nan,
+        )
+    except TypeError as e:
+        print(traceback.format_exc())
+        return ExceptionValue(value=values_, exception=e)
+
+
 def compute_metric_result(
-        metric: Metric,
-        y: Target,
-        result: Result,
-        skip_metrics: List[str] = None,
+    metric: Metric,
+    y: Target,
+    result: Result,
+    skip_metrics: List[str] = None,
 ) -> Dict[HashableT, Union[float, ExceptionValue]]:
     return {
         key: list(compute_metrics_prediction(
@@ -137,16 +158,15 @@ def compute_metric_result(
             prediction,
             skip_metrics,
         ).values())[0]
-        for key,
-        prediction in result.items()
+        for key, prediction in result.items()
     }
 
 
 def compute_metrics_prediction(
-        metrics: List[Metric],
-        y: Target,
-        prediction: Prediction,
-        skip_metrics: Optional[List[str]] = None,
+    metrics: List[Metric],
+    y: Target,
+    prediction: Prediction,
+    skip_metrics: Optional[List[str]] = None,
 ) -> Dict[str, Union[float, ExceptionValue]]:
     metric_names: Iterable[str] = iter(())
     metric_values: Iterable[Union[float, ExceptionValue]] = iter(())
@@ -166,10 +186,10 @@ def compute_metrics_prediction(
 
 
 def compute_metric_prediction_items(
-        metric: Metric,
-        y: Target,
-        prediction: Prediction,
-        skip_metrics: Optional[List[str]] = None,
+    metric: Metric,
+    y: Target,
+    prediction: Prediction,
+    skip_metrics: Optional[List[str]] = None,
 ) -> Tuple[List, List]:
 
     new_names = metric.get_names(prediction, y)
@@ -178,10 +198,10 @@ def compute_metric_prediction_items(
 
 
 def compute_metric_prediction(
-        metric: Metric,
-        y: Target,
-        prediction: Prediction,
-        skip_metrics: Optional[List[str]] = None,
+    metric: Metric,
+    y: Target,
+    prediction: Prediction,
+    skip_metrics: Optional[List[str]] = None,
 ) -> Dict:
     return dict(zip(*compute_metric_prediction_items(
         metric,
@@ -192,9 +212,9 @@ def compute_metric_prediction(
 
 
 def get_2_level_groups(
-        folds: Result,
-        group_by: DataFrameGroupBy,
-        data: DataFrame,
+    folds: Result,
+    group_by: DataFrameGroupBy,
+    data: DataFrame,
 ) -> Dict[Hashable, Result]:
     groups = list(map_groups_loc(group_by))
     result: DefaultDict = defaultdict(dict)
@@ -221,8 +241,8 @@ def get_2_level_groups(
 
 
 def compute_metric_groups(
-        metric: Callable[[Prediction], float],
-        groups: Dict[Hashable, Result],
+    metric: Callable[[Prediction], float],
+    groups: Dict[Hashable, Result],
 ) -> Dict:
     result: DefaultDict = defaultdict(dict)
     for train_name, test_folds in groups.items():
@@ -239,9 +259,7 @@ def compute_ci_for_metrics_collection(metrics: List[ClassificationMetrics]) -> C
     metrics_with_ci_dict = {
         attribute: pass_args(
             confidence_interval(list(pluck(attribute, metrics))),
-            lambda m,
-                   ci,
-                   std_val: ValueWithStatistics(mean=m, std=std_val, ci=ci),
+            lambda m, ci, std_val: ValueWithStatistics(mean=m, std=std_val, ci=ci),
         )
         for attribute in attributes
     }
@@ -279,9 +297,9 @@ def get_metrics_from_confusion_matrix(confusion_matrix) -> ConfusionMetrics:
 
 
 def get_confusion_from_threshold(
-        y: Series,
-        scores: Series,
-        threshold: float = 0.5,
+    y: Series,
+    scores: Series,
+    threshold: float = 0.5,
 ) -> ConfusionMatrix:
     fn = 0
     tn = 0
@@ -311,9 +329,9 @@ def get_confusion_from_threshold(
 
 
 def c_index(
-        prediction: Prediction,
-        y: Target,
-        is_train: bool = False,
+    prediction: Prediction,
+    y: Target,
+    is_train: bool = False,
 ) -> Union[ExceptionValue, float]:
     if len(prediction['y_score']) == 0:
         return np.nan
@@ -340,9 +358,9 @@ def roc_auc(fold: Prediction, X: DataFrame, y: Target) -> float:
 
 
 def c_index_inverse_score(
-        fold: Prediction,
-        X: DataFrame,
-        y: Target,
+    fold: Prediction,
+    X: DataFrame,
+    y: Target,
 ) -> float:
     if len(fold['y_score']) == 0:
         return np.nan
@@ -364,9 +382,9 @@ def get_splits_by_class(y: Target, labels: List = None) -> Splits:
     }
 
 
-def get_splits_by_age(age: Series) -> Splits:
-    group_by = age.groupby((np.floor(age / 20) * 20))
-    return {f'age__{round(age)}_{round(age + 20)}': group.index.to_list() for age, group in group_by}
+def get_splits_by_age(age: Series, years: int = 10) -> Splits:
+    group_by = age.groupby((np.floor(age / years) * years))
+    return {f'age__{round(age)}_{round(age + years)}': group.index.to_list() for age, group in group_by}
 
 
 def get_target_label(y: Target) -> Series:
@@ -378,20 +396,13 @@ def get_target_label(y: Target) -> Series:
         raise TypeError("Can't extract series from target")
 
 
-def target_to_survival_y_records(y):
-    if not isinstance(y['data'], numpy.recarray):
-        return {**y, 'data': to_survival_y_records(y)}
-    else:
-        return y
-
-
 def predict_proba(
-        X: DataFrame,
-        y: Target,
-        split: TrainTestIndex,
-        model: Estimator,
-        method: Type[Method],
-        random_state: int,
+    X: DataFrame,
+    y: Target,
+    split: TrainTestIndex,
+    model: Estimator,
+    method: Type[Method],
+    random_state: int,
 ) -> Prediction:
     y_score = DataFrame(
         model.predict_proba(loc(split[1], X)),
@@ -415,13 +426,13 @@ class Pipeline:
 
 
 def predict_survival(
-        X: DataFrame,
-        y: Target,
-        split: TrainTestIndex,
-        model: Estimator,
-        random_state: int,
-        method: Type[Method],
-        time: Union[int, Iterable] = 5 * 365,
+    X: DataFrame,
+    y: Target,
+    split: TrainTestIndex,
+    model: Estimator,
+    random_state: int,
+    method: Type[Method],
+    time: Union[int, Iterable] = 5 * 365,
 ) -> Prediction:
     X_test = loc(
         split[1],
@@ -445,9 +456,9 @@ def predict_survival(
 
 
 def predict_survival_proba(
-        time: Union[int, Iterable],
-        X: DataFrame,
-        model: Estimator,
+    time: Union[int, Iterable],
+    X: DataFrame,
+    model: Estimator,
 ) -> Series:
     try:
         survival_functions = list(model.predict_survival_function(X))
@@ -466,8 +477,7 @@ def predict_survival_proba(
     else:
         return Series(
             [
-                try_except(lambda: fn(time), {Exception: lambda e: ExceptionValue(exception=e)}) for fn,
-            time in
+                try_except(lambda: fn(time), {Exception: lambda e: ExceptionValue(exception=e)}) for fn, time in
                 zip(survival_fns_valid, (time if isinstance(time, Iterable) else ([time] * len(survival_fns_valid))))
             ],
             index=X.index,
@@ -475,13 +485,13 @@ def predict_survival_proba(
 
 
 def predict_survival_dsm(
-        X: DataFrame,
-        y: Target,
-        split: TrainTestIndex,
-        model: Estimator,
-        random_state: int,
-        method: Type[Method],
-        time: int = 3 * 365,
+    X: DataFrame,
+    y: Target,
+    split: TrainTestIndex,
+    model: Estimator,
+    random_state: int,
+    method: Type[Method],
+    time: int = 3 * 365,
 ) -> Prediction:
     X_test = loc(
         split[1],
@@ -511,10 +521,10 @@ def predict_survival_dsm(
 
 
 def predict_predict(
-        X: DataFrame,
-        y: Target,
-        split: TrainTestIndex,
-        model: Estimator,
+    X: DataFrame,
+    y: Target,
+    split: TrainTestIndex,
+    model: Estimator,
 ) -> Prediction:
     return Prediction(
         split=split,
@@ -604,8 +614,8 @@ def average_group_scores(group: Dict[Hashable, Result]) -> Result:
 
 
 def get_inverse_weight(
-        series: Series,
-        proportions: Dict[Any, float] = None,
+    series: Series,
+    proportions: Dict[Any, float] = None,
 ) -> Series:
     counts = series.value_counts()
     if proportions is None:
@@ -617,8 +627,8 @@ def get_inverse_weight(
 
 
 def map_inverse_weight(
-        series: Series,
-        proportions: Dict[Any, float] = None,
+    series: Series,
+    proportions: Dict[Any, float] = None,
 ) -> Series:
     weights = get_inverse_weight(series, proportions=proportions)
     return series.map(weights).astype('float')

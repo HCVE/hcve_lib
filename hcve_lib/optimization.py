@@ -8,7 +8,7 @@ import toolz
 from mlflow import set_tag
 from optuna import Study
 from optuna.trial import TrialState, FrozenTrial
-from hcve_lib.tracking import log_metrics_ci
+from hcve_lib.tracking import log_metrics
 
 
 class EarlyStoppingCallback(object):
@@ -64,7 +64,7 @@ def optuna_report_mlflow(study, _):
     )
 
     mlflow.log_figure(
-        optuna.visualization.plot_optimization_history(study),
+        optuna.visualization.plot_optimization_history(study, error_bar=True),
         'optimization_history.html',
     )
 
@@ -79,10 +79,10 @@ def optuna_report_mlflow(study, _):
                 'plot_hyperparam_importances.html',
             )
 
-        log_metrics_ci(
-            prefix='inner_',
-            metrics=study.best_trial.user_attrs['metrics'],
-        )
+        # log_metrics(
+        #     prefix='inner_',
+        #     metrics=study.best_trial.user_attrs['metrics'],
+        # )
     except RuntimeError:
         pass
 

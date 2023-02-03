@@ -3,7 +3,11 @@ from collections import defaultdict
 import io
 import logging
 import pickle
+from contextlib import contextmanager
+from dataclasses import asdict
 from datetime import datetime
+from logging import Logger
+from sys import stdout
 from typing import Any, Dict, Hashable, Tuple, Optional, Union, List
 
 import mlflow
@@ -11,9 +15,11 @@ from toolz import dissoc
 
 from hcve_lib.custom_types import ValueWithCI, Result, ExceptionValue
 from hcve_lib.functional import pipe, valmap_
+from hcve_lib.log_output import capture_output, log_output
 from hcve_lib.utils import is_noneish
 from hcve_lib.visualisation import display_html
-from mlflow import get_experiment_by_name, ActiveRun, start_run, get_run, get_experiment
+from mlflow import get_experiment_by_name, ActiveRun, start_run, get_run, get_experiment, set_tag, create_experiment, \
+    set_experiment, MlflowException
 from mlflow import log_artifact
 from mlflow.entities import Run
 from mlflow.tracking import MlflowClient
@@ -121,7 +127,7 @@ def wrap_table(content: str) -> str:
     return f'<table style="text-align: left">{content}</table>'
 
 
-def log_metrics_ci(
+def log_metrics(
     metrics: Dict[Any, ValueWithCI],
     drop_ci: bool = False,
     prefix: str = '',
@@ -140,7 +146,7 @@ def log_metrics_ci(
                 log_metric(f'{metric_name_}_r', metric_value['ci'][1])
 
 
-def log_metrics(metrics: Dict[str, Union[float, ExceptionValue]], ) -> None:
+def log_metrics_single(metrics: Dict[str, Union[float, ExceptionValue]], ) -> None:
     for name, value in metrics.items():
         log_metric(name, value)
 
@@ -254,14 +260,14 @@ def log_study(study) -> None:
         'hyperparameters',
         study.best_trial.user_attrs['hyperparameters'],
     )
-    log_metrics_ci(study.best_trial.user_attrs['metrics'])
+    log_metrics(study.best_trial.user_attrs['metrics'])
     log_pickled(study, 'study')
 
 
 def log_optimizer(optimizer) -> None:
     mlflow.log_text(optimizer.study.best_trial.user_attrs['pipeline'], 'pipeline.txt')
     mlflow.log_param('hyperparameters', optimizer.study.best_trial.user_attrs['hyperparameters'])
-    log_metrics_ci(optimizer.study.best_trial.user_attrs['metrics'])
+    log_metrics(optimizer.study.best_trial.user_attrs['metrics'])
     log_pickled(optimizer.study.best_trial.user_attrs['result_split'], 'result_split')
     log_pickled(optimizer.study, 'study')
 
@@ -313,15 +319,6 @@ def get_run_info(run_id: str) -> Dict:
     return {'run_name': run.data.tags['mlflow.runName'], 'experiment_name': get_experiment(run.info.experiment_id).name}
 
 
-def log_to_variable():
-    logger = logging.getLogger('training_curve')
-    logger.setLevel(logging.DEBUG)
-    log_capture_string = io.StringIO()
-    ch = logging.StreamHandler(log_capture_string)
-    ch.setLevel(logging.DEBUG)
-    logger.addHandler(ch)
-
-
 def log_model(result: Result) -> None:
     result_without_models = valmap_(
         result,
@@ -335,3 +332,48 @@ def log_model(result: Result) -> None:
     )
 
     log_pickled(only_models, 'result_models')
+
+
+def get_logger(name: str = 'default') -> Logger:
+    logger = logging.getLogger(name)
+    logger.handlers.clear()
+
+    stream_handler = logging.StreamHandler(stream=stdout)
+    stream_handler.setFormatter(logging.Formatter(fmt='[%(asctime)s] %(message)s', datefmt='%H:%M:%S'))
+    logger.setLevel(logging.WARNING)
+    logger.addHandler(stream_handler)
+    return logger
+
+
+def log_to_variable(logger: Logger) -> None:
+    log_capture_string = io.StringIO()
+    ch = logging.StreamHandler(log_capture_string)
+    ch.setLevel(logging.DEBUG)
+    logger.addHandler(ch)
+
+
+@contextmanager
+def get_standard_repeat_context(
+    method_name: str,
+    repeat_id: str,
+    random_state: int,
+):
+    with start_run(run_name=f'repeat {repeat_id}', nested=True) as mlflow:
+        with capture_output() as buffer:
+            # TODO: not used now
+            # for key, value in asdict(configuration).items():
+            #     set_tag(key, value)
+            set_tag("repeat_id", repeat_id)
+            set_tag("random_state", random_state)
+
+            yield
+
+        log_output(buffer())
+
+
+def define_experiment(name: str) -> None:
+    try:
+        create_experiment(name)
+    except MlflowException:
+        pass
+    set_experiment(experiment_name=name)

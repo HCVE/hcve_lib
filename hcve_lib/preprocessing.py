@@ -9,6 +9,7 @@ from typing import Iterable
 from pandas import DataFrame
 from typing import Callable
 from hcve_lib.data import inverse_format_feature_value, Metadata, find_item, format_feature_value
+from hcve_lib.tracking import get_logger
 
 
 class Step(TypedDict, total=False):
@@ -17,6 +18,8 @@ class Step(TypedDict, total=False):
 
 
 def perform(steps: Iterable[Step], logger: Logger = None) -> DataFrame:
+    if logger is None:
+        logger = get_logger()
     current_data = None
     previous_data = None
 

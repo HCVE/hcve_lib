@@ -5,35 +5,33 @@ import multiprocessing
 import os
 import random
 import shelve
-from collections.abc import Mapping
 from contextlib import contextmanager
 from copy import copy
-from functools import singledispatch, partial, update_wrapper
+from functools import singledispatch, partial as partial_, update_wrapper
 from logging import Logger
 from numbers import Real
 from pathlib import Path
 from pprint import pprint
-
-import pandas as pd
-from toolz import valmap
-from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional, Sequence, Hashable, cast, \
-    Union
+from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional, Sequence, Hashable, Union
 
 import numpy
 import numpy as np
 import pandas
+import pandas as pd
 from IPython import get_ipython
 from filelock import FileLock, UnixFileLock
 from flask_socketio import SocketIO
 from frozendict import frozendict
-from hcve_lib.custom_types import SurvivalPairTarget, Prediction, Target, TrainTestIndex, Result, Estimator
-from hcve_lib.functional import pipe, unzip, flatten
 from humps import decamelize, camelize
 from imblearn.over_sampling.base import BaseOverSampler
 from matplotlib import pyplot
 from numpy import ndarray, recarray, isnan
 from pandas import Series, DataFrame, Index
 from pandas.core.groupby import DataFrameGroupBy
+from toolz import valmap
+
+from hcve_lib.custom_types import SurvivalPairTarget, Prediction, Target, TrainTestIndex, Result, Estimator
+from hcve_lib.functional import pipe, unzip, flatten
 
 empty_dict: Dict = frozendict()
 
@@ -325,7 +323,6 @@ def loc(
             ignore_not_present=ignore_not_present,
         ))
     else:
-        print('xxx')
         raise Exception(f'Type \'{type(data)}\' not supported')
 
 
@@ -381,9 +378,9 @@ def remove_column_prefix(X: DataFrame) -> DataFrame:
     return X.rename(
         lambda column_name: pipe(
             column_name,
-            partial(remove_prefix, 'categorical__'),
-            partial(remove_prefix, 'continuous__'),
-            partial(remove_prefix, 'remainder__'),
+            partial_(remove_prefix, 'categorical__'),
+            partial_(remove_prefix, 'continuous__'),
+            partial_(remove_prefix, 'remainder__'),
         ),
         axis=1,
     )
@@ -432,16 +429,16 @@ def transpose_list(l: List[List[T1]]) -> List[List[T1]]:
     return list(map(list, itertools.zip_longest(*l, fillvalue=None)))
 
 
-def partial2_args(func, name: str = None, args=tuple(), kwargs=empty_dict):
-    partial_func: Callable = partial(func, *args, **kwargs)
+def partial_args(func, name: str = None, args=tuple(), kwargs=empty_dict):
+    partial_func: Callable = partial_(func, *args, **kwargs)
     update_wrapper(partial_func, func)
     if name:
         func.__name__ = name
     return partial_func
 
 
-def partial2(func, name: str = None, *args, **kwargs):
-    return partial2_args(func, name=name, args=args, kwargs=kwargs)
+def partial(func, *args, **kwargs):
+    return partial_args(func, name=None, args=args, kwargs=kwargs)
 
 
 def \
@@ -814,12 +811,18 @@ def get_categorical_columns(data: DataFrame) -> List:
     return [column for column, dtype in data.dtypes.items() if dtype == 'category']
 
 
-def detect_categorical_columns(data: DataFrame) -> List:
+def estimate_categorical_columns(data: DataFrame) -> List:
     categorical = []
     for name, column in data.items():
         if len(column.unique()) / len(column) < 0.05:
             categorical.append(name)
     return categorical
+
+
+def estimate_categorical_and_continuous_columns(data: DataFrame) -> List:
+    categorical = estimate_categorical_columns(data)
+    continuous = list(set(data.columns) - set(categorical))
+    return categorical, continuous
 
 
 class DictSubSet:
@@ -839,9 +842,9 @@ def get_models_from_repeats(results: List[Result]) -> List[Estimator]:
     return list(flatten([get_models_from_result(result) for result in results]))
 
 
-# TODO: test
+# TODO: test / structure
 def get_models_from_result(result: Result) -> List[Estimator]:
-    return [prediction['model'].estimators[0][-1].estimator for prediction in result.values()]
+    return [prediction['model'][-1].estimator for prediction in result.values()]
 
 
 def get_tree_importance(models: List[Estimator]) -> DataFrame:
@@ -875,3 +878,27 @@ def get_jobs(n_jobs, maximum=None):
     return jobs_taken, max(
         1, cpu_count_value - jobs_taken if n_jobs == -1 else min(n_jobs, cpu_count_value - jobs_taken)
     )
+
+
+def get_pipeline_name(estimator: Any, ):
+    try:
+        return estimator[-1].get_name()
+    except (AttributeError, TypeError):
+        return estimator.get_name()
+
+
+def auto_convert_category(data: DataFrame) -> DataFrame:
+    data_new = data.copy()
+    for column in data_new.columns:
+        if len(data_new[column].unique()) < 10:
+            data_new.loc[:, column] = data_new[column].astype('category')
+        else:
+            try:
+                data_new.loc[:, column] = data_new[column].astype('float')
+            except (TypeError, ValueError):
+                data_new.loc[:, column] = data_new[column].astype('category')
+    return data_new
+
+
+def upper_columns(df: DataFrame) -> DataFrame:
+    return df.rename(columns=lambda column: column.upper())

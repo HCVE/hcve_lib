@@ -11,7 +11,8 @@ from hcve_lib.utils import get_class_ratios, decamelize_arguments, camelize_retu
     cumulative_count, inverse_cumulative_count, key_value_swap, index_data, list_to_dict_by_keys, subtract_lists, \
     map_groups_iloc, remove_prefix, remove_column_prefix, transpose_dict, map_groups_loc, loc, split_data, \
     get_fraction_missing, get_keys, sort_columns_by_order, is_noneish, sort_index_by_order, SurvivalResample, \
-    transpose_list, binarize, get_fractions, run_parallel, is_numeric, get_models_from_repeats, get_jobs
+    transpose_list, binarize, get_fractions, run_parallel, is_numeric, get_models_from_repeats, get_jobs, \
+    deep_merge_dicts, convert_to_snake_case, convert_to_camel_case, convert_to_camel_case_keys, update_from_diff
 from imblearn.under_sampling import RandomUnderSampler
 from numpy.testing import assert_array_equal
 from pandas import Series, DataFrame, Int64Index
@@ -24,7 +25,6 @@ def test_get_class_ratio():
 
 
 def test_decamelize_arguments():
-
     @decamelize_arguments
     def test_function(arg1: Dict, arg2: List):
         return arg1, arg2
@@ -35,17 +35,16 @@ def test_decamelize_arguments():
             'secondVariable': 2
         }],
     ) == (
-        {
-            'one_variable': 1
-        },
-        [{
-            'second_variable': 2
-        }],
-    )
+               {
+                   'one_variable': 1
+               },
+               [{
+                   'second_variable': 2
+               }],
+           )
 
 
 def test_camelize_return():
-
     @camelize_return
     def test_function(arg1: Dict, arg2: List):
         return arg1, arg2
@@ -56,13 +55,13 @@ def test_camelize_return():
             'second_variable': 2
         }],
     ) == (
-        {
-            'oneVariable': 1
-        },
-        [{
-            'secondVariable': 2
-        }],
-    )
+               {
+                   'oneVariable': 1
+               },
+               [{
+                   'secondVariable': 2
+               }],
+           )
 
 
 def test_map_columns():
@@ -88,11 +87,11 @@ def test_cumulative_count():
         5,
         8,
     ]))) == [
-        (0, 0.25),
-        (3, 0.5),
-        (5, 0.75),
-        (8, 1.0),
-    ]
+               (0, 0.25),
+               (3, 0.5),
+               (5, 0.75),
+               (8, 1.0),
+           ]
 
     assert list(cumulative_count(Series([
         np.nan,
@@ -100,10 +99,10 @@ def test_cumulative_count():
         5,
         8,
     ]))) == [
-        (3, 0.25),
-        (5, 0.5),
-        (8, 0.75),
-    ]
+               (3, 0.25),
+               (5, 0.5),
+               (8, 0.75),
+           ]
 
 
 def test_inverse_cumulative_count():
@@ -113,11 +112,11 @@ def test_inverse_cumulative_count():
         5,
         8,
     ]))) == [
-        (0, 1.),
-        (3, 0.75),
-        (5, 0.5),
-        (8, 0.25),
-    ]
+               (0, 1.),
+               (3, 0.75),
+               (5, 0.5),
+               (8, 0.25),
+           ]
 
 
 def test_key_value_swap():
@@ -220,17 +219,17 @@ def test_transpose_dict():
             'b': 3
         },
     }) == {
-        'a': {
-            0: 'x',
-            1: 'y',
-            2: 'z'
-        },
-        'b': {
-            0: 1,
-            1: 2,
-            2: 3
-        },
-    }
+               'a': {
+                   0: 'x',
+                   1: 'y',
+                   2: 'z'
+               },
+               'b': {
+                   0: 1,
+                   1: 2,
+                   2: 3
+               },
+           }
 
 
 def test_transpose_list():
@@ -423,11 +422,11 @@ def test_map_recursive():
         },
         lambda num, _: num + 1 if isinstance(num, int) else num,
     ) == {
-        'a': {
-            'b': [3, 4],
-            'c': 5,
-        }
-    }
+               'a': {
+                   'b': [3, 4],
+                   'c': 5,
+               }
+           }
 
 
 def test_get_keys():
@@ -445,9 +444,9 @@ def test_itemmap_recursive():
         },
         lambda k, v, l: (k + 'b', v + 1),
     ) == {
-        'xb': 2,
-        'yb': 3
-    }
+               'xb': 2,
+               'yb': 3
+           }
 
     assert itemmap_recursive(
         (1, 2, 3),
@@ -467,17 +466,17 @@ def test_itemmap_recursive():
         },
         lambda k, v, l: (k + 'b', v + 1 if isinstance(v, int) else v),
     ) == {
-        'xb': {
-            'yb': 2
-        },
-    }
+               'xb': {
+                   'yb': 2
+               },
+           }
 
     assert itemmap_recursive(
         {'x': [1, 2, 3]},
         lambda k, v, l: (str(k) + 'b', v + l if isinstance(v, int) else v),
     ) == {
-        'xb': [2, 3, 4],
-    }
+               'xb': [2, 3, 4],
+           }
 
 
 def test_sort_columns_by_order():
@@ -611,3 +610,44 @@ def test_get_jobs():
     granted, residual = get_jobs(1, 8)
     assert granted == 1
     assert residual == 1
+
+
+def test_deep_merge_dicts():
+    assert {'x': {'y': 5, 'a': 1}, 'z': 8, 'z2': 9} == deep_merge_dicts({'x': {'y': 5}, 'z': 7},
+                                                                        {'x': {'a': 1}, 'z': 8, 'z2': 9})
+
+
+def test_convert_to_snake_case_keys():
+    assert {'my_case': 5, 'some_case_no': {'OhNo': 6, 'oh_no': 7}} == test_convert_to_snake_case_keys(
+        {'myCase': 5, 'someCaseNo': {'OhNo': 6, 'ohNo': 7}})
+
+
+def test_convert_to_snake_case():
+    assert convert_to_snake_case('myCase') == 'my_case'
+
+
+def test_convert_to_camel_case_keys():
+    assert {'myCase': 5, 'someCaseNo': {'OhNo': 6, 'ohNo': 7}} == convert_to_camel_case_keys(
+        {'my_case': 5, 'some_case_no': {'OhNo': 6, 'oh_no': 7}}
+    )
+
+
+def test_convert_to_camel_case():
+    assert convert_to_camel_case('my_case') == 'myCase'
+
+
+def test_update_from_diff():
+    class A:
+        pass
+
+    a = A()
+    a.x = 1
+    a.y = {'a': 1, 'b': 2}
+    a.z = [1, 2, {'c': 3, 'd': 4}]
+
+    diff = {'x': 2, 'y': {'a': 3}, 'z': [2, 3, {'c': 4}]}
+    update_from_diff(a, diff)
+
+    assert a.x == 2
+    assert a.y == {'a': 3, 'b': 2}
+    assert a.z == [2, 3, {'c': 4, 'd': 4}]

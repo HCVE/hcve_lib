@@ -1,5 +1,5 @@
 from functools import partial, reduce
-from typing import Any, Tuple, Callable, Dict, List, Iterable
+from typing import Any, Tuple, Callable, Dict, List, Iterable, Union
 
 import numpy as np
 import pandas
@@ -13,7 +13,7 @@ from hcve_lib.custom_types import Estimator, Target, TargetTransformer, Method, 
     Result
 from hcve_lib.utils import is_numerical, estimate_categorical_columns, remove_column_prefix
 from hcve_lib.wrapped_sklearn import DFPipeline, DFRandomForestRegressor, DFRandomForestClassifier, DFXGBClassifier, \
-    DFXGBRegressor, DFLogisticRegression, DFCoxnetSurvivalAnalysis, DFColumnTransformer, DFSimpleImputer, \
+    DFXGBRegressor, DFLogisticRegression, DFColumnTransformer, DFSimpleImputer, \
     DFOrdinalEncoder, DFStandardScaler, DFElasticNet
 
 
@@ -286,8 +286,10 @@ class LinearModel(Model):
 
     def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
         if self.target_type == TargetType.REGRESSION:
-            hyperparameters = {'alpha': trial.suggest_float(f'{prefix}_alpha', 0.1, 100., log=True),
-                               'l1_ratio': trial.suggest_float(f'{prefix}_l1_ratio', 0, 1)}
+            hyperparameters = {
+                'alpha': trial.suggest_float(f'{prefix}_alpha', 0.1, 100., log=True),
+                'l1_ratio': trial.suggest_float(f'{prefix}_l1_ratio', 0, 1)
+            }
         else:
             hyperparameters = {
                 'penalty': trial.suggest_categorical(f'{prefix}_penalty', ['l1', 'l2', 'elasticnet']),
@@ -316,11 +318,7 @@ class LinearModel(Model):
         new_config = {}
 
         new_config['alpha'] = st.slider(
-            "alpha",
-            min_value=0,
-            max_value=5000,
-            value=current_config.get('alpha', 1),
-            key='alpha'
+            "alpha", min_value=0, max_value=5000, value=current_config.get('alpha', 1), key='alpha'
         )
 
         new_config['l1_ratio'] = st.select_slider(
@@ -336,6 +334,7 @@ class LinearModel(Model):
 class CoxNet(Model):
 
     def get_estimator(self):
+        from hcve_lib.wrapped_sksurv import DFCoxnetSurvivalAnalysis
         return DFCoxnetSurvivalAnalysis(fit_baseline_model=True, n_alphas=1),
 
     def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
@@ -433,7 +432,7 @@ def get_target_type(y: Target) -> TargetType:
 
 
 def aggregate_results(
-        results: List[Result] | Result,
+        results: Union[List[Result], Result],
         callback: Callable[[Estimator], Any],
 ) -> DataFrame:
     if isinstance(results, list):
@@ -450,16 +449,20 @@ def aggregate_results(
     return pandas.concat(model_output, axis=1)
 
 
-def get_results_feature_importance(results: List[Result] | Result) -> DataFrame:
+def get_results_feature_importance(results: Union[List[Result], Result]) -> DataFrame:
     return aggregate_results(results, lambda prediction: prediction['model'].get_feature_importance()).copy()
 
 
-def get_results_p_value_feature_importance(results: List[Result] | Result, X: DataFrame, y: Target) -> DataFrame:
+def get_results_p_value_feature_importance(results: Union[List[Result], Result], X: DataFrame, y: Target) -> DataFrame:
     return aggregate_results(results, lambda prediction: prediction['model'].get_p_value_feature_importance(X, y))
 
 
-def get_supervised_pipeline(X: DataFrame, y: Target, random_state: int,
-                            get_estimator: Callable[..., Estimator], ) -> DFPipeline:
+def get_supervised_pipeline(
+        X: DataFrame,
+        y: Target,
+        random_state: int,
+        get_estimator: Callable[..., Estimator],
+) -> DFPipeline:
     categorical = estimate_categorical_columns(X)
     continuous = list(set(X.columns) - set(categorical))
 

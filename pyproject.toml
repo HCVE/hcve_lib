@@ -1,10 +1,14 @@
-[[source]]
-url = "https://pypi.python.org/simple"
-verify_ssl = true
-name = "pypi"
+[tool.poetry]
+name = "hcve-lib"
+version = "0.1.17"
+description = ""
+authors = ["sitnarf <sitnarf@gmail.com>"]
+readme = "README.md"
+packages = [{include = "hcve_lib"}]
 
-[packages]
-pandas = "==1.2"
+[tool.poetry.dependencies]
+python = "^3.7"
+pandas = "*"
 toolz = "*"
 scikit-learn = "*"
 optuna = "*"
@@ -21,7 +25,6 @@ Flask-SocketIO = "*"
 mlflow = "*"
 torchtuples = "*"
 Cython = "*"
-scikit-survival = "*"
 multimethod = "*"
 ansi2html = "*"
 imblearn = "*"
@@ -31,11 +34,12 @@ plotly = "*"
 pyaml = "*"
 notebook = "*"
 dill = "*"
+markupsafe = "2.0.1"
 
-[dev-packages]
-pipenv-setup = "*"
+
+[tool.poetry.dev-dependencies]
 pytest = "*"
 vistir = "==0.6.1"
-
-[requires]
-python_version = "3.10"
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

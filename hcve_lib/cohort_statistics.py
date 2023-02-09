@@ -246,6 +246,7 @@ def get_description_column(
     categorical_features, continuous_features = categorize_features(X)
 
     for item, level in iterate_over_items(items, X):
+        mapping = item.get('mapping')
         if level == 0:
             yield level, 'category', item.get("meaning", item["identifier"])
         elif level >= 1:
@@ -253,7 +254,7 @@ def get_description_column(
             if 'unit' in item:
                 label += f', {item["unit"]}'
             if (item['identifier'] in categorical_features) \
-                    and (mapping := item.get('mapping')):
+                    and mapping:
                 if not (set(mapping.values()) == {'Yes', 'No'}):
                     label += ', ' + (' / '.join(map(str, mapping.values())))
                 label += ", n (%)"

@@ -1,6 +1,7 @@
 from enum import Enum
 from functools import partial as p, partial
-from typing import TypedDict, List, Iterator, Optional, Iterable, Tuple, Any, Dict, Callable, Union
+from typing import List, Iterator, Optional, Iterable, Tuple, Any, Dict, Callable, Union
+from typing_extensions import TypedDict
 
 import numpy as np
 from pandas import DataFrame, Series
@@ -42,10 +43,9 @@ def has_children(item: MetadataItem) -> bool:
 
 
 def find_item(
-    identifier: str,
-    metadata: Metadata,
+        identifier: str,
+        metadata: Metadata,
 ) -> Optional[MetadataItem]:
-
     for item in flatten_metadata(metadata):
         if item.get('identifier') == identifier:
             return item
@@ -53,9 +53,9 @@ def find_item(
 
 
 def format_features_and_values(
-    data: DataFrame,
-    metadata: Metadata,
-    feature_axis: int = 1,
+        data: DataFrame,
+        metadata: Metadata,
+        feature_axis: int = 1,
 ) -> DataFrame:
     return pipe(
         data,
@@ -65,10 +65,10 @@ def format_features_and_values(
 
 
 def format_features(
-    data: DataFrame,
-    metadata: Metadata,
-    axis: int = 1,
-    formatter: Callable[..., str] = None,
+        data: DataFrame,
+        metadata: Metadata,
+        axis: int = 1,
+        formatter: Callable[..., str] = None,
 ) -> DataFrame:
     if formatter is None:
         formatter = format_identifier
@@ -90,10 +90,9 @@ def format_feature_value(value: Any, metadata_item: Optional[MetadataItem]) -> A
 
 
 def inverse_format_feature_value(
-    value: Any,
-    metadata_item: Optional[MetadataItem],
+        value: Any,
+        metadata_item: Optional[MetadataItem],
 ) -> Any:
-
     if metadata_item is None or 'mapping' not in metadata_item or metadata_item['mapping'] is None:
         return value
 
@@ -110,23 +109,23 @@ def format_feature_values(data: DataFrame, metadata: Metadata) -> DataFrame:
 
 
 def format_identifier(
-    identifier: str,
-    metadata: Metadata,
+        identifier: str,
+        metadata: Metadata,
 ) -> str:
     meaning = format_identifier_raw(identifier, metadata)
     return meaning if meaning is not None else identifier
 
 
 def format_identifier_long(
-    identifier: str,
-    metadata: Metadata,
+        identifier: str,
+        metadata: Metadata,
 ) -> str:
     return f'[{identifier}] {format_identifier(identifier, metadata)}'
 
 
 def format_identifier_raw(
-    identifier: str,
-    metadata: Metadata,
+        identifier: str,
+        metadata: Metadata,
 ):
     item = find_item(identifier, metadata)
     if item:
@@ -136,8 +135,8 @@ def format_identifier_raw(
 
 
 def format_identifier_short(
-    identifier: str,
-    metadata: Metadata,
+        identifier: str,
+        metadata: Metadata,
 ) -> str:
     item = find_item(identifier, metadata)
     return item.get('short_label', item.get('meaning', identifier))
@@ -193,11 +192,10 @@ def is_variable(item: MetadataItem) -> bool:
 
 
 def get_survival_y(
-    data: DataFrame,
-    target_feature: str,
-    metadata: Metadata,
+        data: DataFrame,
+        target_feature: str,
+        metadata: Metadata,
 ) -> Target:
-
     metadata_item: Optional[MetadataItem] = find_item(target_feature, metadata)
 
     if metadata_item:
@@ -236,9 +234,9 @@ def to_survival_y_pair(survival_y: DataFrame) -> SurvivalPairTarget:
 
 
 def binarize_event(
-    tte: int,
-    survival_y: DataFrame,
-    drop_censored: bool = True,
+        tte: int,
+        survival_y: DataFrame,
+        drop_censored: bool = True,
 ) -> Series:
     y_binary = Series(index=survival_y.index.copy())
     y_binary[(survival_y['tte'] > tte)] = 0
@@ -250,8 +248,8 @@ def binarize_event(
 
 
 def get_X(
-    data: DataFrame,
-    metadata: Metadata,
+        data: DataFrame,
+        metadata: Metadata,
 ) -> DataFrame:
     features = [
         item.get('identifier')
@@ -281,15 +279,15 @@ def format_series(name: str, series: Series, metadata: Metadata) -> Series:
         return series
 
     mapping_with_defaults = (
-        get_default_mapping(series) | item['mapping']  # type: ignore
+            get_default_mapping(series) | item['mapping']  # type: ignore
     )
 
     return series.map(mapping_with_defaults)
 
 
 def get_available_identifiers_per_category(
-    metadata: Metadata,
-    data: DataFrame,
+        metadata: Metadata,
+        data: DataFrame,
 ) -> Iterator[Tuple[MetadataItem, List[str]]]:
     for num, item in enumerate(metadata):
         identifiers = pipe(

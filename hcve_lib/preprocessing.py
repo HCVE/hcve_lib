@@ -1,14 +1,13 @@
 from logging import Logger
-from typing import Callable, TypedDict, Optional, Iterable
-
-from pandas import DataFrame
-
-from hcve_lib.formatting import format_number
-from logging import Logger
-from typing import Iterable
-from pandas import DataFrame
 from typing import Callable
+from typing import Iterable
+from typing_extensions import TypedDict
+from typing import Optional
+
+from pandas import DataFrame
+
 from hcve_lib.data import inverse_format_feature_value, Metadata, find_item, format_feature_value
+from hcve_lib.formatting import format_number
 from hcve_lib.tracking import get_logger
 
 

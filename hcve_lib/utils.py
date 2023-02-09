@@ -175,7 +175,6 @@ def camelize_adjusted(string: str) -> str:
 
 
 def decamelize_arguments(function: Callable) -> Callable:
-
     def decamelize_arguments_(*args, **kwargs):
         return function(
             *[decamelize_recursive(arg) for arg in args],
@@ -187,7 +186,6 @@ def decamelize_arguments(function: Callable) -> Callable:
 
 
 def camelize_return(function: Callable) -> Callable:
-
     def camelize_return_(*args, **kwargs):
         return camelize_recursive(function(*args, **kwargs))
 
@@ -195,7 +193,6 @@ def camelize_return(function: Callable) -> Callable:
 
 
 def to_plain_decorator(function: Callable) -> Callable:
-
     def to_plain_decorator_(*args, **kwargs):
         return to_plain(function(*args, **kwargs))
 
@@ -203,9 +200,7 @@ def to_plain_decorator(function: Callable) -> Callable:
 
 
 def get_event_listener(socketio: SocketIO):
-
     def event_listener_1(*socketio_args, **socketio_kwargs) -> Callable:
-
         def event_listener_2(function: Callable):
             return pipe(
                 function,
@@ -300,10 +295,10 @@ def index_data(indexes: Iterable[int], data: IndexData) -> IndexData:
 
 
 def loc(
-    index: Index | List[int],
-    data: IndexData,
-    ignore_not_present: bool = False,
-    logger: Logger = None,
+        index: Union[Index, List[int]],
+        data: IndexData,
+        ignore_not_present: bool = False,
+        logger: Logger = None,
 ) -> IndexData:
     if isinstance(data, (DataFrame, Series)):
         if ignore_not_present:
@@ -331,8 +326,8 @@ ListToDictValue = TypeVar('ListToDictValue')
 
 
 def list_to_dict_by_keys(
-    input_list: Iterable[ListToDictValue],
-    keys: Iterable[ListToDictKey],
+        input_list: Iterable[ListToDictValue],
+        keys: Iterable[ListToDictKey],
 ) -> Dict[ListToDictKey, ListToDictValue]:
     return {key: value for key, value in zip(keys, input_list)}
 
@@ -347,15 +342,15 @@ SubtractListT = TypeVar('SubtractListT')
 
 
 def subtract_lists(
-    list1: List[SubtractListT],
-    list2: List[SubtractListT],
+        list1: List[SubtractListT],
+        list2: List[SubtractListT],
 ) -> List[SubtractListT]:
     return [value for value in list1 if value not in list2]
 
 
 def map_groups_iloc(
-    groups: DataFrameGroupBy,
-    flatten_data: DataFrame,
+        groups: DataFrameGroupBy,
+        flatten_data: DataFrame,
 ) -> Iterable[Tuple[Any, List[int]]]:
     current_index = 0
     for key, group in groups:
@@ -463,17 +458,19 @@ def \
 
 
 def get_X_split(
-    X: DataFrame,
-    fold: Prediction,
-    logger: Logger = None,
+        X: DataFrame,
+        fold: Prediction,
+        logger: Logger = None,
 ):
     split_train, split_test = filter_split_in_index(fold['split'], X.index)
 
     if logger:
-        if removed_split_train := len(split_train) - len(fold['split'][0]):
+        removed_split_train = len(split_train) - len(fold['split'][0])
+        if removed_split_train:
             logger.warning(f'Removed {removed_split_train} from X train set')
 
-        if removed_split_test := len(split_test) - len(fold['split'][0]):
+        removed_split_test = len(split_test) - len(fold['split'][0])
+        if removed_split_test:
             logger.warning(f'Removed {removed_split_test} from X test set')
 
     X_ = X[fold['X_columns']]
@@ -496,9 +493,9 @@ def get_X_split(
 
 
 def get_y_split(
-    y: Target,
-    fold: Prediction,
-    logger: Logger = None,
+        y: Target,
+        fold: Prediction,
+        logger: Logger = None,
 ):
     split_train, split_test = filter_split_in_index(
         fold['split'],
@@ -506,10 +503,12 @@ def get_y_split(
     )
 
     if logger is not None:
-        if removed_split_train := len(split_train) - len(fold['split'][0]):
+        removed_split_train = len(split_train) - len(fold['split'][0])
+        if removed_split_train:
             logger.warning(f'Removed {removed_split_train} from y train set')
 
-        if removed_split_test := len(split_test) - len(fold['split'][0]):
+        removed_split_test = len(split_test) - len(fold['split'][0])
+        if removed_split_test:
             logger.warning(f'Removed {removed_split_test} from y test set')
 
     y_train = loc(split_train, y)
@@ -562,8 +561,8 @@ def get_tte(target: Union[DataFrame, Dict]) -> np.ndarray:
 
 
 def cross_validate_apply_mask(
-    mask: Dict[str, bool],
-    data: DataFrame,
+        mask: Dict[str, bool],
+        data: DataFrame,
 ) -> DataFrame:
     new_data = data.copy()
     if set(mask.keys()) != set(data.columns):
@@ -655,15 +654,15 @@ GetKeysSubsetT = TypeVar(
 
 
 def get_keys(
-    keys: Iterable[Hashable],
-    dictionary: GetKeysSubsetT,
+        keys: Iterable[Hashable],
+        dictionary: GetKeysSubsetT,
 ) -> GetKeysSubsetT:
     return {key: dictionary[key] for key in keys}  # type: ignore
 
 
 def sort_columns_by_order(
-    data_frame: DataFrame,
-    order: List[str],
+        data_frame: DataFrame,
+        order: List[str],
 ) -> DataFrame:
     columns_not_present = [column for column in order if column not in data_frame]
 
@@ -674,8 +673,8 @@ def sort_columns_by_order(
 
 
 def sort_index_by_order(
-    data_frame: DataFrame,
-    order: List[str],
+        data_frame: DataFrame,
+        order: List[str],
 ) -> DataFrame:
     index_not_present = [index for index in order if index not in data_frame.index]
 
@@ -902,3 +901,98 @@ def auto_convert_category(data: DataFrame) -> DataFrame:
 
 def upper_columns(df: DataFrame) -> DataFrame:
     return df.rename(columns=lambda column: column.upper())
+
+
+def deep_merge_dicts(dict1: Dict, dict2: Dict) -> Dict:
+    dict1_new = dict1.copy()
+    for key in dict2.keys():
+        if isinstance(dict1_new.get(key), dict) and isinstance(dict2.get(key), dict):
+            dict1_new[key] = deep_merge_dicts(dict1_new[key], dict2[key])
+        else:
+            dict1_new[key] = dict2[key]
+    return dict1_new
+
+
+import re
+
+
+def convert_to_snake_case_keys(data: Union[Dict, List]) -> Union[Dict, List]:
+    if isinstance(data, dict):
+        new_dict = {}
+        for key, value in data.items():
+            if key[0].isupper():
+                new_key = key
+            else:
+                new_key = convert_to_snake_case(key)
+            new_dict[new_key] = convert_to_snake_case_keys(value)
+        return new_dict
+    elif isinstance(data, list):
+        return [convert_to_snake_case_keys(item) for item in data]
+    else:
+        return data
+
+
+def convert_to_snake_case(name: str) -> str:
+    return re.sub('(?!^)([A-Z]+)', r'_\1', name).lower()
+
+
+def convert_to_camel_case_keys(data: Union[Dict, List]) -> Union[Dict, List]:
+    if isinstance(data, dict):
+        new_dict = {}
+        for key, value in data.items():
+            parts = key.split('_')
+            if parts[0][0].islower():
+                new_key = parts[0] + ''.join(x.capitalize() for x in parts[1:])
+            else:
+                new_key = key
+            new_dict[new_key] = convert_to_camel_case_keys(value)
+        return new_dict
+    elif isinstance(data, list):
+        return [convert_to_camel_case_keys(item) for item in data]
+    else:
+        return data
+
+
+def convert_to_camel_case(name: str) -> str:
+    return ''.join(x.capitalize() or '_' for x in name.split("_"))
+
+
+DELETE = '__DELETE__'
+
+
+def update_from_diff(obj: Union[object, Dict], diff: Union[Dict, object]) -> None:
+    vars_ = diff.items() if isinstance(diff, dict) else vars(diff).items()
+    for key, value in vars_:
+        hasattr_ = hasattr if not isinstance(obj, Dict) else lambda d, k: k in d
+        get_attr_ = getattr if not isinstance(obj, Dict) else lambda d, k: d[k]
+        set_attr_ = setattr if not isinstance(obj, Dict) else lambda d, k, v: d.update(**{k: v})
+
+        if value == DELETE:
+            del obj[key]
+
+        if hasattr_(obj, key):
+            attr = get_attr_(obj, key)
+            if isinstance(attr, dict) and isinstance(value, dict):
+                update_from_diff(attr, value)
+            elif isinstance(attr, list) and isinstance(value, list):
+                for i, v in enumerate(value):
+                    if i < len(attr):
+                        if isinstance(attr[i], dict) and isinstance(v, dict):
+                            update_from_diff(attr[i], v)
+                        else:
+                            attr[i] = v
+                    else:
+                        attr.append(v)
+            else:
+                set_attr_(obj, key, value)
+        else:
+            set_attr_(obj, key, value)
+
+
+def get_next_key(d: Dict, current_key: any) -> any:
+    keys = list(d.keys())
+    index = keys.index(current_key)
+    if index + 1 >= len(keys):
+        return keys[0]
+    else:
+        return keys[index + 1]

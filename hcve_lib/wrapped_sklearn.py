@@ -1,28 +1,22 @@
-from optuna import Trial
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sksurv.tree import SurvivalTree
 from typing import Any, Optional, List, Tuple, Dict
 
 import numpy as np
-from sklearn.pipeline import Pipeline
+from optuna import Trial
 from pandas import Series, DataFrame
 from scipy.sparse import csr_matrix
 from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.ensemble._hist_gradient_boosting.binning import _BinMapper
 from sklearn.exceptions import NotFittedError
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer, KNNImputer
-from sklearn.linear_model import LogisticRegression, LinearRegression, ElasticNet
+from sklearn.linear_model import LogisticRegression, ElasticNet
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OrdinalEncoder, FunctionTransformer
 from xgboost import XGBClassifier, XGBRegressor
 
-from sksurv.linear_model import CoxnetSurvivalAnalysis, CoxPHSurvivalAnalysis
-# noinspection PyAttributeOutsideInit,PyUnresolvedReferences
-from sksurv.meta import Stacking
-
 from hcve_lib.custom_types import Estimator, Target
 from hcve_lib.data import to_survival_y_records
-from hcve_lib.functional import dict_subset
 
 
 class DFWrapped:
@@ -100,7 +94,6 @@ class DFWrapped:
                     try:
                         return X.columns
                     except AttributeError:
-                        print(f'{X=}')
                         raise Exception('Cannot produce DataFrame with named columns: columns are not defined')
 
 
@@ -265,22 +258,6 @@ class ToSurvivalRecord:
 
     def fit(self, X: DataFrame, y: Target):
         super().fit(X, to_survival_y_records(y))
-
-
-class DFCoxnetSurvivalAnalysis(DFWrapped, ToSurvivalRecord, CoxnetSurvivalAnalysis):
-    ...
-
-
-class DFCoxPHSurvivalAnalysis(DFWrapped, CoxPHSurvivalAnalysis):
-    ...
-
-
-class DFSurvivalTree(DFWrapped, SurvivalTree):
-    ...
-
-
-class DFStacking(DFWrapped, Stacking):
-    ...
 
 
 class DFBinMapper(DFWrapped, _BinMapper):

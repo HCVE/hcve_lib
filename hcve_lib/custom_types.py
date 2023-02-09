@@ -5,7 +5,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
 from logging import Logger
-from typing import TypedDict, Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable, Callable, Type
+from typing import Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable, Callable, Type
+from typing_extensions import TypedDict
 
 import numpy as np
 from optuna import Trial
@@ -83,7 +84,7 @@ class TargetObject:
         return self._inner[item]
 
 
-Target = TargetObject | Series | DataFrame
+Target = Union[TargetObject, Series, DataFrame]
 
 
 class IndexAccess(ABC):

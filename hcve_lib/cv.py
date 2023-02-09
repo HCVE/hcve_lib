@@ -8,7 +8,7 @@ from logging import Logger
 from multiprocessing import cpu_count
 from time import process_time
 from timeit import repeat
-from typing import Iterable, Hashable, Mapping, Sequence, TypeVar
+from typing import Iterable, Hashable, Mapping, Sequence, TypeVar, Union
 from typing import List, Dict, Optional, Callable, cast
 from typing import Tuple
 
@@ -57,7 +57,7 @@ def cross_validate(
         get_repeat_context: GetRepeatContext = None,
         on_repeat_result: List[OnRepeatResults] = None,
         n_jobs: Optional[int] = None,
-        mlflow: bool | str = False,
+        mlflow: Union[bool,  str] = False,
         optimize: bool = False,
         *args,
         **kwargs,
@@ -129,7 +129,7 @@ def objective_predictive_performance(
         get_pipeline: Callable,
         random_state: int,
         X: DataFrame,
-        y: Target | Series,
+        y: Union[Target, Series],
         get_splits: TrainTestSplitter,
         hyperparameters: Dict,
         logger: logging.Logger = None,
@@ -173,7 +173,7 @@ def get_data_for_cv_repeats(
         get_repeat_context: GetRepeatContext = None,
         on_repeat_result: List[OnRepeatResults] = None,
         n_jobs_rest: Optional[int] = None,
-        mlflow: bool | str = False,
+        mlflow: Union[bool, str] = False,
         optimize: bool = False,
         *args,
         **kwargs,
@@ -234,7 +234,7 @@ def cross_validate_single_repeat_(
         optimize: bool = False,
         optimize_params: OptimizationParams = OptimizationParams(),
         optimize_callbacks: Dict[str, Callable] = empty_dict,
-        hyperparameters: Mapping[str, Dict] | Dict = None,
+        hyperparameters: Union[Mapping[str, Dict], Dict] = None,
         logger: Optional[logging.Logger] = None,
         mlflow: bool = False,
         n_jobs: int = -1,
@@ -464,7 +464,7 @@ def objective_variance(
         get_pipeline: Callable,
         random_state: int,
         X: DataFrame,
-        y: Target | Series,
+        y: Union[Target, Series],
         get_splits: TrainTestSplitter,
         hyperparameters: Dict,
         logger: logging.Logger = None,
@@ -668,7 +668,7 @@ def get_nested_optimization(
         get_pipeline: Callable,
         predict_method: str = 'predict_proba',
         optimize_params: OptimizationParams = OptimizationParams(),
-        mlflow: str | bool = False,
+        mlflow: Union[str, bool] = False,
         logger: Logger = None,
 ):
     direction = optimize_params.direction

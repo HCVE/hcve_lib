@@ -188,6 +188,3 @@ def test_get_inverse_weight():
         'y': 0.9
     }))
 
-
-def test_compute_repeated_metrics_ci():
-    compute_metrics(,,,

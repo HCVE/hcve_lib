@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Union, Tuple, Optional, List, Callable, Any, Literal
+from typing import Union, Tuple, Optional, List, Callable, Any
+from typing_extensions import Literal
 
 import dill
 import numpy
@@ -11,7 +12,6 @@ from sklearn.metrics import brier_score_loss, roc_auc_score, accuracy_score, mea
     average_precision_score, r2_score, mean_absolute_error, mean_absolute_percentage_error
 from sklearn.metrics import confusion_matrix, precision_recall_curve
 from sklearn.utils import resample
-from sksurv.metrics import concordance_index_censored, brier_score
 from toolz.curried import get_in
 
 from hcve_lib.custom_types import Prediction, Target, ExceptionValue, Splits, ValueWithStatistics, ValueWithCI, \
@@ -355,7 +355,7 @@ class CIndex(Maximize, Metric):
 
         try:
             y_ = self.get_y(y, prediction)
-
+            from sksurv.metrics import concordance_index_censored
             index: Tuple = concordance_index_censored(
                 y_['data']['label'].to_numpy().astype(numpy.bool_),
                 y_['data']['tte'],
@@ -430,6 +430,7 @@ class Brier(Minimize, Metric):
 
         for time in self.get_times(prediction):
             try:
+                from sksurv.metrics import brier_score
                 values.append(
                     brier_score(
                         y_train_['data'],
@@ -510,14 +511,15 @@ def get_simple_brier_for_time(
         prediction: Prediction,
 ):
     try:
+        y_binary = 1 - binarize_event(time, y['data']).dropna(),
         return brier_score_loss(
-            y_binary := 1 - binarize_event(time, y['data']).dropna(),
+            y_binary,
             get_y_proba_for_time(
                 prediction,
                 X,
                 y,
                 time,
-            ).loc[y_binary.index],
+            ).loc[y_binary],
         )
     except Exception as e:
         return ExceptionValue(None, e)
@@ -708,7 +710,7 @@ def precision_recall_curve_with_confusion(y_true, probas_pred, *args, sample_wei
     # print(len(index_intersection))
     probas_pred_ = Series(
         [
-            v if isinstance(v := probas_pred.loc[index], float) else v.iloc[0]
+            probas_pred.loc[index] if isinstance(probas_pred.loc[index], float) else probas_pred.loc[index].iloc[0]
             for index in probas_pred.index.drop_duplicates()
         ],
         index=index_intersection.drop_duplicates()
@@ -716,7 +718,7 @@ def precision_recall_curve_with_confusion(y_true, probas_pred, *args, sample_wei
     # print(len(probas_pred_))
     y_true_ = Series(
         [
-            v if isinstance(v := y_true.loc[index], float) else v.iloc[0]
+            y_true.loc[index] if isinstance(y_true.loc[index], float) else y_true.loc[index].iloc[0]
             for index in probas_pred_.index.drop_duplicates()
         ],
         index=probas_pred_.index.drop_duplicates()
@@ -726,7 +728,8 @@ def precision_recall_curve_with_confusion(y_true, probas_pred, *args, sample_wei
     if sample_weight is not None:
         sample_weight_ = Series(
             [
-                v if isinstance(v := sample_weight.loc[index], float) else v.iloc[0]
+                sample_weight.loc[index] if isinstance(sample_weight.loc[index], float) else
+                sample_weight.loc[index].iloc[0]
                 for index in probas_pred_.index.drop_duplicates()
             ],
             index=probas_pred_.index.drop_duplicates()
@@ -802,18 +805,20 @@ class StratifiedMetric(Metric):
 
 
 def get_standard_metrics(y: Target) -> List[Metric]:
-    match get_target_type(y):
-        case TargetType.REGRESSION:
-            return [
-                FunctionMetric(r2_score),
-                FunctionMetric(mean_absolute_error),
-                FunctionMetric(mean_absolute_percentage_error),
-            ]
-        case TargetType.CLASSIFICATION:
-            return [
-                ROC_AUC(),
-                PR_AUC(),
-            ]
+    target_type = get_target_type(y)
+    if target_type == TargetType.REGRESSION:
+        return [
+            FunctionMetric(r2_score),
+            FunctionMetric(mean_absolute_error),
+            FunctionMetric(mean_absolute_percentage_error),
+        ]
+    elif target_type == TargetType.CLASSIFICATION:
+        return [
+            ROC_AUC(),
+            PR_AUC(),
+        ]
+    else:
+        raise NotImplementedError
 
 
 def target_to_survival_y_records(y):

@@ -1,16 +1,21 @@
-from collections import defaultdict
-
 import io
 import logging
 import pickle
 from contextlib import contextmanager
-from dataclasses import asdict
 from datetime import datetime
 from logging import Logger
 from sys import stdout
-from typing import Any, Dict, Hashable, Tuple, Optional, Union, List
+from typing import Any, Dict, Hashable, Tuple, Optional, Union
 
 import mlflow
+from mlflow import get_experiment_by_name, ActiveRun, start_run, get_run, get_experiment, set_tag, create_experiment, \
+    set_experiment
+from mlflow import log_artifact
+from mlflow.entities import Run
+from mlflow.tracking import MlflowClient
+from mlflow.utils.file_utils import TempDir
+from optuna import Study
+from pandas import DataFrame, Series
 from toolz import dissoc
 
 from hcve_lib.custom_types import ValueWithCI, Result, ExceptionValue
@@ -18,14 +23,6 @@ from hcve_lib.functional import pipe, valmap_
 from hcve_lib.log_output import capture_output, log_output
 from hcve_lib.utils import is_noneish
 from hcve_lib.visualisation import display_html
-from mlflow import get_experiment_by_name, ActiveRun, start_run, get_run, get_experiment, set_tag, create_experiment, \
-    set_experiment, MlflowException
-from mlflow import log_artifact
-from mlflow.entities import Run
-from mlflow.tracking import MlflowClient
-from mlflow.utils.file_utils import TempDir
-from optuna import Study
-from pandas import DataFrame, Series
 
 
 def log_pickled(data: Any, path: str) -> None:
@@ -374,6 +371,6 @@ def get_standard_repeat_context(
 def define_experiment(name: str) -> None:
     try:
         create_experiment(name)
-    except MlflowException:
+    except:
         pass
     set_experiment(experiment_name=name)

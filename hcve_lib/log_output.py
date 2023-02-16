@@ -24,19 +24,19 @@ class CopyOutput(object):
         # self.file.flush()
 
 
-# output_buffer = StringIO()
-manager = Manager()
-output_buffer = manager.list()
-original_stdout = sys.stdout
-stdout = CopyOutput(original_stdout, output_buffer)
-sys.stdout = stdout  # type: ignore
-original_stderr = sys.stderr
-stderr = CopyOutput(original_stderr, output_buffer)
-sys.stderr = stderr  # type: ignore
-
 
 @contextmanager
 def capture_output() -> Iterator:
+    # output_buffer = StringIO()
+    manager = Manager()
+    output_buffer = manager.list()
+    original_stdout = sys.stdout
+    stdout = CopyOutput(original_stdout, output_buffer)
+    sys.stdout = stdout  # type: ignore
+    original_stderr = sys.stderr
+    stderr = CopyOutput(original_stderr, output_buffer)
+    sys.stderr = stderr  # type: ignore
+
     # output_buffer.truncate(0)
     # output_buffer.seek(0)
     output_buffer[:] = []

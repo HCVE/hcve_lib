@@ -900,8 +900,8 @@ def auto_convert_category(data: DataFrame) -> DataFrame:
 
 
 def upper_columns(df: DataFrame) -> DataFrame:
-    return df.rename(columns=lambda column: column.upper())
-
+    return df.rename(
+        columns=lambda column: column.upper() if isinstance(column, str) else tuple([column_.upper() for column_ in column]))
 
 def deep_merge_dicts(dict1: Dict, dict2: Dict) -> Dict:
     dict1_new = dict1.copy()

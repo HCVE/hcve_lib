@@ -7,7 +7,7 @@
 #
 #     print(
 #         compute_classification_metrics_from_result(
-#             cross_validate_single_repeat_(
+#             cross_validate_single_repeat(
 #                 X,
 #                 y,
 #                 lambda: XGBClassifier(
@@ -19,7 +19,7 @@
 #
 #     print(
 #         compute_classification_metrics_from_result(
-#             cross_validate_single_repeat_(
+#             cross_validate_single_repeat(
 #                 X,
 #                 y,
 #                 lambda: BalancedXGBoostClassifier(

@@ -2,7 +2,7 @@ import pandas
 from sklearn.model_selection import KFold
 from xgboost import XGBClassifier
 
-from hcve_lib.cv import cross_validate_single_repeat_
+from hcve_lib.cv import cross_validate_single_repeat
 from hcve_lib.evaluation_functions import compute_classification_metrics_from_result
 from hcve_lib.methods.balanced_xgboost import BalancedXGBoostClassifier
 
@@ -15,7 +15,7 @@ from hcve_lib.methods.balanced_xgboost import BalancedXGBoostClassifier
 #
 #     print(
 #         compute_classification_metrics_from_result(
-#             cross_validate_single_repeat_(
+#             cross_validate_single_repeat(
 #                 X,
 #                 y,
 #                 lambda: XGBClassifier(
@@ -27,7 +27,7 @@ from hcve_lib.methods.balanced_xgboost import BalancedXGBoostClassifier
 #
 #     print(
 #         compute_classification_metrics_from_result(
-#             cross_validate_single_repeat_(
+#             cross_validate_single_repeat(
 #                 X,
 #                 y,
 #                 lambda: BalancedXGBoostClassifier(

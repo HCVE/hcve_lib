@@ -9,7 +9,8 @@ from contextlib import contextmanager
 from copy import copy
 from functools import singledispatch, partial as partial_, update_wrapper
 from logging import Logger
-from numbers import Real
+from multiprocessing.pool import Pool
+from numbers import Real, Number
 from pathlib import Path
 from pprint import pprint
 from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional, Sequence, Hashable, Union
@@ -23,11 +24,12 @@ from filelock import FileLock, UnixFileLock
 from flask_socketio import SocketIO
 from frozendict import frozendict
 from humps import decamelize, camelize
-from imblearn.over_sampling.base import BaseOverSampler
+# from imblearn.over_sampling.base import BaseOverSampler
 from matplotlib import pyplot
 from numpy import ndarray, recarray, isnan
 from pandas import Series, DataFrame, Index
 from pandas.core.groupby import DataFrameGroupBy
+from scipy.stats import t
 from toolz import valmap
 
 from hcve_lib.custom_types import SurvivalPairTarget, Prediction, Target, TrainTestIndex, Result, Estimator
@@ -175,17 +177,21 @@ def camelize_adjusted(string: str) -> str:
 
 
 def decamelize_arguments(function: Callable) -> Callable:
+
     def decamelize_arguments_(*args, **kwargs):
         return function(
             *[decamelize_recursive(arg) for arg in args],
-            **{arg_name: decamelize_recursive(arg)
-               for arg_name, arg in kwargs.items()},
+            **{
+                arg_name: decamelize_recursive(arg)
+                for arg_name, arg in kwargs.items()
+            },
         )
 
     return decamelize_arguments_
 
 
 def camelize_return(function: Callable) -> Callable:
+
     def camelize_return_(*args, **kwargs):
         return camelize_recursive(function(*args, **kwargs))
 
@@ -193,6 +199,7 @@ def camelize_return(function: Callable) -> Callable:
 
 
 def to_plain_decorator(function: Callable) -> Callable:
+
     def to_plain_decorator_(*args, **kwargs):
         return to_plain(function(*args, **kwargs))
 
@@ -200,7 +207,9 @@ def to_plain_decorator(function: Callable) -> Callable:
 
 
 def get_event_listener(socketio: SocketIO):
+
     def event_listener_1(*socketio_args, **socketio_kwargs) -> Callable:
+
         def event_listener_2(function: Callable):
             return pipe(
                 function,
@@ -295,10 +304,10 @@ def index_data(indexes: Iterable[int], data: IndexData) -> IndexData:
 
 
 def loc(
-        index: Union[Index, List[int]],
-        data: IndexData,
-        ignore_not_present: bool = False,
-        logger: Logger = None,
+    index: Union[Index, List[int]],
+    data: IndexData,
+    ignore_not_present: bool = False,
+    logger: Logger = None,
 ) -> IndexData:
     if isinstance(data, (DataFrame, Series)):
         if ignore_not_present:
@@ -326,8 +335,8 @@ ListToDictValue = TypeVar('ListToDictValue')
 
 
 def list_to_dict_by_keys(
-        input_list: Iterable[ListToDictValue],
-        keys: Iterable[ListToDictKey],
+    input_list: Iterable[ListToDictValue],
+    keys: Iterable[ListToDictKey],
 ) -> Dict[ListToDictKey, ListToDictValue]:
     return {key: value for key, value in zip(keys, input_list)}
 
@@ -342,15 +351,15 @@ SubtractListT = TypeVar('SubtractListT')
 
 
 def subtract_lists(
-        list1: List[SubtractListT],
-        list2: List[SubtractListT],
+    list1: List[SubtractListT],
+    list2: List[SubtractListT],
 ) -> List[SubtractListT]:
     return [value for value in list1 if value not in list2]
 
 
 def map_groups_iloc(
-        groups: DataFrameGroupBy,
-        flatten_data: DataFrame,
+    groups: DataFrameGroupBy,
+    flatten_data: DataFrame,
 ) -> Iterable[Tuple[Any, List[int]]]:
     current_index = 0
     for key, group in groups:
@@ -411,8 +420,10 @@ def transpose_dict(dictionary: TransposeDictInput) -> Dict[TransposeDictT2, Dict
     inner_keys = next(iter(dictionary.values())).keys()
 
     return {
-        inner_key: {outer_key: dictionary[outer_key][inner_key]
-                    for outer_key in outer_keys}
+        inner_key: {
+            outer_key: dictionary[outer_key][inner_key]
+            for outer_key in outer_keys
+        }
         for inner_key in inner_keys
     }
 
@@ -436,13 +447,12 @@ def partial(func, *args, **kwargs):
     return partial_args(func, name=None, args=args, kwargs=kwargs)
 
 
-def \
-        split_data(
-        X: DataFrame,
-        y: Target,
-        prediction: Prediction,
-        remove_extended: bool = False,
-        logger: Logger = None,
+def split_data(
+    X: DataFrame,
+    y: Target,
+    prediction: Prediction,
+    remove_extended: bool = False,
+    logger: Logger = None,
 ):
     X_train, X_test = get_X_split(X, prediction, logger)
 
@@ -458,33 +468,33 @@ def \
 
 
 def get_X_split(
-        X: DataFrame,
-        fold: Prediction,
-        logger: Logger = None,
+    X: DataFrame,
+    prediction: Prediction,
+    logger: Logger = None,
 ):
-    split_train, split_test = filter_split_in_index(fold['split'], X.index)
+    split_train, split_test = filter_split_in_index(prediction['split'], X.index)
 
     if logger:
-        removed_split_train = len(split_train) - len(fold['split'][0])
+        removed_split_train = len(split_train) - len(prediction['split'][0])
         if removed_split_train:
             logger.warning(f'Removed {removed_split_train} from X train set')
 
-        removed_split_test = len(split_test) - len(fold['split'][0])
+        removed_split_test = len(split_test) - len(prediction['split'][0])
         if removed_split_test:
             logger.warning(f'Removed {removed_split_test} from X test set')
 
-    X_ = X[fold['X_columns']]
+    X_ = X[prediction['X_columns']]
 
     X_train = loc(split_train, X_)
     X_test = loc(split_test, X_)
 
-    if isinstance(fold.get('y_score'), Series):
-        X_test = loc(fold['y_score'].index, X_test, ignore_not_present=True)
+    if isinstance(prediction.get('y_pred'), Series):
+        X_test = loc(prediction['y_pred'].index, X_test, ignore_not_present=True)
 
     if logger:
         log_additional_removed(
             X_test,
-            fold['y_score'],
+            prediction['y_pred'],
             logger,
             'from X test set',
         )
@@ -493,21 +503,21 @@ def get_X_split(
 
 
 def get_y_split(
-        y: Target,
-        fold: Prediction,
-        logger: Logger = None,
+    y: Target,
+    prediction: Prediction,
+    logger: Logger = None,
 ):
     split_train, split_test = filter_split_in_index(
-        fold['split'],
+        prediction['split'],
         y.index,
     )
 
     if logger is not None:
-        removed_split_train = len(split_train) - len(fold['split'][0])
+        removed_split_train = len(split_train) - len(prediction['split'][0])
         if removed_split_train:
             logger.warning(f'Removed {removed_split_train} from y train set')
 
-        removed_split_test = len(split_test) - len(fold['split'][0])
+        removed_split_test = len(split_test) - len(prediction['split'][0])
         if removed_split_test:
             logger.warning(f'Removed {removed_split_test} from y test set')
 
@@ -515,17 +525,24 @@ def get_y_split(
     y_test = loc(split_test, y)
 
     # TODO: Causing problems with BoostrapMetric
-    # if isinstance(fold.get('y_score'), Series):
-    #     y_test = loc(fold['y_score'].index, y_test, ignore_not_present=True)
+    # if isinstance(prediction.get('y_score'), Series):
+    #     y_test = loc(prediction['y_score'].index, y_test, ignore_not_present=True)
 
     if logger:
         log_additional_removed(
             y,
-            fold['y_proba'],
+            prediction['y_proba'],
             logger,
             'from y test set',
         )
     return y_train, y_test
+
+
+def get_X_y_split(X: DataFrame,
+                  y: Target,
+                  prediction: Prediction,
+                  logger: Logger = None) -> Tuple[DataFrame, DataFrame, Target, Target]:
+    return get_X_split(X, prediction, logger) + get_y_split(y, prediction, logger)
 
 
 def log_additional_removed(X_test, y_score, logger, message):
@@ -561,8 +578,8 @@ def get_tte(target: Union[DataFrame, Dict]) -> np.ndarray:
 
 
 def cross_validate_apply_mask(
-        mask: Dict[str, bool],
-        data: DataFrame,
+    mask: Dict[str, bool],
+    data: DataFrame,
 ) -> DataFrame:
     new_data = data.copy()
     if set(mask.keys()) != set(data.columns):
@@ -629,7 +646,7 @@ class NonDaemonProcess(multiprocessing.Process):
         pass
 
 
-class NonDaemonPool(multiprocessing.pool.Pool):
+class NonDaemonPool(Pool):
 
     def Process(self, *args, **kwargs):
         # noinspection PyUnresolvedReferences
@@ -654,15 +671,15 @@ GetKeysSubsetT = TypeVar(
 
 
 def get_keys(
-        keys: Iterable[Hashable],
-        dictionary: GetKeysSubsetT,
+    keys: Iterable[Hashable],
+    dictionary: GetKeysSubsetT,
 ) -> GetKeysSubsetT:
     return {key: dictionary[key] for key in keys}  # type: ignore
 
 
 def sort_columns_by_order(
-        data_frame: DataFrame,
-        order: List[str],
+    data_frame: DataFrame,
+    order: List[str],
 ) -> DataFrame:
     columns_not_present = [column for column in order if column not in data_frame]
 
@@ -673,8 +690,8 @@ def sort_columns_by_order(
 
 
 def sort_index_by_order(
-        data_frame: DataFrame,
-        order: List[str],
+    data_frame: DataFrame,
+    order: List[str],
 ) -> DataFrame:
     index_not_present = [index for index in order if index not in data_frame.index]
 
@@ -724,28 +741,28 @@ class SaveEnum(argparse.Action):
         setattr(namespace, self.dest, value)
 
 
-class SurvivalResample(BaseOverSampler):
-
-    def __init__(self, resampler):
-        super().__init__()
-        self.resampler = resampler
-
-    def fit(self, X, y=None):
-        self.resampler.fit(X, y['data']['label'])
-        return self
-
-    def fit_resample(self, X, y):
-        return self._fit_resample(X, y)
-
-    def _fit_resample(self, X, y):
-        Xr, yr = self.resampler.fit_resample(
-            pandas.concat(
-                [X, Series(X.index, index=X.index, name='index')],
-                axis=1,
-            ),
-            y['data']['label'],
-        )
-        return loc(Xr['index'], X), loc(Xr['index'], y)
+# class SurvivalResample(BaseOverSampler):
+#
+#     def __init__(self, resampler):
+#         super().__init__()
+#         self.resampler = resampler
+#
+#     def fit(self, X, y=None):
+#         self.resampler.fit(X, y['data']['label'])
+#         return self
+#
+#     def fit_resample(self, X, y):
+#         return self._fit_resample(X, y)
+#
+#     def _fit_resample(self, X, y):
+#         Xr, yr = self.resampler.fit_resample(
+#             pandas.concat(
+#                 [X, Series(X.index, index=X.index, name='index')],
+#                 axis=1,
+#             ),
+#             y['data']['label'],
+#         )
+#         return loc(Xr['index'], X), loc(Xr['index'], y)
 
 
 def binarize(s: Series, threshold: float) -> Series:
@@ -810,18 +827,30 @@ def get_categorical_columns(data: DataFrame) -> List:
     return [column for column, dtype in data.dtypes.items() if dtype == 'category']
 
 
-def estimate_categorical_columns(data: DataFrame) -> List:
+def estimate_categorical_columns(data: DataFrame, limit: int = 10) -> List:
     categorical = []
     for name, column in data.items():
-        if len(column.unique()) / len(column) < 0.05:
+        if len(column.unique()) <= limit:
             categorical.append(name)
     return categorical
 
 
-def estimate_categorical_and_continuous_columns(data: DataFrame) -> List:
-    categorical = estimate_categorical_columns(data)
+def estimate_categorical_and_continuous_columns(data: DataFrame, limit: int = 10) -> Tuple:
+    categorical = estimate_categorical_columns(data, limit)
     continuous = list(set(data.columns) - set(categorical))
     return categorical, continuous
+
+
+def auto_convert_columns(data: DataFrame, limit: int = 10) -> DataFrame:
+    categorical, continuous = estimate_categorical_and_continuous_columns(data, limit)
+    data_new = data.copy()
+    for column in continuous:
+        data_new[column] = pd.to_numeric(data_new[column], errors='coerce').astype('float')
+
+    for column in categorical:
+        data_new[column] = data_new[column].astype('category')
+
+    return data_new
 
 
 class DictSubSet:
@@ -836,6 +865,12 @@ class DictSubSet:
         return repr(self.items)
 
 
+def get_predictions_from_results(results: List[Result]) -> Iterable[Prediction]:
+    for result in results:
+        for prediction in result.values():
+            yield prediction
+
+
 # TODO: test
 def get_models_from_repeats(results: List[Result]) -> List[Estimator]:
     return list(flatten([get_models_from_result(result) for result in results]))
@@ -843,19 +878,16 @@ def get_models_from_repeats(results: List[Result]) -> List[Estimator]:
 
 # TODO: test / structure
 def get_models_from_result(result: Result) -> List[Estimator]:
-    return [prediction['model'][-1].estimator for prediction in result.values()]
+    return [prediction['model'] for prediction in result.values()]
 
 
-def get_tree_importance(models: List[Estimator]) -> DataFrame:
-    importances = [forest.feature_importances_ for forest in models]
+def get_mean_importance(models: List[Estimator]) -> DataFrame:
+    importances = [forest.get_feature_importance() for forest in models]
 
-    forest_importances = pd.DataFrame(
-        {num: importance
-         for num, importance in enumerate(importances)}, index=models[0].fit_feature_names
-    )
+    forest_importances_ = pandas.concat(importances, axis=1)
 
-    forest_importance_avg = forest_importances.mean(axis=1)
-    forest_importance_std = forest_importances.std(axis=1)
+    forest_importance_avg = forest_importances_.mean(axis=1)
+    forest_importance_std = forest_importances_.std(axis=1)
 
     return DataFrame({'mean': forest_importance_avg, 'std': forest_importance_std}).sort_values('mean')
 
@@ -881,9 +913,12 @@ def get_jobs(n_jobs, maximum=None):
 
 def get_pipeline_name(estimator: Any, ):
     try:
-        return estimator[-1].get_name()
-    except (AttributeError, TypeError):
         return estimator.get_name()
+    except (AttributeError, TypeError):
+        try:
+            return estimator[-1].get_name()
+        except:
+            return str(estimator)
 
 
 def auto_convert_category(data: DataFrame) -> DataFrame:
@@ -901,7 +936,10 @@ def auto_convert_category(data: DataFrame) -> DataFrame:
 
 def upper_columns(df: DataFrame) -> DataFrame:
     return df.rename(
-        columns=lambda column: column.upper() if isinstance(column, str) else tuple([column_.upper() for column_ in column]))
+        columns=lambda column: column.upper()
+        if isinstance(column, str) else tuple([column_.upper() for column_ in column])
+    )
+
 
 def deep_merge_dicts(dict1: Dict, dict2: Dict) -> Dict:
     dict1_new = dict1.copy()
@@ -969,6 +1007,7 @@ def update_from_diff(obj: Union[object, Dict], diff: Union[Dict, object]) -> Non
 
         if value == DELETE:
             del obj[key]
+            continue
 
         if hasattr_(obj, key):
             attr = get_attr_(obj, key)
@@ -993,6 +1032,156 @@ def get_next_key(d: Dict, current_key: any) -> any:
     keys = list(d.keys())
     index = keys.index(current_key)
     if index + 1 >= len(keys):
-        return keys[0]
+        return keys[-1]
     else:
         return keys[index + 1]
+
+
+def print_structure(obj, indent=0, max_len=10):
+    if isinstance(obj, list):
+        if len(obj) > max_len:
+            print('[...]')
+        else:
+            print('[')
+            for item in obj:
+                print_structure(item, indent + 1, max_len)
+                print(' ' * (indent + 1), end='')
+            print(']')
+    elif isinstance(obj, dict):
+        if len(obj) > max_len:
+            print('{...}')
+        else:
+            print('{')
+            for key, value in obj.items():
+                print(' ' * (indent + 1) + str(key) + ':', end='')
+                print_structure(value, indent + 2, max_len)
+                print(' ' * (indent + 1), end='')
+            print('}')
+    else:
+        print(' ' * indent + '<<' + type(obj).__name__ + '>>')
+
+
+def aggregate_df_with_statistics(df):
+    avg = df.mean(axis=1)
+    std_dev = df.std(axis=1)
+    n = df.shape[1]
+    ci = t.interval(alpha=0.95, df=n - 1, loc=avg, scale=std_dev / np.sqrt(n))
+    lower_ci, upper_ci = ci
+    new_df = pd.DataFrame({'avg': avg, 'std_dev': std_dev, 'lower_ci': lower_ci, 'upper_ci': upper_ci})
+    new_df = new_df.sort_values('avg', ascending=False)
+    return new_df
+
+
+def aggregate_dfs_with_statistics(df):
+    df = pandas.concat(df, axis=1)
+    return aggregate_df_with_statistics(df)
+
+
+def bootstrap_sample(X, y, random_state: bool):
+    n = X.shape[0]
+    indices = np.random.choice(n, n, replace=True)
+    return X.iloc[indices], y.iloc[indices]
+
+
+def kendall_tau(rank1: List[Number], rank2: List[Number]) -> float:
+    if len(rank1) != len(rank2):
+        raise ValueError("Rankings must have the same length.")
+
+    n = len(rank1)
+    concordant_pairs = 0
+    discordant_pairs = 0
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if (rank1[i] < rank1[j] and rank2[i] < rank2[j]) or (rank1[i] > rank1[j] and rank2[i] > rank2[j]):
+                concordant_pairs += 1
+            elif (rank1[i] < rank1[j] and rank2[i] > rank2[j]) or (rank1[i] > rank1[j] and rank2[i] < rank2[j]):
+                discordant_pairs += 1
+
+    tau = (concordant_pairs - discordant_pairs) / (0.5 * n * (n - 1))
+
+    return tau
+
+
+def average_kendall_tau(rankings: List[List[Number]]) -> float:
+    num_rankings = len(rankings)
+    total_tau = 0.0
+    num_comparisons = 0
+
+    for i in range(num_rankings):
+        for j in range(i + 1, num_rankings):
+            tau = kendall_tau(rankings[i], rankings[j])
+            total_tau += tau
+            num_comparisons += 1
+
+    if num_comparisons == 0:
+        return 0.0
+
+    return total_tau / num_comparisons
+
+
+class DummyLogger:
+
+    def __init__(self):
+        pass
+
+    def log(self, *args, **kwargs):
+        pass
+
+    def debug(self, *args, **kwargs):
+        pass
+
+    def info(self, *args, **kwargs):
+        pass
+
+    def warning(self, *args, **kwargs):
+        pass
+
+    def error(self, *args, **kwargs):
+        pass
+
+
+def standardize_dataframe(df: DataFrame) -> DataFrame:
+    df_standardized = (df - df.mean()) / df.std()
+    return df_standardized
+
+
+class ObjectWrapper:
+
+    def __init__(self, obj):
+        self._wrapped_obj = obj
+
+    def __getattr__(self, name):
+        return getattr(self._wrapped_obj, name)
+
+    def __setattr__(self, name, value):
+        if name == "_wrapped_obj":
+            # Set attribute directly on the wrapper object
+            super().__setattr__(name, value)
+        else:
+            # Set attribute on the wrapped object
+            setattr(self._wrapped_obj, name, value)
+
+    def __delattr__(self, name):
+        delattr(self._wrapped_obj, name)
+
+    def __str__(self):
+        return str(self._wrapped_obj)
+
+    def __repr__(self):
+        return repr(self._wrapped_obj)
+
+
+def is_iterable(obj):
+    try:
+        iter(obj)
+        return True
+    except TypeError:
+        return False
+
+
+def generate_steps(start, n, num_steps):
+    step_size = (n - start) / (num_steps - 1)
+    steps = [round(start + i * step_size) for i in range(num_steps)]
+    steps[-1] = n
+    return steps

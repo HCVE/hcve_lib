@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
+from numpy import int64
 
 from hcve_lib.custom_types import Result, Prediction
 from hcve_lib.functional import itemmap_recursive, map_recursive
@@ -12,7 +13,8 @@ from hcve_lib.utils import get_class_ratios, decamelize_arguments, camelize_retu
     map_groups_iloc, remove_prefix, remove_column_prefix, transpose_dict, map_groups_loc, loc, split_data, \
     get_fraction_missing, get_keys, sort_columns_by_order, is_noneish, sort_index_by_order, SurvivalResample, \
     transpose_list, binarize, get_fractions, run_parallel, is_numeric, get_models_from_repeats, get_jobs, \
-    deep_merge_dicts, convert_to_snake_case, convert_to_camel_case, convert_to_camel_case_keys, update_from_diff
+    deep_merge_dicts, convert_to_snake_case, convert_to_camel_case, convert_to_camel_case_keys, update_from_diff, \
+    auto_convert_columns, average_kendall_tau, kendall_tau, get_predictions_from_results, is_iterable, generate_steps
 from imblearn.under_sampling import RandomUnderSampler
 from numpy.testing import assert_array_equal
 from pandas import Series, DataFrame, Int64Index
@@ -25,6 +27,7 @@ def test_get_class_ratio():
 
 
 def test_decamelize_arguments():
+
     @decamelize_arguments
     def test_function(arg1: Dict, arg2: List):
         return arg1, arg2
@@ -35,16 +38,17 @@ def test_decamelize_arguments():
             'secondVariable': 2
         }],
     ) == (
-               {
-                   'one_variable': 1
-               },
-               [{
-                   'second_variable': 2
-               }],
-           )
+        {
+            'one_variable': 1
+        },
+        [{
+            'second_variable': 2
+        }],
+    )
 
 
 def test_camelize_return():
+
     @camelize_return
     def test_function(arg1: Dict, arg2: List):
         return arg1, arg2
@@ -55,13 +59,13 @@ def test_camelize_return():
             'second_variable': 2
         }],
     ) == (
-               {
-                   'oneVariable': 1
-               },
-               [{
-                   'secondVariable': 2
-               }],
-           )
+        {
+            'oneVariable': 1
+        },
+        [{
+            'secondVariable': 2
+        }],
+    )
 
 
 def test_map_columns():
@@ -87,11 +91,11 @@ def test_cumulative_count():
         5,
         8,
     ]))) == [
-               (0, 0.25),
-               (3, 0.5),
-               (5, 0.75),
-               (8, 1.0),
-           ]
+        (0, 0.25),
+        (3, 0.5),
+        (5, 0.75),
+        (8, 1.0),
+    ]
 
     assert list(cumulative_count(Series([
         np.nan,
@@ -99,10 +103,10 @@ def test_cumulative_count():
         5,
         8,
     ]))) == [
-               (3, 0.25),
-               (5, 0.5),
-               (8, 0.75),
-           ]
+        (3, 0.25),
+        (5, 0.5),
+        (8, 0.75),
+    ]
 
 
 def test_inverse_cumulative_count():
@@ -112,11 +116,11 @@ def test_inverse_cumulative_count():
         5,
         8,
     ]))) == [
-               (0, 1.),
-               (3, 0.75),
-               (5, 0.5),
-               (8, 0.25),
-           ]
+        (0, 1.),
+        (3, 0.75),
+        (5, 0.5),
+        (8, 0.25),
+    ]
 
 
 def test_key_value_swap():
@@ -219,17 +223,17 @@ def test_transpose_dict():
             'b': 3
         },
     }) == {
-               'a': {
-                   0: 'x',
-                   1: 'y',
-                   2: 'z'
-               },
-               'b': {
-                   0: 1,
-                   1: 2,
-                   2: 3
-               },
-           }
+        'a': {
+            0: 'x',
+            1: 'y',
+            2: 'z'
+        },
+        'b': {
+            0: 1,
+            1: 2,
+            2: 3
+        },
+    }
 
 
 def test_transpose_list():
@@ -422,11 +426,11 @@ def test_map_recursive():
         },
         lambda num, _: num + 1 if isinstance(num, int) else num,
     ) == {
-               'a': {
-                   'b': [3, 4],
-                   'c': 5,
-               }
-           }
+        'a': {
+            'b': [3, 4],
+            'c': 5,
+        }
+    }
 
 
 def test_get_keys():
@@ -444,9 +448,9 @@ def test_itemmap_recursive():
         },
         lambda k, v, l: (k + 'b', v + 1),
     ) == {
-               'xb': 2,
-               'yb': 3
-           }
+        'xb': 2,
+        'yb': 3
+    }
 
     assert itemmap_recursive(
         (1, 2, 3),
@@ -466,17 +470,17 @@ def test_itemmap_recursive():
         },
         lambda k, v, l: (k + 'b', v + 1 if isinstance(v, int) else v),
     ) == {
-               'xb': {
-                   'yb': 2
-               },
-           }
+        'xb': {
+            'yb': 2
+        },
+    }
 
     assert itemmap_recursive(
         {'x': [1, 2, 3]},
         lambda k, v, l: (str(k) + 'b', v + l if isinstance(v, int) else v),
     ) == {
-               'xb': [2, 3, 4],
-           }
+        'xb': [2, 3, 4],
+    }
 
 
 def test_sort_columns_by_order():
@@ -613,13 +617,41 @@ def test_get_jobs():
 
 
 def test_deep_merge_dicts():
-    assert {'x': {'y': 5, 'a': 1}, 'z': 8, 'z2': 9} == deep_merge_dicts({'x': {'y': 5}, 'z': 7},
-                                                                        {'x': {'a': 1}, 'z': 8, 'z2': 9})
+    assert {
+        'x': {
+            'y': 5,
+            'a': 1
+        },
+        'z': 8,
+        'z2': 9
+    } == deep_merge_dicts({
+        'x': {
+            'y': 5
+        },
+        'z': 7
+    }, {
+        'x': {
+            'a': 1
+        },
+        'z': 8,
+        'z2': 9
+    })
 
 
 def test_convert_to_snake_case_keys():
-    assert {'my_case': 5, 'some_case_no': {'OhNo': 6, 'oh_no': 7}} == test_convert_to_snake_case_keys(
-        {'myCase': 5, 'someCaseNo': {'OhNo': 6, 'ohNo': 7}})
+    assert {
+        'my_case': 5,
+        'some_case_no': {
+            'OhNo': 6,
+            'oh_no': 7
+        }
+    } == test_convert_to_snake_case_keys({
+        'myCase': 5,
+        'someCaseNo': {
+            'OhNo': 6,
+            'ohNo': 7
+        }
+    })
 
 
 def test_convert_to_snake_case():
@@ -627,9 +659,19 @@ def test_convert_to_snake_case():
 
 
 def test_convert_to_camel_case_keys():
-    assert {'myCase': 5, 'someCaseNo': {'OhNo': 6, 'ohNo': 7}} == convert_to_camel_case_keys(
-        {'my_case': 5, 'some_case_no': {'OhNo': 6, 'oh_no': 7}}
-    )
+    assert {
+        'myCase': 5,
+        'someCaseNo': {
+            'OhNo': 6,
+            'ohNo': 7
+        }
+    } == convert_to_camel_case_keys({
+        'my_case': 5,
+        'some_case_no': {
+            'OhNo': 6,
+            'oh_no': 7
+        }
+    })
 
 
 def test_convert_to_camel_case():
@@ -637,6 +679,7 @@ def test_convert_to_camel_case():
 
 
 def test_update_from_diff():
+
     class A:
         pass
 
@@ -651,3 +694,70 @@ def test_update_from_diff():
     assert a.x == 2
     assert a.y == {'a': 3, 'b': 2}
     assert a.z == [2, 3, {'c': 4, 'd': 4}]
+
+
+def test_auto_convert_columns():
+    dtypes = auto_convert_columns(DataFrame({'x': [1, 2, 3], 'y': [1, 1, 3], 'z': [1, 2, 'x']}), limit=2).dtypes
+    assert_series_equal(dtypes, Series({
+        'x': 'float64',
+        'y': 'category',
+        'z': 'float64',
+    }))
+
+
+def test_kendall_tau():
+    test_cases = [
+        ([1, 2, 3, 4, 5], [2, 1, 4, 3, 5], 0.6),
+        ([3, 1, 2, 5, 4], [1, 2, 3, 4, 5], 0.4),
+    ]
+
+    for rank1, rank2, expected_tau in test_cases:
+        tau = kendall_tau(rank1, rank2)
+        assert tau == pytest.approx(expected_tau)
+
+
+def test_average_kendall_tau():
+    rankings = [
+        [1, 2, 3, 4, 5],
+        [2, 1, 4, 3, 5],
+    ]
+    avg_tau = average_kendall_tau(rankings)
+    assert avg_tau == pytest.approx(0.6)
+
+
+def test_get_predictions_from_results():
+    predictions = [{}, {}, {}, {}]
+    results = [
+        {
+            'split1': predictions[0],
+            'split2': predictions[1]
+        },
+        {
+            'split1': predictions[2],
+            'split2': predictions[3]
+        },
+    ]
+
+    predictions_results = list(get_predictions_from_results(results))
+
+    assert predictions_results[0] is predictions[0]
+    assert predictions_results[1] is predictions[1]
+    assert predictions_results[2] is predictions[2]
+    assert predictions_results[3] is predictions[3]
+    assert predictions_results[2] is not predictions[3]
+
+
+def test_is_iterable():
+    assert is_iterable([1, 2, 3]) == True
+    assert is_iterable("Hello") == True
+    assert is_iterable(123) == False
+    assert is_iterable({"key": "value"}) == True
+    assert is_iterable(()) == True
+
+
+def test_generate_steps():
+    assert list(generate_steps(1, 5, 5)) == [1, 2, 3, 4, 5]
+
+    assert list(generate_steps(1, 10, 4)) == [1, 4, 7, 10]
+
+    assert list(generate_steps(1, 10, 5)) == [1, 3, 6, 8, 10]

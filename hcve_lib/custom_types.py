@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
 from logging import Logger
-from typing import Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable, Callable, Type
+from typing import Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable, Callable, Type, Iterable
 from typing_extensions import TypedDict
 
 import numpy as np
@@ -79,6 +79,12 @@ class TargetObject:
             return getattr(self._inner, item)
         else:
             raise AttributeError(f'AttributeError: object has no attribute \'{item}\'')
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+    def __getstate__(self):
+        return self.__dict__
 
     def __getitem__(self, item):
         return self._inner[item]
@@ -171,7 +177,7 @@ class Estimator(BaseEstimator, DictAccess):
         return X
 
     def get_feature_importance(self):
-        raise NotImplementedError
+        raise NotImplementedError(f'{self} do not implement feature importance')
 
     @classmethod
     def get_name(cls):
@@ -179,7 +185,7 @@ class Estimator(BaseEstimator, DictAccess):
 
 
 class Model(Estimator, ABC):
-    estimator: Estimator
+    estimator: Estimator = None
     params: Dict
     target_type: TargetType
 
@@ -188,17 +194,21 @@ class Model(Estimator, ABC):
         random_state: int,
         logger: Logger = None,
         log_mlflow: bool = True,
-        target_type: TargetType = TargetType.NA
+        target_type: TargetType = TargetType.NA,
+        verbose: int = 0,
+        **kwargs,
     ):
         self.random_state = random_state
         self.logger = logger
         self.log_mlflow = log_mlflow
         self.target_type = target_type
-        self.estimator = self.get_estimator()
+        self.verbose = verbose
+        self.kwargs = kwargs
+        self.estimator = self.get_estimator_()
         self.params = {}
 
     def fit(self, X: DataFrame, y: TargetData, *args, **kwargs):
-        self.estimator = self.get_estimator()
+        self.estimator = self.get_estimator_()
         self.estimator.set_params(**self.params)
         self.estimator.fit(X, y, *args, **kwargs)
         return self
@@ -208,18 +218,40 @@ class Model(Estimator, ABC):
 
     def predict(self, X: DataFrame, *args, **kwargs):
         if self.target_type == TargetType.CLASSIFICATION:
-            return self.estimator.predict_proba(X, *args, **kwargs)
+            y_pred: DataFrame = self.estimator.predict_proba(X, *args, **kwargs)
+
+            # HACK for two class prediction
+            if isinstance(y_pred, Series):
+                y_pred = DataFrame({0: 1 - y_pred, 1: y_pred})
+            elif len(y_pred.columns) == 1:
+                y_pred[1] = 1 - y_pred[0]
+
+            return y_pred
+
         elif self.target_type == TargetType.REGRESSION:
             return self.estimator.predict(X, *args, **kwargs)
         elif self.target_type == TargetType.TIME_TO_EVENT:
             return self.estimator.predict_survival_at_time(X, *args, **kwargs)
 
     @abstractmethod
-    def get_estimator(self) -> Estimator:
+    def get_estimator(self) -> Estimator | Iterable[Estimator]:
         raise NotImplementedError
 
+    def get_estimator_(self) -> Estimator:
+        try:
+            return self.get_estimator().set_params(
+                verbose=self.verbose,
+                **self.kwargs,
+            )
+        except ValueError:
+            # verbose not accepted
+            return self.get_estimator().set_params(**self.kwargs, )
+
     def get_feature_importance(self) -> Series:
-        raise NotImplementedError
+        if not self.estimator:
+            raise Exception('Must be fit')
+        else:
+            return self.estimator.get_feature_importance()
 
     def get_p_value_feature_importance(self, X: DataFrame, y: Target) -> Series:
         raise NotImplementedError

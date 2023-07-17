@@ -66,27 +66,18 @@ def test_compute_metric_per_split():
             assert y == y
             return [self.value]
 
-    assert compute_metrics_prediction(
-        [
-            DummyMetric('a', 1.),
-            DummyMetric('b', 2.),
-        ],
-        y_,
-        prediction_,
-    ) == {
+    assert compute_metrics_prediction(prediction_, y_, [
+        DummyMetric('a', 1.),
+        DummyMetric('b', 2.),
+    ]) == {
         'a': 1.,
         'b': 2.
     }
 
-    assert compute_metrics_prediction(
-        [
-            DummyMetric('a', 1.),
-            DummyMetric('b', 2.),
-        ],
-        y_,
-        prediction_,
-        skip_metrics=['b'],
-    ) == {
+    assert compute_metrics_prediction(prediction_, y_, [
+        DummyMetric('a', 1.),
+        DummyMetric('b', 2.),
+    ], skip_metrics=['b']) == {
         'a': 1.,
     }
 

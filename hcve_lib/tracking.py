@@ -11,18 +11,21 @@ import mlflow
 from mlflow import get_experiment_by_name, ActiveRun, start_run, get_run, get_experiment, set_tag, create_experiment, \
     set_experiment
 from mlflow import log_artifact
+from mlflow.artifacts import download_artifacts
 from mlflow.entities import Run
 from mlflow.tracking import MlflowClient
 from mlflow.utils.file_utils import TempDir
 from optuna import Study
 from pandas import DataFrame, Series
-from toolz import dissoc
 
-from hcve_lib.custom_types import ValueWithCI, Result, ExceptionValue
+from hcve_lib.custom_types import ValueWithCI, Result, ExceptionValue, ValueWithStatistics
 from hcve_lib.functional import pipe, valmap_
 from hcve_lib.log_output import capture_output, log_output
 from hcve_lib.utils import is_noneish
 from hcve_lib.visualisation import display_html
+
+from typing import List
+from toolz import valmap, dissoc
 
 
 def log_pickled(data: Any, path: str) -> None:
@@ -35,20 +38,20 @@ def log_pickled(data: Any, path: str) -> None:
 
 
 def load_pickled_artifact(run_id: str, path: str) -> Any:
-    client = MlflowClient()
-    path = client.download_artifacts(run_id, path)
+    path = download_artifacts(run_id=run_id, artifact_path=path)
     with open(path, 'rb') as f:
         return pickle.load(f)
 
 
-def load_run_results(run_id: str, load_models: bool = False) -> Result:
+def load_run_results(run_id: str, load_models: bool = False) -> List[Result]:
     try:
-        result = load_pickled_artifact(run_id, 'result')
+        results = load_pickled_artifact(run_id, 'predictions')
         if load_models:
             models = load_pickled_artifact(run_id, 'result_models')
-            return {key: {**result[key], 'model': models[key]} for key in result.keys()}
+            return [{key: {**result[key], 'model': model[key]} for key in result.keys()} for result, model in
+                    zip(results, models)]
         else:
-            return result
+            return results
 
     except OSError:
         raise Exception(f'Run {run_id} does not have artifact "result"')
@@ -125,9 +128,9 @@ def wrap_table(content: str) -> str:
 
 
 def log_metrics(
-    metrics: Dict[Any, ValueWithCI],
-    drop_ci: bool = False,
-    prefix: str = '',
+        metrics: Dict[Any, ValueWithStatistics],
+        drop_ci: bool = False,
+        prefix: str = '',
 ) -> None:
     for metric_name, metric_value in metrics.items():
         metric_name_ = prefix + metric_name
@@ -141,6 +144,7 @@ def log_metrics(
 
             if not drop_ci:
                 log_metric(f'{metric_name_}_r', metric_value['ci'][1])
+                log_metric(f'{metric_name_}_std', metric_value['std'])
 
 
 def log_metrics_single(metrics: Dict[str, Union[float, ExceptionValue]], ) -> None:
@@ -183,21 +187,22 @@ def get_latest_root_run(runs: DataFrame) -> Series:
     return get_latest_run(runs, is_root_run(runs))
 
 
-def search_latest_root_completed_run(
-    experiment_name: str,
-    run_name: str = None,
-    additional_filter: Optional[str] = None,
+def get_latest(
+        experiment_name: str,
+        run_name: str = None,
+        additional_filter: Optional[str] = None,
+        load_models: bool = False,
 ) -> Tuple[Run, Result]:
     runs = mlflow.search_runs(
         get_experiment_by_name(experiment_name).experiment_id,
-        'attributes.status="FINISHED"' + (f' and tags.mlflow.runName="{run_name}"' if run_name else '') +
+        'tags.root = "True"  and attributes.status="FINISHED"' + (f' and tags.mlflow.runName="{run_name}"' if run_name else '') +
         (f' and {additional_filter}' if additional_filter else ""),
         max_results=1,
         output_format='list'
     )
     if len(runs) > 0:
         try:
-            result = load_pickled_artifact(runs[0].info.run_id, 'result')
+            result = load_run_results(runs[0].info.run_id, load_models)
         except OSError:
             result = None
 
@@ -208,11 +213,11 @@ def search_latest_root_completed_run(
 
 
 def search_latest_root_completed_run_children(
-    experiment_name: str,
-    run_name: str = None,
-    additional_filter: str = None,
+        experiment_name: str,
+        run_name: str = None,
+        additional_filter: str = None,
 ) -> Tuple[Run, Result]:
-    root_run, _, = search_latest_root_completed_run(experiment_name, run_name)
+    root_run, _, = get_latest(experiment_name, run_name)
     search_filter = f'tags.mlflow.parentRunId = "{root_run.info.run_id}"' + (
         '' if not additional_filter else f' and {additional_filter}'
     )
@@ -295,9 +300,9 @@ def encode_run_name(identifier: Any) -> str:
 
 
 def get_subruns_of(
-    experiment_name: str,
-    root_name: str,
-    additional_filter: Optional[str] = None,
+        experiment_name: str,
+        root_name: str,
+        additional_filter: Optional[str] = None,
 ):
     runs = get_completed_runs(experiment_name)
     root_runs = runs[is_root_run(runs)]
@@ -316,7 +321,7 @@ def get_run_info(run_id: str) -> Dict:
     return {'run_name': run.data.tags['mlflow.runName'], 'experiment_name': get_experiment(run.info.experiment_id).name}
 
 
-def log_model(result: Result) -> None:
+def log_result(result: Result) -> None:
     result_without_models = valmap_(
         result,
         lambda prediction: dissoc(prediction, 'model'),
@@ -328,6 +333,21 @@ def log_model(result: Result) -> None:
         lambda prediction: prediction['model'],
     )
 
+    log_pickled(only_models, 'result_models')
+
+
+def log_results(results: List[Result]) -> None:
+    results_without_models = []
+    only_models = []
+    for result in results:
+        result_without_models = valmap(
+            lambda prediction: dissoc(prediction, 'model'),
+            result
+        )
+        results_without_models.append(result_without_models)
+        only_models.append({key: prediction['model'] for key, prediction in result.items()})
+
+    log_pickled(results_without_models, 'predictions')
     log_pickled(only_models, 'result_models')
 
 
@@ -351,9 +371,9 @@ def log_to_variable(logger: Logger) -> None:
 
 @contextmanager
 def get_standard_repeat_context(
-    method_name: str,
-    repeat_id: str,
-    random_state: int,
+        method_name: str,
+        repeat_id: str,
+        random_state: int,
 ):
     with start_run(run_name=f'repeat {repeat_id}', nested=True) as mlflow:
         with capture_output() as buffer:

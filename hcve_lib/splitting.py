@@ -12,7 +12,7 @@ from hcve_lib.custom_types import Target, TrainTestSplits, Prediction, Exception
 from hcve_lib.data import get_survival_y
 from hcve_lib.functional import pipe, mapl, accept_extra_parameters, flatten, valmap_
 from hcve_lib.utils import subtract_lists, map_groups_iloc, list_to_dict_index, get_fraction_missing, partial, loc, \
-    empty_dict
+    empty_dict, generate_steps
 
 
 @accept_extra_parameters
@@ -94,15 +94,17 @@ def get_splitting_per_group(
 @accept_extra_parameters
 def get_lm_splits(
     X: DataFrame,
-    data: DataFrameGroupBy,
+    data: DataFrame,
 ) -> TrainTestSplits:
     lco_splits: TrainTestSplits = get_lco_splits(X, data)
-    return {key: pipe(
-        fold_input,
-        reversed,
-        list,
-    )
-            for key, fold_input in lco_splits.items()}
+    return {
+        key: pipe(
+            fold_input,
+            reversed,
+            list,
+        )
+        for key, fold_input in lco_splits.items()
+    }
 
 
 @accept_extra_parameters
@@ -130,9 +132,7 @@ def get_healthabc_ascot_split(data: DataFrame) -> TrainTestSplits:
 
 
 @accept_extra_parameters
-def get_loo_splits(
-    X: DataFrame,
-) -> TrainTestSplits:
+def get_loo_splits(X: DataFrame, ) -> TrainTestSplits:
     return pipe(
         LeaveOneOut().split(X),
         list,
@@ -144,10 +144,12 @@ def get_loo_splits(
 @accept_extra_parameters
 def get_kfold_splits(
     X: DataFrame,
+    random_state: int,
     n_splits: int = 5,
-    random_state: int = None,
+    *args,
+    **kwargs,
 ) -> TrainTestSplits:
-    return pipe(
+    splits = pipe(
         KFold(
             n_splits=n_splits,
             shuffle=True,
@@ -157,16 +159,18 @@ def get_kfold_splits(
         map(mapl(partial(iloc_to_loc, X))),
         list_to_dict_index,
     )
+    return splits
 
 
 @accept_extra_parameters
 def get_kfold_stratified_splits(
     X: DataFrame,
     y: Target,
-    n_splits: int = 5,
+    random_state: int,
+    n_splits: int = 10,
 ) -> TrainTestSplits:
     return pipe(
-        StratifiedKFold(n_splits=n_splits, shuffle=True).split(X, y['data']['label']),
+        StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state).split(X, y),
         list,
         map(mapl(partial(iloc_to_loc, X))),
         list_to_dict_index,
@@ -177,9 +181,9 @@ def get_kfold_stratified_splits(
 def get_train_test(
     X: DataFrame,
     y: Target,
-    test_size=None,
+    random_state: int,
+    test_size=0.1,
     train_size=None,
-    random_state=None,
     shuffle=True,
     *args,
     **kwargs,
@@ -195,8 +199,35 @@ def get_train_test(
     )
     data_train_index = data_train.index.tolist()
     data_test_index = data_test.index.tolist()
-
     return {'train_test': (data_train_index, data_test_index)}
+
+
+@accept_extra_parameters
+def get_learning_curve_splits(
+    X: DataFrame,
+    y: Target,
+    random_state: int,
+    test_size=0.1,
+    shuffle=True,
+    n_steps: int = 10,
+    min_samples: int = 100,
+    *args,
+    **kwargs,
+) -> TrainTestSplits:
+    test_size_n = int(test_size * len(X))
+    data_train, data_test = train_test_split(
+        X,
+        test_size=test_size,
+        random_state=random_state,
+        shuffle=shuffle,
+        *args,
+        **kwargs,
+    )
+    data_train_index = data_train.index.tolist()
+    data_test_index = data_test.index.tolist()
+
+    steps = list(generate_steps(min_samples, len(data_train), n_steps))
+    return {f'train_test_n_{step}': (data_train_index[:step], data_test_index) for step in steps}
 
 
 @accept_extra_parameters
@@ -235,8 +266,8 @@ def filter_missing_features(
     threshold: float = 1,
 ) -> bool:
     return \
-        get_fraction_missing(x_train) >= threshold \
-        or get_fraction_missing(x_test) >= threshold
+            get_fraction_missing(x_train) >= threshold \
+            or get_fraction_missing(x_test) >= threshold
 
 
 def get_splitter(splitter_name: str) -> Callable:

@@ -221,8 +221,7 @@ def get_model_importance(results: List[Result]) -> DataFrame:
 
 def plot_model_importance_results(results: List[Result]) -> Figure:
     importance = get_model_importance(results)[::-1]
-    print(importance)
-    return plot_model_importance_results_(importance)
+    return plot_model_importance_results_(importance.iloc[:20])
 
 
 def plot_model_importance_results_(importance):

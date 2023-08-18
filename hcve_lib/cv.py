@@ -50,6 +50,7 @@ from hcve_lib.functional import pipe, always
 from hcve_lib.metrics import ROC_AUC, get_standard_metrics
 from hcve_lib.metrics_types import Metric
 from hcve_lib.optimization import optuna_report_mlflow, EarlyStoppingCallback
+from hcve_lib.progress_reporter import ProgressReporter
 from hcve_lib.splitting import (
     get_train_test,
     get_kfold_splits,
@@ -103,6 +104,7 @@ def cross_validate(
     optimize: bool = False,
     tags: Dict = None,
     compute_metrics_fn=compute_metrics,
+    on_progress: Callable[[float], None] = None,
     *args,
     **kwargs,
 ) -> List[Result]:
@@ -111,6 +113,10 @@ def cross_validate(
     elif isinstance(mlflow, str):
         set_tracking_uri(mlflow)
 
+    splits = get_splits(X=X, y=y, random_state=random_state)
+
+    reporter = ProgressReporter(n_repeats * len(splits), on_progress=on_progress)
+    reporter.set_message("Training models...")
     if not get_repeat_context:
         if mlflow:
             get_repeat_context = get_standard_repeat_context
@@ -150,6 +156,7 @@ def cross_validate(
             n_jobs_rest,
             mlflow,
             optimize,
+            reporter,
             *args,
             **kwargs,
         )
@@ -173,6 +180,11 @@ def cross_validate(
 
         print()
         return results
+
+
+def _on_progress(on_progress: Callable[[float], None], progress: float):
+    if on_progress:
+        on_progress(progress)
 
 
 def cross_validate_single_repeat_(
@@ -203,10 +215,12 @@ def get_data_for_cv_repeats(
     n_jobs_rest: Optional[int] = None,
     mlflow: Union[bool, str] = False,
     optimize: bool = False,
+    reporter: ProgressReporter = None,
     *args,
     **kwargs,
 ) -> Dict:
     data = {}
+
     for repeat_index in range(n_repeats):
         run_random_state = random_state + repeat_index * 10000
         get_repeat_context_ = partial(
@@ -225,6 +239,7 @@ def get_data_for_cv_repeats(
                 "n_jobs": n_jobs_rest,
                 "mlflow": mlflow,
                 "optimize": optimize,
+                "reporter": reporter,
             },
         )
 
@@ -523,17 +538,25 @@ def cross_validate_single_repeat(
     get_splits: TrainTestSplitter,
     random_state: Optional[int] = None,
     predict_method: Optional[str] = "predict",
-    fit_params: Dict = empty_dict,
+    fit_params: Dict = None,
     train_test_filter_callback: Optional[Callable] = None,
     optimize: bool = False,
     optimize_params: OptimizationParams = OptimizationParams(),
-    optimize_callbacks: Dict[str, Callable] = empty_dict,
+    optimize_callbacks: Dict[str, Callable] = None,
     hyperparameters: Union[Mapping[str, Dict], Dict] = None,
     return_models: bool = True,
     logger: Optional[logging.Logger] = None,
     mlflow: bool = False,
+    reporter: Optional[ProgressReporter] = None,
     n_jobs: int = -1,
 ) -> Result:
+    print("cross_validate 2")
+    if fit_params is None:
+        fit_params = {}
+
+    if optimize_callbacks is None:
+        optimize_callbacks = {}
+
     print(".", end="")
     random_seed(random_state)
     y_data = y.data if y is Dict else y
@@ -598,6 +621,7 @@ def cross_validate_single_repeat(
         logger=logger,
         random_state=random_state,
         fit_params=fit_params,
+        reporter=reporter,
     )
 
     runs = list(
@@ -907,6 +931,7 @@ def cross_validate_train(
     mlflow: bool = False,
     logger: logging.Logger = None,
     fit_params: Mapping = empty_dict,
+    reporter: ProgressReporter = None,
 ) -> Dict[Hashable, Tuple[Optional[str], Estimator]]:
     n_jobs, _ = get_jobs(n_jobs, maximum=len(models))
     fold_data = {
@@ -921,6 +946,7 @@ def cross_validate_train(
             random_state,
             mlflow,
             fit_params,
+            reporter,
         )
         for fold_name, (train_split, test_split) in splits_dict.items()
     }
@@ -936,6 +962,7 @@ def cross_validate_fit(
     random_state: int,
     mlflow: bool = False,
     fit_kwargs: Mapping = None,
+    reporter: ProgressReporter = None,
 ) -> Tuple[Optional[str], Estimator]:
     if fit_kwargs is None:
         fit_kwargs = {}
@@ -953,6 +980,8 @@ def cross_validate_fit(
     else:
         estimator.fit(X, y, **fit_kwargs)
         run_id = None
+
+    reporter.finished()
 
     return run_id, estimator
 

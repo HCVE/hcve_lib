@@ -8,6 +8,7 @@ from joblib import Logger
 from pandas import DataFrame
 import itertools
 from hcve_lib.custom_types import TargetType, Estimator, Result, Prediction
+from hcve_lib.progress_reporter import ProgressReporter
 from hcve_lib.utils import (
     get_X_split,
     NonDaemonPool,
@@ -28,11 +29,13 @@ def get_shap_values(
     is_test: bool = True,
     logger=DummyLogger(),
     n_jobs=-1,
+    reporter: ProgressReporter = None,
 ) -> List[ShapResult]:
-    args = (
-        (prediction, X, is_test, logger)
-        for prediction in get_predictions_from_results(results)
-    )
+    predictions = list(get_predictions_from_results(results))
+
+    reporter.total = len(predictions)
+
+    args = ((prediction, X, is_test, logger, reporter) for prediction in predictions)
     if n_jobs == 1:
         return list(itertools.starmap(get_shap_values_, args))
     else:
@@ -46,8 +49,11 @@ def get_average_shap_values(
     is_test: bool = True,
     logger=DummyLogger(),
     n_jobs=-1,
+    reporter: ProgressReporter = None,
 ) -> ShapResult:
-    return average_shap_values(get_shap_values(results, X, is_test, logger, n_jobs))
+    return average_shap_values(
+        get_shap_values(results, X, is_test, logger, n_jobs, reporter=reporter)
+    )
 
 
 def get_shap_values_(
@@ -55,6 +61,7 @@ def get_shap_values_(
     X: DataFrame,
     is_test: bool = True,
     logger: Logger = DummyLogger(),
+    reporter: ProgressReporter = None,
 ) -> ShapResult:
     logger.info(".", end="")
     X_train, X_test = get_X_split(X, prediction, logger=logger)
@@ -70,6 +77,9 @@ def get_shap_values_(
         shap_values2 = explainer(Xt)
 
     shap_values_ = shap_values[1] if isinstance(shap_values, list) else shap_values
+
+    if reporter:
+        reporter.finished()
 
     try:
         shap_values2.values = shap_values2.values[:, :, 1]

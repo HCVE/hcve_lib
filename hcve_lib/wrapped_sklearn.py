@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Any, Optional, List, Tuple, Dict
 
 import numpy as np
@@ -5,15 +6,24 @@ from optuna import Trial
 from pandas import Series, DataFrame
 from scipy.sparse import csr_matrix
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, BaggingClassifier
+from sklearn.ensemble import (
+    RandomForestClassifier,
+    RandomForestRegressor,
+    BaggingClassifier,
+)
 from sklearn.ensemble._hist_gradient_boosting.binning import _BinMapper
 from sklearn.exceptions import NotFittedError
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer, KNNImputer
 from sklearn.linear_model import LogisticRegression, ElasticNet
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, OrdinalEncoder, FunctionTransformer, Binarizer
-from xgboost import XGBClassifier, XGBRegressor
+from sklearn.preprocessing import (
+    StandardScaler,
+    OrdinalEncoder,
+    FunctionTransformer,
+    Binarizer,
+)
+from xgboost import XGBClassifier, XGBRegressor, XGBModel
 
 from hcve_lib.custom_types import Estimator, Target
 from hcve_lib.data import to_survival_y_records
@@ -24,7 +34,7 @@ class DFWrapped:
 
     def fit(self, X, y=None, *args, **kwargs):
         self.save_fit_features(X)
-        super().fit(X, y, *args, **kwargs)
+        super().fit(X.to_numpy(), y, *args, **kwargs)
         return self
 
     def fit_transform(self, X, *args, **kwargs):
@@ -65,7 +75,7 @@ class DFWrapped:
             return super().get_params(*args, **kwargs)
         except AttributeError:
             return {
-                'random_state': None,
+                "random_state": None,
             }
 
     def get_feature_names(self):
@@ -79,9 +89,7 @@ class DFWrapped:
             return X_out.columns  # type: ignore
         except AttributeError:
             try:
-                return ( \
-                    super().get_feature_names_out(X.columns)  # type: ignore
-                )
+                return super().get_feature_names_out(X.columns)  # type: ignore
             except (AttributeError, ValueError) as e:
                 try:
                     return super().get_feature_names()  # type: ignore
@@ -91,7 +99,9 @@ class DFWrapped:
                     try:
                         return X.columns
                     except AttributeError:
-                        raise Exception('Cannot produce DataFrame with named columns: columns are not defined')
+                        raise Exception(
+                            "Cannot produce DataFrame with named columns: columns are not defined"
+                        )
 
 
 def series_count_inf(series: Series) -> int:
@@ -103,31 +113,33 @@ def series_count_inf(series: Series) -> int:
 
 
 def use_df_fn(
-        input_data_frame: DataFrame,
-        output_data: Any,
-        reuse_columns=True,
-        reuse_index=True,
-        reuse_dtypes=False,
-        columns: Optional[List] = None,
+    input_data_frame: DataFrame,
+    output_data: Any,
+    reuse_columns=True,
+    reuse_index=True,
+    reuse_dtypes=False,
+    columns: Optional[List] = None,
 ) -> DataFrame:
     df_arguments = {}
 
     if reuse_columns:
         if columns is not None:
-            df_arguments['columns'] = columns  # type: ignore
+            df_arguments["columns"] = columns  # type: ignore
         else:
-            df_arguments['columns'] = input_data_frame.columns
+            df_arguments["columns"] = input_data_frame.columns
 
     if reuse_index:
-        df_arguments['index'] = input_data_frame.index
+        df_arguments["index"] = input_data_frame.index
 
     if isinstance(output_data, csr_matrix):
         output_data = output_data.toarray()
 
-    dtypes = dict(zip(
-        df_arguments['columns'],
-        input_data_frame.dtypes,
-    ))
+    dtypes = dict(
+        zip(
+            df_arguments["columns"],
+            input_data_frame.dtypes,
+        )
+    )
 
     new_data = DataFrame(
         output_data,
@@ -141,7 +153,6 @@ def use_df_fn(
 
 
 class DFColumnTransformer(DFWrapped, ColumnTransformer):
-
     def fit_transform(self, X, *args, **kwargs):
         n_features = 0
         for index, transformer in enumerate(self.transformers):
@@ -154,7 +165,7 @@ class DFColumnTransformer(DFWrapped, ColumnTransformer):
         return super().fit_transform(X, *args, **kwargs)
 
     def transform(self, X, *args, **kwargs):
-        if not hasattr(self, '_name_to_fitted_passthrough'):
+        if not hasattr(self, "_name_to_fitted_passthrough"):
             self._name_to_fitted_passthrough = {}
 
         return super().transform(X, *args, **kwargs)
@@ -180,18 +191,52 @@ class DFKNNImputer(DFWrapped, KNNImputer):
     ...
 
 
-class DFXGBClassifier(DFWrapped, XGBClassifier):
-    ...
+class DFXGBase(Estimator, ABC):
+    def __init__(self, *args, **kwargs):
+        self.instance = self.get_instance(*args, **kwargs)
+
+    @abstractmethod
+    def get_instance(self) -> XGBModel:
+        pass
+
+    def fit(self, X: DataFrame, y: Target = None, **fit_params):
+        self.instance.fit(X, y, **fit_params)
+        return self
+
+    def predict_proba(self, X: DataFrame) -> DataFrame:
+        return DataFrame(self.instance.predict_proba(X), index=X.index)
+
+    def predict(self, X: DataFrame) -> Series:
+        return Series(self.instance.predict(X), index=X.index)
+
+    def set_params(self, **params):
+        self.instance.set_params(**params)
+        return self
+
+    def get_params(self, deep=True):
+        return self.instance.get_params(deep=deep)
 
 
-class DFXGBRegressor(DFWrapped, XGBRegressor):
-    ...
+class DFXGBClassifier(DFXGBase):
+    def get_instance(self, *args, **kwargs) -> XGBModel:
+        return XGBClassifier(*args, **kwargs)
+
+
+class DFXGBRegressor(DFXGBase):
+    def get_instance(self, *args, **kwargs) -> XGBModel:
+        return XGBRegressor(*args, **kwargs)
+
+
+# noinspection PyUnresolvedReferences
+Estimator.register(DFXGBRegressor)
 
 
 class DFPipeline(Pipeline, Estimator):
     y_name: Optional[str]
 
-    def __init__(self, steps, *, memory=None, verbose=False, transform_y: Estimator = None):
+    def __init__(
+        self, steps, *, memory=None, verbose=False, transform_y: Estimator = None
+    ):
         super().__init__(steps, memory=memory, verbose=verbose)
         self.transform_y = transform_y
 
@@ -228,19 +273,21 @@ class DFPipeline(Pipeline, Estimator):
             Xt = transform.transform(Xt)
         return Xt
 
-    def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
-        prefix_ = (prefix + '_') if prefix else ''
+    def suggest_optuna(
+        self, trial: Trial, X: DataFrame, prefix: str = ""
+    ) -> Tuple[Trial, Dict]:
+        prefix_ = (prefix + "_") if prefix else ""
         return trial, {
-            name: step.suggest_optuna(trial, f'{prefix_}{name}_')[1]
+            name: step.suggest_optuna(trial, X, f"{prefix_}{name}_")[1]
             for (name, step) in self.steps
-            if hasattr(step, 'suggest_optuna')
+            if hasattr(step, "suggest_optuna")
         }
 
     def get_streamlit_configuration(self, config: Dict):
         config = {
             name: step.get_streamlit_configuration(config.get(name, {}))
             for (name, step) in self.steps
-            if hasattr(step, 'get_streamlit_configuration')
+            if hasattr(step, "get_streamlit_configuration")
         }
         return config
 
@@ -248,7 +295,7 @@ class DFPipeline(Pipeline, Estimator):
         if hasattr(self[-1], item):
             return getattr(self[-1], item)
         else:
-            raise AttributeError(f'AttributeError: object has no attribute \'{item}\'')
+            raise AttributeError(f"AttributeError: object has no attribute '{item}'")
 
     def get_feature_importance(self):
         return self[-1].get_feature_importance()
@@ -261,27 +308,28 @@ class DFPipeline(Pipeline, Estimator):
 
 
 class DFLogisticRegression(DFWrapped, LogisticRegression):
-
     @property
     def coefficients(self):
-        return Series(self.coef_[0], index=self.get_feature_names()).sort_values(ascending=False)
+        return Series(self.coef_[0], index=self.get_feature_names()).sort_values(
+            ascending=False
+        )
 
     def get_feature_importance(self):
         return self.coefficients
 
 
 class DFElasticNet(DFWrapped, ElasticNet):
-
     @property
     def coefficients(self):
-        return Series(self.coef_, index=self.get_feature_names()).sort_values(ascending=False)
+        return Series(self.coef_, index=self.get_feature_names()).sort_values(
+            ascending=False
+        )
 
     def get_feature_importance(self):
         return self.coefficients
 
 
 class ToSurvivalRecord:
-
     def fit(self, X: DataFrame, y: Target):
         super().fit(X, to_survival_y_records(y))
 
@@ -295,13 +343,11 @@ class DFFunctionTransformer(DFWrapped, FunctionTransformer):
 
 
 class DFRandomForestClassifier(DFWrapped, RandomForestClassifier):
-
     def get_feature_importance(self):
         return Series(super().feature_importances_, index=self.get_feature_names())
 
 
 class DFRandomForestRegressor(DFWrapped, RandomForestRegressor):
-
     def get_feature_importance(self):
         return Series(super().feature_importances_, index=self.get_feature_names())
 

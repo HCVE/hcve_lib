@@ -12,7 +12,8 @@ class DFCoxnetSurvivalAnalysis(DFWrapped, ToSurvivalRecord, CoxnetSurvivalAnalys
 class DFCoxPHSurvivalAnalysis(DFWrapped, CoxPHSurvivalAnalysis):
     ...
 
-class DFRandomSurvivalForest(DFWrapped, RandomSurvivalForest):
+
+class DFRandomSurvivalForest(DFWrapped, ToSurvivalRecord, RandomSurvivalForest):
     ...
 
 

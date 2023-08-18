@@ -5,7 +5,7 @@ import mlflow
 import numpy as np
 import optuna
 import toolz
-from mlflow import set_tag
+from mlflow import set_tag, active_run
 from optuna import Study
 from optuna.trial import TrialState, FrozenTrial
 from hcve_lib.tracking import log_metrics
@@ -50,6 +50,7 @@ class EarlyStoppingCallback(object):
         return study
 
 
+
 def optuna_report_mlflow(study, _):
     if len(study.get_trials(states=[TrialState.COMPLETE])) == 0:
         return study
@@ -58,6 +59,7 @@ def optuna_report_mlflow(study, _):
         'trials',
         len(study.trials),
     )
+
     set_tag(
         'failed',
         toolz.count(1 for trial in study.trials if trial.state.name == "FAIL"),

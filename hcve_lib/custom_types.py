@@ -5,7 +5,20 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
 from logging import Logger
-from typing import Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable, Callable, Type, Iterable
+from typing import (
+    Optional,
+    Tuple,
+    Generic,
+    TypeVar,
+    Any,
+    Union,
+    List,
+    Dict,
+    Hashable,
+    Callable,
+    Type,
+    Iterable,
+)
 from typing_extensions import TypedDict
 
 import numpy as np
@@ -13,7 +26,7 @@ from optuna import Trial
 from pandas import Series, DataFrame
 from sklearn.base import BaseEstimator
 
-SurvivalPairTarget = namedtuple('SurvivalPairTarget', ('tte', 'label'))
+SurvivalPairTarget = namedtuple("SurvivalPairTarget", ("tte", "label"))
 
 TargetData = Union[DataFrame, Series, np.recarray]
 
@@ -29,7 +42,6 @@ TrainTestSplitter = Callable[..., TrainTestSplits]
 
 
 class StrEnum(Enum):
-
     def _generate_next_value_(name, start, count, last_values):
         return name
 
@@ -78,7 +90,7 @@ class TargetObject:
         if hasattr(self._inner, item):
             return getattr(self._inner, item)
         else:
-            raise AttributeError(f'AttributeError: object has no attribute \'{item}\'')
+            raise AttributeError(f"AttributeError: object has no attribute '{item}'")
 
     def __setstate__(self, state):
         self.__dict__.update(state)
@@ -94,7 +106,6 @@ Target = Union[TargetObject, Series, DataFrame]
 
 
 class IndexAccess(ABC):
-
     @abstractmethod
     def __getitem__(self, key):
         ...
@@ -105,7 +116,6 @@ class IndexAccess(ABC):
 
 
 class DictAccess:
-
     def __delitem__(self, key):
         self.__delattr__(key)
 
@@ -117,13 +127,17 @@ class DictAccess:
 
 
 class Printable:
-
     def __str__(self):
-        return '\n'.join([f'{key}: {value}' for key, value in self.__dict__.items() if not key.startswith('_')])
+        return "\n".join(
+            [
+                f"{key}: {value}"
+                for key, value in self.__dict__.items()
+                if not key.startswith("_")
+            ]
+        )
 
 
 class ClassMapping(Mapping):
-
     def __getitem__(self, item):
         try:
             return self.__dict__[item]
@@ -142,7 +156,6 @@ class DataStructure(DictAccess, ClassMapping, Printable):
 
 
 class TargetTransformer(BaseEstimator):
-
     @abstractmethod
     def fit(self, y):
         ...
@@ -156,8 +169,7 @@ class TargetTransformer(BaseEstimator):
         ...
 
 
-class Estimator(BaseEstimator, DictAccess):
-
+class Estimator(BaseEstimator, ABC):
     def fit(self, X, y, *args, **kwargs):
         ...
 
@@ -170,14 +182,16 @@ class Estimator(BaseEstimator, DictAccess):
     def predict_survival_at_time(self, X: DataFrame, time: int, *args, **kwargs):
         ...
 
-    def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
+    def suggest_optuna(
+        self, trial: Trial, X: DataFrame, prefix: str = ""
+    ) -> Tuple[Trial, Dict]:
         return trial, {}
 
     def transform(self, X: DataFrame):
         return X
 
     def get_feature_importance(self):
-        raise NotImplementedError(f'{self} do not implement feature importance')
+        raise NotImplementedError(f"{self} do not implement feature importance")
 
     @classmethod
     def get_name(cls):
@@ -195,7 +209,7 @@ class Model(Estimator, ABC):
         logger: Logger = None,
         log_mlflow: bool = True,
         target_type: TargetType = TargetType.NA,
-        verbose: int = 0,
+        verbose: int = None,
         **kwargs,
     ):
         self.random_state = random_state
@@ -231,7 +245,7 @@ class Model(Estimator, ABC):
         elif self.target_type == TargetType.REGRESSION:
             return self.estimator.predict(X, *args, **kwargs)
         elif self.target_type == TargetType.TIME_TO_EVENT:
-            return self.estimator.predict_survival_at_time(X, *args, **kwargs)
+            return self.estimator.predict(X, *args, **kwargs)
 
     @abstractmethod
     def get_estimator(self) -> Estimator | Iterable[Estimator]:
@@ -240,16 +254,18 @@ class Model(Estimator, ABC):
     def get_estimator_(self) -> Estimator:
         try:
             return self.get_estimator().set_params(
-                verbose=self.verbose,
-                **self.kwargs,
+                **self.kwargs
+                | ({"verbose": self.verbose} if self.verbose is not None else {}),
             )
         except ValueError:
             # verbose not accepted
-            return self.get_estimator().set_params(**self.kwargs, )
+            return self.get_estimator().set_params(
+                **self.kwargs,
+            )
 
     def get_feature_importance(self) -> Series:
         if not self.estimator:
-            raise Exception('Must be fit')
+            raise Exception("Must be fit")
         else:
             return self.estimator.get_feature_importance()
 
@@ -267,7 +283,7 @@ class Model(Estimator, ABC):
         if hasattr(self.estimator, item):
             return getattr(self.estimator, item)
         else:
-            raise AttributeError(f'AttributeError: object has no attribute \'{item}\'')
+            raise AttributeError(f"AttributeError: object has no attribute '{item}'")
 
     def __getitem__(self, item):
         return self.estimator[item]
@@ -329,7 +345,7 @@ class ClassificationMetricsWithStatistics(TypedDict):
     balanced_accuracy: ValueWithStatistics
 
 
-T1 = TypeVar('T1')
+T1 = TypeVar("T1")
 
 
 @dataclass
@@ -374,12 +390,11 @@ class Prediction(TypedDict, total=False):
     y_pred: Any
     y_column: str
     X_columns: List[str]
-    model: 'Model'
+    model: "Model"
     split: TrainTestIndex
 
 
 class Method(ABC):
-
     @staticmethod
     @abstractmethod
     def get_estimator(
@@ -402,7 +417,7 @@ class Method(ABC):
         y: Target,
         split: TrainTestIndex,
         model: Estimator,
-        method: Type['Method'],
+        method: Type["Method"],
         random_state: int,
     ) -> Prediction:
         ...
@@ -425,4 +440,4 @@ class ExceptionValue:
         self.exception = exception
 
     def __repr__(self):
-        return f'Value:\n {self.value}\n\n Exception:\n{self.exception}\n\n {self.traceback}'
+        return f"Value:\n {self.value}\n\n Exception:\n{self.exception}\n\n {self.traceback}"

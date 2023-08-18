@@ -12,6 +12,8 @@ class OptimizationDirection(StrEnum):
 
 
 class Metric(ABC):
+    is_test = True
+
     def __init__(self, is_test: bool = True):
         self.is_test = is_test
 

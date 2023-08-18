@@ -169,8 +169,13 @@ def get_kfold_stratified_splits(
     random_state: int,
     n_splits: int = 10,
 ) -> TrainTestSplits:
+    try:
+        y_ = y.data['label']
+    except AttributeError:
+        y_ = y
+
     return pipe(
-        StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state).split(X, y),
+        StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state).split(X, y_),
         list,
         map(mapl(partial(iloc_to_loc, X))),
         list_to_dict_index,

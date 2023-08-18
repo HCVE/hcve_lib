@@ -4,7 +4,17 @@ from collections import defaultdict
 from functools import partial
 from itertools import chain
 from statistics import mean
-from typing import Dict, cast, Iterable, DefaultDict, Hashable, Optional, TypeVar, Type, Any
+from typing import (
+    Dict,
+    cast,
+    Iterable,
+    DefaultDict,
+    Hashable,
+    Optional,
+    TypeVar,
+    Type,
+    Any,
+)
 from typing import Union, List, Tuple, Callable
 
 import numpy
@@ -17,20 +27,40 @@ from pandas.core.groupby import DataFrameGroupBy
 from sklearn.metrics import roc_auc_score
 from toolz import pluck, merge, itemmap, valmap, merge_with
 
-from hcve_lib.custom_types import ClassificationMetrics, ValueWithStatistics, \
-    ClassificationMetricsWithStatistics, GenericConfusionMatrix, ConfusionMetrics, ValueWithCI, \
-    ConfusionMatrix, Target, Result, ExceptionValue, Splits, TrainTestIndex, Estimator, Method
+from hcve_lib.custom_types import (
+    ClassificationMetrics,
+    ValueWithStatistics,
+    ClassificationMetricsWithStatistics,
+    GenericConfusionMatrix,
+    ConfusionMetrics,
+    ValueWithCI,
+    ConfusionMatrix,
+    Target,
+    Result,
+    ExceptionValue,
+    Splits,
+    TrainTestIndex,
+    Estimator,
+    Method,
+)
 from hcve_lib.metrics import get_standard_metrics
 from hcve_lib.metrics_types import Metric
 from hcve_lib.custom_types import Prediction
-from hcve_lib.functional import pass_args, pipe, star_args, try_except
+from hcve_lib.functional import pass_args, pipe, star_args, try_except, t
 from hcve_lib.stats import confidence_interval
 from hcve_lib.tracking import log_metrics
-from hcve_lib.utils import transpose_dict, map_groups_loc, split_data, get_y_split, loc, get_first_entry
+from hcve_lib.utils import (
+    transpose_dict,
+    map_groups_loc,
+    split_data,
+    get_y_split,
+    loc,
+    get_first_entry,
+)
 
 from hcve_lib.wrapped_sklearn import DFStandardScaler
 
-HashableT = TypeVar('HashableT', bound=Hashable)
+HashableT = TypeVar("HashableT", bound=Hashable)
 
 
 def compute_metrics(
@@ -44,6 +74,25 @@ def compute_metrics(
 
     metrics_merged = compute_metrics_per_prediction(results, y, metrics, skip_metrics)
     return average_metric_values(metrics_merged)
+
+
+def compute_metrics_merged_splits(
+    results: List[Result],
+    y: Target,
+    metrics: List[Metric] = None,
+    skip_metrics: List[str] = None,
+) -> Dict[HashableT, ValueWithStatistics]:
+    if metrics is None:
+        metrics = get_standard_metrics(y)
+
+    metric_values = {}
+    for index_result, result in enumerate(results):
+        prediction = merge_standardize_prediction(result)
+        metric_values[index_result] = compute_metrics_prediction(
+            prediction, y, metrics, skip_metrics
+        )
+
+    return average_metric_values(metric_values)
 
 
 def compute_metric(
@@ -69,13 +118,14 @@ def compute_metrics_per_prediction(
     metrics_runs = []
 
     for result in results:
-        metrics_runs.append(compute_metrics_result_per_prediction(result, y, metrics, skip_metrics=skip_metrics))
+        metrics_runs.append(
+            compute_metrics_result_per_prediction(
+                result, y, metrics, skip_metrics=skip_metrics
+            )
+        )
 
     metrics_renamed = [
-        {
-            f'{split}_{num}': pred
-            for split, pred in result.items()
-        }
+        {f"{split}_{num}": pred for split, pred in result.items()}
         for num, result in enumerate(metrics_runs)
     ]
 
@@ -84,7 +134,9 @@ def compute_metrics_per_prediction(
     return metrics_merged
 
 
-def average_metric_values(values: Dict[Any, Dict[Any, float]]) -> Dict[Any, ValueWithStatistics]:
+def average_metric_values(
+    values: Dict[Any, Dict[Any, float]]
+) -> Dict[Any, ValueWithStatistics]:
     return pipe(
         values,
         transpose_dict,
@@ -148,12 +200,16 @@ def compute_metrics_result_per_prediction(
     }
 
 
-def compute_metric_statistics(values: Iterable[Optional[float]]) -> Union[ValueWithStatistics, ExceptionValue]:
+def compute_metric_statistics(
+    values: Iterable[Optional[float]],
+) -> Union[ValueWithStatistics, ExceptionValue]:
     values_ = [value for value in values if isinstance(value, (float, int))]
     try:
         return ValueWithStatistics(
             mean=mean(values_) if len(values_) > 0 else np.nan,
-            ci=confidence_interval(values_)[1] if len(values_) > 1 else (np.nan, np.nan),
+            ci=confidence_interval(values_)[1]
+            if len(values_) > 1
+            else (np.nan, np.nan),
             std=std(values_) if len(values_) > 1 else np.nan,
         )
     except TypeError as e:
@@ -168,7 +224,9 @@ def compute_metric_result(
     skip_metrics: List[str] = None,
 ) -> Dict[HashableT, Union[float, ExceptionValue]]:
     return {
-        key: list(compute_metrics_prediction(prediction, y, [metric], skip_metrics).values())[0]
+        key: list(
+            compute_metrics_prediction(prediction, y, [metric], skip_metrics).values()
+        )[0]
         for key, prediction in result.items()
     }
 
@@ -216,12 +274,16 @@ def compute_metric_prediction(
     prediction: Prediction,
     skip_metrics: Optional[List[str]] = None,
 ) -> Dict:
-    return dict(zip(*compute_metric_prediction_items(
-        metric,
-        y,
-        prediction,
-        skip_metrics,
-    )))
+    return dict(
+        zip(
+            *compute_metric_prediction_items(
+                metric,
+                y,
+                prediction,
+                skip_metrics,
+            )
+        )
+    )
 
 
 def get_2_level_groups(
@@ -234,8 +296,8 @@ def get_2_level_groups(
 
     for fold_name, fold in folds.items():
         for group_name, group_index in groups:
-            group_index_test = group_index[group_index.isin(fold['y_score'].index)]
-            group_iloc_train = fold['split'][0]
+            group_index_test = group_index[group_index.isin(fold["y_score"].index)]
+            group_iloc_train = fold["split"][0]
             group_iloc_test = group_index_test.map(lambda key: data.index.get_loc(key))
 
             if len(group_iloc_test) == 0:
@@ -245,8 +307,8 @@ def get_2_level_groups(
             result[fold_name][group_name] = merge(
                 fold,
                 {
-                    'split': (group_iloc_train, group_iloc_test),
-                    'y_score': fold['y_score'].loc[group_index_test],
+                    "split": (group_iloc_train, group_iloc_test),
+                    "y_score": fold["y_score"].loc[group_index_test],
                 },
             )
 
@@ -267,7 +329,9 @@ def compute_metric_groups(
     return dict(result)
 
 
-def compute_ci_for_metrics_collection(metrics: List[ClassificationMetrics]) -> ClassificationMetricsWithStatistics:
+def compute_ci_for_metrics_collection(
+    metrics: List[ClassificationMetrics],
+) -> ClassificationMetricsWithStatistics:
     attributes = list(metrics[0].keys())
     metrics_with_ci_dict = {
         attribute: pass_args(
@@ -298,10 +362,12 @@ def get_metrics_from_confusion_matrix(confusion_matrix) -> ConfusionMetrics:
         npv = 0
 
     return ConfusionMetrics(
-        precision=(confusion_matrix.tp / (confusion_matrix.tp + confusion_matrix.fp)) if
-        (confusion_matrix.tp + confusion_matrix.fp) > 0 else NaN,
-        recall=(confusion_matrix.tp / (confusion_matrix.tp + confusion_matrix.fn)) if
-        (confusion_matrix.tp + confusion_matrix.fn) > 0 else NaN,
+        precision=(confusion_matrix.tp / (confusion_matrix.tp + confusion_matrix.fp))
+        if (confusion_matrix.tp + confusion_matrix.fp) > 0
+        else NaN,
+        recall=(confusion_matrix.tp / (confusion_matrix.tp + confusion_matrix.fn))
+        if (confusion_matrix.tp + confusion_matrix.fn) > 0
+        else NaN,
         fpr=confusion_matrix.fp / (confusion_matrix.fp + confusion_matrix.tn),
         tnr=confusion_matrix.tn / (confusion_matrix.fp + confusion_matrix.tn),
         fnr=confusion_matrix.fn / (confusion_matrix.fn + confusion_matrix.tp),
@@ -346,7 +412,7 @@ def c_index(
     y: Target,
     is_train: bool = False,
 ) -> Union[ExceptionValue, float]:
-    if len(prediction['y_score']) == 0:
+    if len(prediction["y_score"]) == 0:
         return np.nan
 
     y_train, y_test = get_y_split(y, prediction)
@@ -354,10 +420,14 @@ def c_index(
 
     try:
         from sksurv.metrics import concordance_index_censored
+
         index: Tuple = concordance_index_censored(
-            y_to_evaluate['data']['label'].loc[prediction['y_score'].index].to_numpy().astype(numpy.bool_),
-            y_to_evaluate['data']['tte'].loc[prediction['y_score'].index],
-            prediction['y_score'].to_numpy(),
+            y_to_evaluate["data"]["label"]
+            .loc[prediction["y_score"].index]
+            .to_numpy()
+            .astype(numpy.bool_),
+            y_to_evaluate["data"]["tte"].loc[prediction["y_score"].index],
+            prediction["y_score"].to_numpy(),
         )
         return index[0]
     except ValueError as e:
@@ -365,10 +435,10 @@ def c_index(
 
 
 def roc_auc(fold: Prediction, X: DataFrame, y: Target) -> float:
-    if len(fold['y_score']) == 0:
+    if len(fold["y_score"]) == 0:
         return np.nan
     _, _, _, y_test = split_data(X, y, fold)
-    return roc_auc_score(y_test['data'], fold['y_score'], multi_class='ovo')
+    return roc_auc_score(y_test["data"], fold["y_score"], multi_class="ovo")
 
 
 def c_index_inverse_score(
@@ -376,14 +446,15 @@ def c_index_inverse_score(
     X: DataFrame,
     y: Target,
 ) -> float:
-    if len(fold['y_score']) == 0:
+    if len(fold["y_score"]) == 0:
         return np.nan
     _, _, _, y_test = split_data(X, y, fold)
     from sksurv.metrics import concordance_index_censored
+
     index: Tuple = concordance_index_censored(
-        y_test['data']['label'].astype(bool),
-        y_test['data']['tte'],
-        1 - fold['y_score'],
+        y_test["data"]["label"].astype(bool),
+        y_test["data"]["tte"],
+        1 - fold["y_score"],
     )
     return index[0]
 
@@ -391,7 +462,7 @@ def c_index_inverse_score(
 def get_splits_by_class(y: Target, labels: List = None) -> Splits:
     classes = get_target_label(y).unique()
     return {
-        f'outcome_{cls}': y['data'][get_target_label(y) == cls].index.to_list()
+        f"outcome_{cls}": y["data"][get_target_label(y) == cls].index.to_list()
         for cls in classes
         if (labels is None or cls in labels)
     }
@@ -399,14 +470,17 @@ def get_splits_by_class(y: Target, labels: List = None) -> Splits:
 
 def get_splits_by_age(age: Series, years: int = 10) -> Splits:
     group_by = age.groupby((np.floor(age / years) * years))
-    return {f'age__{round(age)}_{round(age + years)}': group.index.to_list() for age, group in group_by}
+    return {
+        f"age__{round(age)}_{round(age + years)}": group.index.to_list()
+        for age, group in group_by
+    }
 
 
 def get_target_label(y: Target) -> Series:
-    if isinstance(y['data'], Series):
-        return y['data']
-    elif isinstance(y['data'], DataFrame):
-        return y['data']['label']
+    if isinstance(y["data"], Series):
+        return y["data"]
+    elif isinstance(y["data"], DataFrame):
+        return y["data"]["label"]
     else:
         raise TypeError("Can't extract series from target")
 
@@ -426,7 +500,7 @@ def predict_proba(
     return Prediction(
         split=split,
         X_columns=X.columns.tolist(),
-        y_column=y['name'],
+        y_column=y["name"],
         y_score=y_score,
         model=model,
         method=method,
@@ -435,7 +509,6 @@ def predict_proba(
 
 
 class Pipeline:
-
     def predict_survival_time(self):
         pass
 
@@ -458,12 +531,16 @@ def predict_survival(
     return Prediction(
         split=split,
         X_columns=X.columns.tolist(),
-        y_column=y['name'],
+        y_column=y["name"],
         y_score=Series(
             model.predict(X_test),
             index=X_test.index,
         ),
-        y_proba={('tte' if isinstance(time, Iterable) else time): predict_survival_proba(time, X_test, model)},
+        y_proba={
+            ("tte" if isinstance(time, Iterable) else time): predict_survival_proba(
+                time, X_test, model
+            )
+        },
         model=model,
         random_state=random_state,
         method=method,
@@ -478,22 +555,37 @@ def predict_survival_proba(
     try:
         survival_functions = list(model.predict_survival_function(X))
     except AttributeError:
-        return ExceptionValue(exception=TypeError('model missing \'predict_survival_function\' method.'))
+        return ExceptionValue(
+            exception=TypeError("model missing 'predict_survival_function' method.")
+        )
 
     # TODO: HACK >>
     survival_fns_valid = list(reject_exception_values(survival_functions))
     difference_valid = len(survival_functions) - len(survival_fns_valid)
     if difference_valid > 0:
-        logging.warning(f'{difference_valid} individuals dropped due to out of range prediction')
+        logging.warning(
+            f"{difference_valid} individuals dropped due to out of range prediction"
+        )
     # <<
 
     if survival_fns_valid is None or len(survival_fns_valid) == 0:
-        return ExceptionValue(exception=ValueError('"predict_survival_function" returning None'), )
+        return ExceptionValue(
+            exception=ValueError('"predict_survival_function" returning None'),
+        )
     else:
         return Series(
             [
-                try_except(lambda: fn(time), {Exception: lambda e: ExceptionValue(exception=e)}) for fn, time in
-                zip(survival_fns_valid, (time if isinstance(time, Iterable) else ([time] * len(survival_fns_valid))))
+                try_except(
+                    lambda: fn(time), {Exception: lambda e: ExceptionValue(exception=e)}
+                )
+                for fn, time in zip(
+                    survival_fns_valid,
+                    (
+                        time
+                        if isinstance(time, Iterable)
+                        else ([time] * len(survival_fns_valid))
+                    ),
+                )
             ],
             index=X.index,
         )
@@ -516,7 +608,7 @@ def predict_survival_dsm(
     return Prediction(
         split=split,
         X_columns=X.columns.tolist(),
-        y_column=y['name'],
+        y_column=y["name"],
         y_score=Series(
             model.predict(X_test).flatten(),
             index=X_test.index,
@@ -544,7 +636,7 @@ def predict_predict(
     return Prediction(
         split=split,
         X_columns=X.columns.tolist(),
-        y_column=y['name'],
+        y_column=y["name"],
         y_score=Series(
             model.predict(X.loc[split[1]]),
             index=X.loc[split[1]].index,
@@ -565,9 +657,7 @@ def merge_standardize_prediction(result: Result) -> Prediction:
     standardized_result = valmap(
         lambda prediction: {
             **prediction,
-            'y_score': DFStandardScaler().fit_transform(
-                DataFrame({'y_score': prediction['y_score']}), DataFrame({'y_score': prediction['y_score']})
-            )['y_score'],
+            "y_pred": DFStandardScaler().fit_transform(prediction["y_pred"]),
         },
         result,
     )
@@ -575,7 +665,9 @@ def merge_standardize_prediction(result: Result) -> Prediction:
 
 
 def merge_predictions(result: Result) -> Prediction:
-    y_pred = pandas.concat([prediction['y_pred'] for cohort, prediction in result.items()])
+    y_pred = pandas.concat(
+        [prediction["y_pred"] for cohort, prediction in result.items()]
+    )
 
     return Prediction(
         y_pred=y_pred,
@@ -602,12 +694,12 @@ def merge_predictions(result: Result) -> Prediction:
 def average_group_scores(group: Dict[Hashable, Result]) -> Result:
     averaged_predictions = {}
     for test_cohort, group in transpose_dict(group).items():
-        y_scores = [prediction['y_score'] for prediction in group.values()]
-        y_proba = transpose_dict(group).get('y_proba')
+        y_scores = [prediction["y_score"] for prediction in group.values()]
+        y_proba = transpose_dict(group).get("y_proba")
 
         averaged_predictions[test_cohort] = {
             **group[0],
-            'y_score': pandas.concat(y_scores, axis=1).mean(axis=1),
+            "y_score": pandas.concat(y_scores, axis=1).mean(axis=1),
         }
 
         if y_proba:
@@ -617,13 +709,15 @@ def average_group_scores(group: Dict[Hashable, Result]) -> Result:
                     *y_proba.values(),
                 )
             except TypeError as e:
-                averaged_predictions[test_cohort]['y_proba'] = ExceptionValue(exception=e, value=y_proba)
+                averaged_predictions[test_cohort]["y_proba"] = ExceptionValue(
+                    exception=e, value=y_proba
+                )
             else:
                 y_proba_mean = valmap(
                     partial(DataFrame.mean, axis=1),
                     y_proba_joined,
                 )
-                averaged_predictions[test_cohort]['y_proba'] = y_proba_mean
+                averaged_predictions[test_cohort]["y_proba"] = y_proba_mean
 
     return averaged_predictions
 
@@ -646,7 +740,7 @@ def map_inverse_weight(
     proportions: Dict[Any, float] = None,
 ) -> Series:
     weights = get_inverse_weight(series, proportions=proportions)
-    return series.map(weights).astype('float')
+    return series.map(weights).astype("float")
 
 
 def log_repeat_metrics(

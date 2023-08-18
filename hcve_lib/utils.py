@@ -13,7 +13,20 @@ from multiprocessing.pool import Pool
 from numbers import Real, Number
 from pathlib import Path
 from pprint import pprint
-from typing import Dict, Callable, Iterator, Tuple, Any, Iterable, TypeVar, List, Optional, Sequence, Hashable, Union
+from typing import (
+    Dict,
+    Callable,
+    Iterator,
+    Tuple,
+    Any,
+    Iterable,
+    TypeVar,
+    List,
+    Optional,
+    Sequence,
+    Hashable,
+    Union,
+)
 
 import numpy
 import numpy as np
@@ -24,6 +37,7 @@ from filelock import FileLock, UnixFileLock
 from flask_socketio import SocketIO
 from frozendict import frozendict
 from humps import decamelize, camelize
+
 # from imblearn.over_sampling.base import BaseOverSampler
 from matplotlib import pyplot
 from numpy import ndarray, recarray, isnan
@@ -32,7 +46,14 @@ from pandas.core.groupby import DataFrameGroupBy
 from scipy.stats import t
 from toolz import valmap
 
-from hcve_lib.custom_types import SurvivalPairTarget, Prediction, Target, TrainTestIndex, Result, Estimator
+from hcve_lib.custom_types import (
+    SurvivalPairTarget,
+    Prediction,
+    Target,
+    TrainTestIndex,
+    Result,
+    Estimator,
+)
 from hcve_lib.functional import pipe, unzip, flatten
 
 empty_dict: Dict = frozendict()
@@ -56,12 +77,12 @@ class LockedShelve:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def open(self) -> 'LockedShelve':
+    def open(self) -> "LockedShelve":
         if self.shelve:
             self.shelve.close()
 
         data_path = Path(self.path)
-        lock_folder = (data_path.parent / '.lock')
+        lock_folder = data_path.parent / ".lock"
         lock_folder.mkdir(parents=True, exist_ok=True)
         self.lock = FileLock(str(lock_folder / data_path.name))
         self.lock.acquire()
@@ -165,7 +186,7 @@ def camelize_recursive(d):
         else:
             return d
     except TypeError as e:
-        print('Error during processing', d)
+        print("Error during processing", d)
         raise e
 
 
@@ -177,21 +198,16 @@ def camelize_adjusted(string: str) -> str:
 
 
 def decamelize_arguments(function: Callable) -> Callable:
-
     def decamelize_arguments_(*args, **kwargs):
         return function(
             *[decamelize_recursive(arg) for arg in args],
-            **{
-                arg_name: decamelize_recursive(arg)
-                for arg_name, arg in kwargs.items()
-            },
+            **{arg_name: decamelize_recursive(arg) for arg_name, arg in kwargs.items()},
         )
 
     return decamelize_arguments_
 
 
 def camelize_return(function: Callable) -> Callable:
-
     def camelize_return_(*args, **kwargs):
         return camelize_recursive(function(*args, **kwargs))
 
@@ -199,7 +215,6 @@ def camelize_return(function: Callable) -> Callable:
 
 
 def to_plain_decorator(function: Callable) -> Callable:
-
     def to_plain_decorator_(*args, **kwargs):
         return to_plain(function(*args, **kwargs))
 
@@ -207,9 +222,7 @@ def to_plain_decorator(function: Callable) -> Callable:
 
 
 def get_event_listener(socketio: SocketIO):
-
     def event_listener_1(*socketio_args, **socketio_kwargs) -> Callable:
-
         def event_listener_2(function: Callable):
             return pipe(
                 function,
@@ -229,8 +242,8 @@ def get_event_listener(socketio: SocketIO):
 
 def make_event(name: str, payload: Dict, meta=empty_dict) -> Dict:
     return {
-        'type': name,
-        'payload': payload,
+        "type": name,
+        "payload": payload,
         **meta,
     }
 
@@ -281,7 +294,7 @@ def key_value_swap(d: Dict) -> Dict:
     return {v: k for k, v in d.items()}
 
 
-IndexData = TypeVar('IndexData')
+IndexData = TypeVar("IndexData")
 
 
 def index_data(indexes: Iterable[int], data: IndexData) -> IndexData:
@@ -291,8 +304,8 @@ def index_data(indexes: Iterable[int], data: IndexData) -> IndexData:
         return data.iloc[indexes]
     elif isinstance(data, List):
         return [item for index, item in enumerate(data) if index in indexes]  # type: ignore
-    elif isinstance(data, Dict) and 'name' in data and 'data' in data:
-        return {**data, 'data': index_data(indexes, data['data'])}  # type: ignore
+    elif isinstance(data, Dict) and "name" in data and "data" in data:
+        return {**data, "data": index_data(indexes, data["data"])}  # type: ignore
 
     elif isinstance(data, SurvivalPairTarget):
         return (
@@ -315,23 +328,25 @@ def loc(
             if logger:
                 removed_indexes = len(index) - len(actual_index)
                 if removed_indexes > 0:
-                    logger.warning(f'Removed samples {removed_indexes}')
+                    logger.warning(f"Removed samples {removed_indexes}")
         else:
             actual_index = index
             removed_indexes = None
         return data.loc[actual_index]
-    elif hasattr(data, 'data'):
-        return data.update_data(loc(
-            index,
-            data.data,
-            ignore_not_present=ignore_not_present,
-        ))
+    elif hasattr(data, "data"):
+        return data.update_data(
+            loc(
+                index,
+                data.data,
+                ignore_not_present=ignore_not_present,
+            )
+        )
     else:
-        raise Exception(f'Type \'{type(data)}\' not supported')
+        raise Exception(f"Type '{type(data)}' not supported")
 
 
-ListToDictKey = TypeVar('ListToDictKey')
-ListToDictValue = TypeVar('ListToDictValue')
+ListToDictKey = TypeVar("ListToDictKey")
+ListToDictValue = TypeVar("ListToDictValue")
 
 
 def list_to_dict_by_keys(
@@ -342,12 +357,12 @@ def list_to_dict_by_keys(
 
 
 def list_to_dict_index(
-        input_list: Sequence[ListToDictValue] \
-        ) -> Dict[Hashable, ListToDictValue]:
+    input_list: Sequence[ListToDictValue],
+) -> Dict[Hashable, ListToDictValue]:
     return {index: value for index, value in enumerate(input_list)}
 
 
-SubtractListT = TypeVar('SubtractListT')
+SubtractListT = TypeVar("SubtractListT")
 
 
 def subtract_lists(
@@ -364,16 +379,16 @@ def map_groups_iloc(
     current_index = 0
     for key, group in groups:
         group_iloc_subset = group.index.map(
-            lambda _key: flatten_data.index.get_loc(_key) if _key in flatten_data.index else -1
+            lambda _key: flatten_data.index.get_loc(_key)
+            if _key in flatten_data.index
+            else -1
         )
         group_iloc_subset = group_iloc_subset[group_iloc_subset != -1]
         yield key, list(group_iloc_subset)
         current_index += len(group)
 
 
-def map_groups_loc(
-        groups: DataFrameGroupBy \
-        ) -> Iterable[Tuple[Any, Index]]:
+def map_groups_loc(groups: DataFrameGroupBy) -> Iterable[Tuple[Any, Index]]:
     for name, group in groups:
         yield name, group.index
 
@@ -382,9 +397,9 @@ def remove_column_prefix(X: DataFrame) -> DataFrame:
     return X.rename(
         lambda column_name: pipe(
             column_name,
-            partial_(remove_prefix, 'categorical__'),
-            partial_(remove_prefix, 'continuous__'),
-            partial_(remove_prefix, 'remainder__'),
+            partial_(remove_prefix, "categorical__"),
+            partial_(remove_prefix, "continuous__"),
+            partial_(remove_prefix, "remainder__"),
         ),
         axis=1,
     )
@@ -392,7 +407,7 @@ def remove_column_prefix(X: DataFrame) -> DataFrame:
 
 def remove_prefix(prefix: str, input_str: str) -> str:
     if input_str.startswith(prefix):
-        return input_str[len(prefix):]
+        return input_str[len(prefix) :]
     else:
         return input_str[:]
 
@@ -401,17 +416,16 @@ def get_fraction_missing(series: Series) -> float:
     return len(series[series.isna()]) / len(series)
 
 
-TransposeDictT1 = TypeVar('TransposeDictT1')
-TransposeDictT2 = TypeVar('TransposeDictT2')
-TransposeDictValue = TypeVar('TransposeDictValue')
+TransposeDictT1 = TypeVar("TransposeDictT1")
+TransposeDictT2 = TypeVar("TransposeDictT2")
+TransposeDictValue = TypeVar("TransposeDictValue")
 
-TransposeDictInput = Dict[
-    TransposeDictT1, \
-        Dict[TransposeDictT2, TransposeDictValue]
-]
+TransposeDictInput = Dict[TransposeDictT1, Dict[TransposeDictT2, TransposeDictValue]]
 
 
-def transpose_dict(dictionary: TransposeDictInput) -> Dict[TransposeDictT2, Dict[TransposeDictT1, TransposeDictValue]]:
+def transpose_dict(
+    dictionary: TransposeDictInput,
+) -> Dict[TransposeDictT2, Dict[TransposeDictT1, TransposeDictValue]]:
     outer_keys = dictionary.keys()
 
     if len(outer_keys) == 0:
@@ -421,14 +435,13 @@ def transpose_dict(dictionary: TransposeDictInput) -> Dict[TransposeDictT2, Dict
 
     return {
         inner_key: {
-            outer_key: dictionary[outer_key][inner_key]
-            for outer_key in outer_keys
+            outer_key: dictionary[outer_key][inner_key] for outer_key in outer_keys
         }
         for inner_key in inner_keys
     }
 
 
-T1 = TypeVar('T1')
+T1 = TypeVar("T1")
 
 
 def transpose_list(l: List[List[T1]]) -> List[List[T1]]:
@@ -472,31 +485,31 @@ def get_X_split(
     prediction: Prediction,
     logger: Logger = None,
 ):
-    split_train, split_test = filter_split_in_index(prediction['split'], X.index)
+    split_train, split_test = filter_split_in_index(prediction["split"], X.index)
 
     if logger:
-        removed_split_train = len(split_train) - len(prediction['split'][0])
+        removed_split_train = len(split_train) - len(prediction["split"][0])
         if removed_split_train:
-            logger.warning(f'Removed {removed_split_train} from X train set')
+            logger.warning(f"Removed {removed_split_train} from X train set")
 
-        removed_split_test = len(split_test) - len(prediction['split'][0])
+        removed_split_test = len(split_test) - len(prediction["split"][0])
         if removed_split_test:
-            logger.warning(f'Removed {removed_split_test} from X test set')
+            logger.warning(f"Removed {removed_split_test} from X test set")
 
-    X_ = X[prediction['X_columns']]
+    X_ = X[prediction["X_columns"]]
 
     X_train = loc(split_train, X_)
     X_test = loc(split_test, X_)
 
-    if isinstance(prediction.get('y_pred'), Series):
-        X_test = loc(prediction['y_pred'].index, X_test, ignore_not_present=True)
+    if isinstance(prediction.get("y_pred"), Series):
+        X_test = loc(prediction["y_pred"].index, X_test, ignore_not_present=True)
 
     if logger:
         log_additional_removed(
             X_test,
-            prediction['y_pred'],
+            prediction["y_pred"],
             logger,
-            'from X test set',
+            "from X test set",
         )
 
     return X_train, X_test
@@ -508,18 +521,18 @@ def get_y_split(
     logger: Logger = None,
 ):
     split_train, split_test = filter_split_in_index(
-        prediction['split'],
+        prediction["split"],
         y.index,
     )
 
     if logger is not None:
-        removed_split_train = len(split_train) - len(prediction['split'][0])
+        removed_split_train = len(split_train) - len(prediction["split"][0])
         if removed_split_train:
-            logger.warning(f'Removed {removed_split_train} from y train set')
+            logger.warning(f"Removed {removed_split_train} from y train set")
 
-        removed_split_test = len(split_test) - len(prediction['split'][0])
+        removed_split_test = len(split_test) - len(prediction["split"][0])
         if removed_split_test:
-            logger.warning(f'Removed {removed_split_test} from y test set')
+            logger.warning(f"Removed {removed_split_test} from y test set")
 
     y_train = loc(split_train, y)
     y_test = loc(split_test, y)
@@ -531,31 +544,30 @@ def get_y_split(
     if logger:
         log_additional_removed(
             y,
-            prediction['y_proba'],
+            prediction["y_proba"],
             logger,
-            'from y test set',
+            "from y test set",
         )
     return y_train, y_test
 
 
-def get_X_y_split(X: DataFrame,
-                  y: Target,
-                  prediction: Prediction,
-                  logger: Logger = None) -> Tuple[DataFrame, DataFrame, Target, Target]:
+def get_X_y_split(
+    X: DataFrame, y: Target, prediction: Prediction, logger: Logger = None
+) -> Tuple[DataFrame, DataFrame, Target, Target]:
     return get_X_split(X, prediction, logger) + get_y_split(y, prediction, logger)
 
 
 def log_additional_removed(X_test, y_score, logger, message):
     removed_rows = len(X_test) - len(y_score)
     if removed_rows > 0:
-        logger.warning(f'Removed additional {removed_rows} {message}')
+        logger.warning(f"Removed additional {removed_rows} {message}")
 
 
 def limit_to_observed(y_train, X_test, y_test):
     tte_train = get_tte(y_train)
     tte_test = get_tte(y_test)
     mask = tte_test <= max(tte_train)
-    y_test_ = {**y_test, 'data': y_test['data'][mask]}
+    y_test_ = {**y_test, "data": y_test["data"][mask]}
     X_test_ = X_test[mask]
     return X_test_, y_test_
 
@@ -570,11 +582,11 @@ def filter_in_index(iterable: List, index: Index) -> List:
 
 def get_tte(target: Union[DataFrame, Dict]) -> np.ndarray:
     if isinstance(target, Dict):
-        return get_tte(target['data'])
+        return get_tte(target["data"])
     elif isinstance(target, DataFrame):
-        return target['tte']
+        return target["tte"]
     else:
-        raise TypeError(f'Unsupported {target.__class__}')
+        raise TypeError(f"Unsupported {target.__class__}")
 
 
 def cross_validate_apply_mask(
@@ -594,7 +606,7 @@ def cross_validate_apply_mask(
 
 def cwd_root():
     for folder in itertools.chain([Path.cwd()], Path.cwd().parents):
-        if (folder / 'Pipfile').exists():
+        if (folder / "Pipfile").exists():
             os.chdir(folder)
             break
 
@@ -602,18 +614,21 @@ def cwd_root():
 def notebook_init():
     cwd_root()
     pandas.set_option("display.max_columns", None)
-    pyplot.rcParams['figure.facecolor'] = 'white'
+    pyplot.rcParams["figure.facecolor"] = "white"
 
     ipython = get_ipython()
-    if 'autoreload' not in ipython.extension_manager.loaded:
+    if "autoreload" not in ipython.extension_manager.loaded:
         ipython.magic("load_ext autoreload")
     ipython.magic("autoreload  2")
     ipython.magic("matplotlib inline")
     ipython.magic("config InlineBackend.figure_format = 'retina'")
+    from IPython.core.ultratb import VerboseTB
+
+    VerboseTB._tb_highlight = "bg:#622222"
 
 
-KeyT = TypeVar('KeyT')
-ValueT = TypeVar('ValueT')
+KeyT = TypeVar("KeyT")
+ValueT = TypeVar("ValueT")
 
 
 def get_key_by_value(d: Dict[KeyT, ValueT], value: ValueT) -> KeyT:
@@ -627,7 +642,8 @@ def get_key_by_value(d: Dict[KeyT, ValueT], value: ValueT) -> KeyT:
 def X_to_pytorch(X):
     # noinspection PyUnresolvedReferences,PyPackageRequirements
     import torch
-    return torch.from_numpy(X.to_numpy().astype('float32')).to('cuda')
+
+    return torch.from_numpy(X.to_numpy().astype("float32")).to("cuda")
 
 
 def random_seed(seed: int) -> None:
@@ -636,7 +652,6 @@ def random_seed(seed: int) -> None:
 
 
 class NonDaemonProcess(multiprocessing.Process):
-
     @property  # type: ignore
     def daemon(self):
         return False
@@ -647,7 +662,6 @@ class NonDaemonProcess(multiprocessing.Process):
 
 
 class NonDaemonPool(Pool):
-
     def Process(self, *args, **kwargs):
         # noinspection PyUnresolvedReferences
         proc = super(NonDaemonPool, self).Process(*args, **kwargs)
@@ -665,7 +679,7 @@ def noop(*args, **kwargs):
 
 
 GetKeysSubsetT = TypeVar(
-    'GetKeysSubsetT',
+    "GetKeysSubsetT",
     bound=Dict[Hashable, Any],
 )
 
@@ -781,7 +795,6 @@ def run_parallel(function: Callable, data: Dict, n_jobs: int = None) -> Dict:
         lambda args: args if isinstance(args, list) else args,
         data,
     )
-
     if n_jobs == 1:
         optimizers = list_to_dict_by_keys(
             itertools.starmap(
@@ -807,12 +820,12 @@ def apply_args_and_kwargs(function: Callable, args: List, kwargs: Dict):
 
 
 def put_contents(file: str, content: str) -> None:
-    with open(file, 'w') as f:
+    with open(file, "w") as f:
         f.write(content)
 
 
 def round_significant(value: float, places: int = 3) -> str:
-    return '{:g}'.format(float(('{:.' + str(places) + 'g}').format(value)))
+    return "{:g}".format(float(("{:." + str(places) + "g}").format(value)))
 
 
 def is_numeric(value: Any) -> bool:
@@ -824,7 +837,7 @@ def is_numeric(value: Any) -> bool:
 
 
 def get_categorical_columns(data: DataFrame) -> List:
-    return [column for column, dtype in data.dtypes.items() if dtype == 'category']
+    return [column for column, dtype in data.dtypes.items() if dtype == "category"]
 
 
 def estimate_categorical_columns(data: DataFrame, limit: int = 10) -> List:
@@ -835,7 +848,9 @@ def estimate_categorical_columns(data: DataFrame, limit: int = 10) -> List:
     return categorical
 
 
-def estimate_categorical_and_continuous_columns(data: DataFrame, limit: int = 10) -> Tuple:
+def estimate_categorical_and_continuous_columns(
+    data: DataFrame, limit: int = 10
+) -> Tuple:
     categorical = estimate_categorical_columns(data, limit)
     continuous = list(set(data.columns) - set(categorical))
     return categorical, continuous
@@ -845,16 +860,17 @@ def auto_convert_columns(data: DataFrame, limit: int = 10) -> DataFrame:
     categorical, continuous = estimate_categorical_and_continuous_columns(data, limit)
     data_new = data.copy()
     for column in continuous:
-        data_new[column] = pd.to_numeric(data_new[column], errors='coerce').astype('float')
+        data_new[column] = pd.to_numeric(data_new[column], errors="coerce").astype(
+            "float"
+        )
 
     for column in categorical:
-        data_new[column] = data_new[column].astype('category')
+        data_new[column] = data_new[column].astype("category")
 
     return data_new
 
 
 class DictSubSet:
-
     def __init__(self, items: dict):
         self.items = items
 
@@ -878,7 +894,7 @@ def get_models_from_repeats(results: List[Result]) -> List[Estimator]:
 
 # TODO: test / structure
 def get_models_from_result(result: Result) -> List[Estimator]:
-    return [prediction['model'] for prediction in result.values()]
+    return [prediction["model"] for prediction in result.values()]
 
 
 def get_mean_importance(models: List[Estimator]) -> DataFrame:
@@ -889,11 +905,16 @@ def get_mean_importance(models: List[Estimator]) -> DataFrame:
     forest_importance_avg = forest_importances_.mean(axis=1)
     forest_importance_std = forest_importances_.std(axis=1)
 
-    return DataFrame({'mean': forest_importance_avg, 'std': forest_importance_std}).sort_values('mean')
+    return DataFrame(
+        {"mean": forest_importance_avg, "std": forest_importance_std}
+    ).sort_values("mean")
 
 
 def is_numerical(o):
-    return 'float' in str(o.dtype) or 'int' in str(o.dtype)
+    try:
+        return "float" in str(o.dtype) or "int" in str(o.dtype)
+    except AttributeError:
+        return False
 
 
 def get_jobs(n_jobs, maximum=None):
@@ -907,11 +928,16 @@ def get_jobs(n_jobs, maximum=None):
         jobs_taken = min(cpu_count_value, n_jobs, maximum)
 
     return jobs_taken, max(
-        1, cpu_count_value - jobs_taken if n_jobs == -1 else min(n_jobs, cpu_count_value - jobs_taken)
+        1,
+        cpu_count_value - jobs_taken
+        if n_jobs == -1
+        else min(n_jobs, cpu_count_value - jobs_taken),
     )
 
 
-def get_pipeline_name(estimator: Any, ):
+def get_pipeline_name(
+    estimator: Any,
+):
     try:
         return estimator.get_name()
     except (AttributeError, TypeError):
@@ -925,19 +951,20 @@ def auto_convert_category(data: DataFrame) -> DataFrame:
     data_new = data.copy()
     for column in data_new.columns:
         if len(data_new[column].unique()) < 10:
-            data_new.loc[:, column] = data_new[column].astype('category')
+            data_new.loc[:, column] = data_new[column].astype("category")
         else:
             try:
-                data_new.loc[:, column] = data_new[column].astype('float')
+                data_new.loc[:, column] = data_new[column].astype("float")
             except (TypeError, ValueError):
-                data_new.loc[:, column] = data_new[column].astype('category')
+                data_new.loc[:, column] = data_new[column].astype("category")
     return data_new
 
 
 def upper_columns(df: DataFrame) -> DataFrame:
     return df.rename(
         columns=lambda column: column.upper()
-        if isinstance(column, str) else tuple([column_.upper() for column_ in column])
+        if isinstance(column, str)
+        else tuple([column_.upper() for column_ in column])
     )
 
 
@@ -949,6 +976,41 @@ def deep_merge_dicts(dict1: Dict, dict2: Dict) -> Dict:
         else:
             dict1_new[key] = dict2[key]
     return dict1_new
+
+
+from typing import Any, Dict, Union
+
+
+def deep_merge(obj1: Union[Dict, Any], obj2: Union[Dict, Any]) -> Union[Dict, Any]:
+    # If one of them is not a dictionary or an instance, return obj2
+    if not isinstance(obj1, (dict, object)) or not isinstance(obj2, (dict, object)):
+        return obj2
+
+    # If obj1 is a class instance, let's use its dictionary for merging but remember the original
+    obj1_dict = obj1.__dict__ if hasattr(obj1, "__dict__") else obj1
+
+    # If obj2 is a class instance, just use its dictionary for merging
+    obj2_dict = obj2.__dict__ if hasattr(obj2, "__dict__") else obj2
+
+    obj1_new = obj1_dict.copy()
+    for key in obj2_dict.keys():
+        if (
+            isinstance(obj1_new.get(key), dict) and isinstance(obj2_dict.get(key), dict)
+        ) or (
+            hasattr(obj1_new.get(key), "__dict__")
+            and hasattr(obj2_dict.get(key), "__dict__")
+        ):
+            obj1_new[key] = deep_merge(obj1_new[key], obj2_dict[key])
+        else:
+            obj1_new[key] = obj2_dict[key]
+
+    # If obj1 was a class instance, update its attributes directly
+    if hasattr(obj1, "__dict__"):
+        for key, value in obj1_new.items():
+            setattr(obj1, key, value)
+        return obj1
+    else:
+        return obj1_new
 
 
 import re
@@ -971,16 +1033,16 @@ def convert_to_snake_case_keys(data: Union[Dict, List]) -> Union[Dict, List]:
 
 
 def convert_to_snake_case(name: str) -> str:
-    return re.sub('(?!^)([A-Z]+)', r'_\1', name).lower()
+    return re.sub("(?!^)([A-Z]+)", r"_\1", name).lower()
 
 
 def convert_to_camel_case_keys(data: Union[Dict, List]) -> Union[Dict, List]:
     if isinstance(data, dict):
         new_dict = {}
         for key, value in data.items():
-            parts = key.split('_')
+            parts = key.split("_")
             if parts[0][0].islower():
-                new_key = parts[0] + ''.join(x.capitalize() for x in parts[1:])
+                new_key = parts[0] + "".join(x.capitalize() for x in parts[1:])
             else:
                 new_key = key
             new_dict[new_key] = convert_to_camel_case_keys(value)
@@ -992,10 +1054,10 @@ def convert_to_camel_case_keys(data: Union[Dict, List]) -> Union[Dict, List]:
 
 
 def convert_to_camel_case(name: str) -> str:
-    return ''.join(x.capitalize() or '_' for x in name.split("_"))
+    return "".join(x.capitalize() or "_" for x in name.split("_"))
 
 
-DELETE = '__DELETE__'
+DELETE = "__DELETE__"
 
 
 def update_from_diff(obj: Union[object, Dict], diff: Union[Dict, object]) -> None:
@@ -1003,7 +1065,9 @@ def update_from_diff(obj: Union[object, Dict], diff: Union[Dict, object]) -> Non
     for key, value in vars_:
         hasattr_ = hasattr if not isinstance(obj, Dict) else lambda d, k: k in d
         get_attr_ = getattr if not isinstance(obj, Dict) else lambda d, k: d[k]
-        set_attr_ = setattr if not isinstance(obj, Dict) else lambda d, k, v: d.update(**{k: v})
+        set_attr_ = (
+            setattr if not isinstance(obj, Dict) else lambda d, k, v: d.update(**{k: v})
+        )
 
         if value == DELETE:
             del obj[key]
@@ -1032,7 +1096,7 @@ def get_next_key(d: Dict, current_key: any) -> any:
     keys = list(d.keys())
     index = keys.index(current_key)
     if index + 1 >= len(keys):
-        return keys[-1]
+        return keys[-2] if len(keys) >= 2 else None
     else:
         return keys[index + 1]
 
@@ -1040,25 +1104,25 @@ def get_next_key(d: Dict, current_key: any) -> any:
 def print_structure(obj, indent=0, max_len=10):
     if isinstance(obj, list):
         if len(obj) > max_len:
-            print('[...]')
+            print("[...]")
         else:
-            print('[')
+            print("[")
             for item in obj:
                 print_structure(item, indent + 1, max_len)
-                print(' ' * (indent + 1), end='')
-            print(']')
+                print(" " * (indent + 1), end="")
+            print("]")
     elif isinstance(obj, dict):
         if len(obj) > max_len:
-            print('{...}')
+            print("{...}")
         else:
-            print('{')
+            print("{")
             for key, value in obj.items():
-                print(' ' * (indent + 1) + str(key) + ':', end='')
+                print(" " * (indent + 1) + str(key) + ":", end="")
                 print_structure(value, indent + 2, max_len)
-                print(' ' * (indent + 1), end='')
-            print('}')
+                print(" " * (indent + 1), end="")
+            print("}")
     else:
-        print(' ' * indent + '<<' + type(obj).__name__ + '>>')
+        print(" " * indent + "<<" + type(obj).__name__ + ">>")
 
 
 def aggregate_df_with_statistics(df):
@@ -1067,8 +1131,10 @@ def aggregate_df_with_statistics(df):
     n = df.shape[1]
     ci = t.interval(alpha=0.95, df=n - 1, loc=avg, scale=std_dev / np.sqrt(n))
     lower_ci, upper_ci = ci
-    new_df = pd.DataFrame({'avg': avg, 'std_dev': std_dev, 'lower_ci': lower_ci, 'upper_ci': upper_ci})
-    new_df = new_df.sort_values('avg', ascending=False)
+    new_df = pd.DataFrame(
+        {"avg": avg, "std_dev": std_dev, "lower_ci": lower_ci, "upper_ci": upper_ci}
+    )
+    new_df = new_df.sort_values("avg", ascending=False)
     return new_df
 
 
@@ -1093,9 +1159,13 @@ def kendall_tau(rank1: List[Number], rank2: List[Number]) -> float:
 
     for i in range(n):
         for j in range(i + 1, n):
-            if (rank1[i] < rank1[j] and rank2[i] < rank2[j]) or (rank1[i] > rank1[j] and rank2[i] > rank2[j]):
+            if (rank1[i] < rank1[j] and rank2[i] < rank2[j]) or (
+                rank1[i] > rank1[j] and rank2[i] > rank2[j]
+            ):
                 concordant_pairs += 1
-            elif (rank1[i] < rank1[j] and rank2[i] > rank2[j]) or (rank1[i] > rank1[j] and rank2[i] < rank2[j]):
+            elif (rank1[i] < rank1[j] and rank2[i] > rank2[j]) or (
+                rank1[i] > rank1[j] and rank2[i] < rank2[j]
+            ):
                 discordant_pairs += 1
 
     tau = (concordant_pairs - discordant_pairs) / (0.5 * n * (n - 1))
@@ -1121,7 +1191,6 @@ def average_kendall_tau(rankings: List[List[Number]]) -> float:
 
 
 class DummyLogger:
-
     def __init__(self):
         pass
 
@@ -1147,7 +1216,6 @@ def standardize_dataframe(df: DataFrame) -> DataFrame:
 
 
 class ObjectWrapper:
-
     def __init__(self, obj):
         self._wrapped_obj = obj
 
@@ -1185,3 +1253,25 @@ def generate_steps(start, n, num_steps):
     steps = [round(start + i * step_size) for i in range(num_steps)]
     steps[-1] = n
     return steps
+
+
+import importlib.util
+
+
+def import_module_from_path(module_path):
+    print(module_path)
+    spec = importlib.util.spec_from_file_location("module_name", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    print(module)
+    return module
+
+
+def get_variables_as_dict(module_path):
+    imported_module = import_module_from_path(module_path)
+    variables_dict = {
+        attr: getattr(imported_module, attr)
+        for attr in dir(imported_module)
+        if not callable(getattr(imported_module, attr)) and not attr.startswith("__")
+    }
+    return variables_dict

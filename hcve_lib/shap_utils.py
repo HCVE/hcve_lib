@@ -8,10 +8,18 @@ from joblib import Logger
 from pandas import DataFrame
 import itertools
 from hcve_lib.custom_types import TargetType, Estimator, Result, Prediction
-from hcve_lib.utils import get_X_split, NonDaemonPool, get_jobs, get_predictions_from_results, DummyLogger, \
-    average_kendall_tau
+from hcve_lib.utils import (
+    get_X_split,
+    NonDaemonPool,
+    get_jobs,
+    get_predictions_from_results,
+    DummyLogger,
+    average_kendall_tau,
+)
 
-ShapResult = Tuple[DataFrame, List[np.ndarray], Any, List[shap.Explainer], List[Estimator]]
+ShapResult = Tuple[
+    DataFrame, List[np.ndarray], Any, List[shap.Explainer], List[Estimator]
+]
 
 
 def get_shap_values(
@@ -21,12 +29,25 @@ def get_shap_values(
     logger=DummyLogger(),
     n_jobs=-1,
 ) -> List[ShapResult]:
-    args = ((prediction, X, is_test, logger) for prediction in get_predictions_from_results(results))
+    args = (
+        (prediction, X, is_test, logger)
+        for prediction in get_predictions_from_results(results)
+    )
     if n_jobs == 1:
         return list(itertools.starmap(get_shap_values_, args))
     else:
         with NonDaemonPool(get_jobs(n_jobs, len(results))[0]) as pool:
             return pool.starmap(get_shap_values_, args)
+
+
+def get_average_shap_values(
+    results: List[Result],
+    X: DataFrame,
+    is_test: bool = True,
+    logger=DummyLogger(),
+    n_jobs=-1,
+) -> ShapResult:
+    return average_shap_values(get_shap_values(results, X, is_test, logger, n_jobs))
 
 
 def get_shap_values_(
@@ -35,11 +56,11 @@ def get_shap_values_(
     is_test: bool = True,
     logger: Logger = DummyLogger(),
 ) -> ShapResult:
-    logger.info('.', end='')
+    logger.info(".", end="")
     X_train, X_test = get_X_split(X, prediction, logger=logger)
     X_test_or_train = X_test if is_test else X_train
-    Xt = prediction['model'].transform(X_test_or_train)
-    explainer = shap.Explainer(prediction['model'].estimator, Xt)
+    Xt = prediction["model"].transform(X_test_or_train)
+    explainer = shap.Explainer(prediction["model"].estimator, Xt)
 
     try:
         shap_values = explainer.shap_values(Xt, check_additivity=False)
@@ -56,7 +77,7 @@ def get_shap_values_(
     except:
         pass
 
-    return Xt, shap_values_, shap_values2, explainer, prediction['model']
+    return Xt, shap_values_, shap_values2, explainer, prediction["model"]
 
 
 def average_shap_values(shap_results: List[ShapResult]) -> ShapResult:
@@ -64,18 +85,26 @@ def average_shap_values(shap_results: List[ShapResult]) -> ShapResult:
     base_values_per_bootstrap_sample_df = []
     Xts_per_bootstrap_sample = []
     for Xt, _, shap_values2, _, _ in shap_results:
-        shap_values_per_bootstrap_sample_df.append(DataFrame(
-            shap_values2.values,
-            index=Xt.index,
-        ))
-        base_values_per_bootstrap_sample_df.append(DataFrame(
-            shap_values2.base_values,
-            index=Xt.index,
-        ))
+        shap_values_per_bootstrap_sample_df.append(
+            DataFrame(
+                shap_values2.values,
+                index=Xt.index,
+            )
+        )
+        base_values_per_bootstrap_sample_df.append(
+            DataFrame(
+                shap_values2.base_values,
+                index=Xt.index,
+            )
+        )
         Xts_per_bootstrap_sample.append(Xt)
 
-    shap_values_per_bootstrap_sample_df_concat = pandas.concat(shap_values_per_bootstrap_sample_df)
-    base_values_per_bootstrap_sample_df_concat = pandas.concat(base_values_per_bootstrap_sample_df)
+    shap_values_per_bootstrap_sample_df_concat = pandas.concat(
+        shap_values_per_bootstrap_sample_df
+    )
+    base_values_per_bootstrap_sample_df_concat = pandas.concat(
+        base_values_per_bootstrap_sample_df
+    )
 
     shap_values_averaged_df = shap_values_per_bootstrap_sample_df_concat.groupby(
         shap_values_per_bootstrap_sample_df_concat.index
@@ -87,8 +116,8 @@ def average_shap_values(shap_results: List[ShapResult]) -> ShapResult:
 
     X_final = pandas.concat(Xts_per_bootstrap_sample)
     X_final.reset_index(inplace=True)
-    X_final.drop_duplicates(subset='index', keep='first', inplace=True)
-    X_final.set_index('index', inplace=True)
+    X_final.drop_duplicates(subset="index", keep="first", inplace=True)
+    X_final.set_index("index", inplace=True)
 
     shap_values = deepcopy(shap_results[0][2])
     shap_values.values = shap_values_averaged_df.to_numpy()
@@ -116,8 +145,10 @@ def get_shap_ranking(shap_results: List[ShapResult]) -> DataFrame:
 
 def plot_shap_ranking(ranking: DataFrame, limit: int = 20):
     ranking_ = ranking.iloc[:, :limit]
-    print('Kandal\'s τ=', average_kendall_tau(ranking_.values.tolist()))
+    print("Kandal's τ=", average_kendall_tau(ranking_.values.tolist()))
     fig = px.parallel_coordinates(ranking_ + np.random.normal(0, 0.01, ranking_.shape))
-    fig.update_traces(unselected=dict(line=dict(opacity=0.5)), selector=dict(type='parcoords'))
+    fig.update_traces(
+        unselected=dict(line=dict(opacity=0.5)), selector=dict(type="parcoords")
+    )
     fig.update_traces(dimensions=[dict(range=[0, len(ranking.columns)])])
     fig.show()

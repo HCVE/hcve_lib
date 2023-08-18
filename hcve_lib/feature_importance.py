@@ -40,12 +40,22 @@ def run_permutation_importance(
     plot_permutation_importance(X, y, importance, predictions)
 
 
-def get_permutation_importance(X, y, results, random_state, is_test: bool = True, n_repeats=10, *args, **kwargs):
+def get_permutation_importance(
+    X, y, results, random_state, is_test: bool = True, n_repeats=10, *args, **kwargs
+):
     predictions = [get_first_entry(result) for result in results]
     importances = [
         get_permutation_importance_prediction(
-            prediction, X, y, random_state=random_state, is_test=is_test, n_repeats=n_repeats, *args, **kwargs
-        ) for prediction in predictions
+            prediction,
+            X,
+            y,
+            random_state=random_state,
+            is_test=is_test,
+            n_repeats=n_repeats,
+            *args,
+            **kwargs,
+        )
+        for prediction in predictions
     ]
     return importances, predictions
 
@@ -60,7 +70,6 @@ def get_permutation_importance_prediction(
     *args,
     **kwargs,
 ):
-
     def permutation_score(estimator, X, y_true):
         if is_numerical(y):
             y_pred = estimator.predict(X)
@@ -75,7 +84,7 @@ def get_permutation_importance_prediction(
     y_train, y_test = get_y_split(y, prediction)
 
     permutation = permutation_importance(
-        prediction['model'],
+        prediction["model"],
         X_test if is_test else X_train,
         y_test if is_test else y_train,
         scoring=permutation_score,
@@ -96,15 +105,20 @@ def plot_permutation_importance(
     predictions: List[Prediction],
 ) -> None:
     sorting = None
-    columns = predictions[0]['X_columns']
+    columns = predictions[0]["X_columns"]
 
-    sorting = DataFrame(
-        {
-            num: importance.importances_mean
-            for num, importance in enumerate(importances)
-        },
-        index=columns,
-    ).mean(axis=1).sort_values().index.tolist()
+    sorting = (
+        DataFrame(
+            {
+                num: importance.importances_mean
+                for num, importance in enumerate(importances)
+            },
+            index=columns,
+        )
+        .mean(axis=1)
+        .sort_values()
+        .index.tolist()
+    )
 
     images = []
 
@@ -122,34 +136,38 @@ def plot_feature_importance_prediction(
     X_train, X_test = get_X_split(X, prediction)
     y_train, y_test = get_y_split(y, prediction)
     if sorting is None:
-        sorting = Series(
-            importance.importances_mean,
-            index=X_train.columns,
-        ).sort_values(ascending=True).index
+        sorting = (
+            Series(
+                importance.importances_mean,
+                index=X_train.columns,
+            )
+            .sort_values(ascending=True)
+            .index
+        )
     output_importance = DataFrame(
         importance.importances,
         index=X_train.columns,
     ).loc[sorting]
     fig = px.box(
         output_importance.T,
-        orientation='h',
+        orientation="h",
     )
     fig.update_layout(
         xaxis_title="Importance",
-        yaxis_title='Feature',
-        yaxis_tickmode='linear',
-        template='simple_white',
-        height=get_plot_height(output_importance)
+        yaxis_title="Feature",
+        yaxis_tickmode="linear",
+        template="simple_white",
+        height=get_plot_height(output_importance),
     )
-    fig.add_vline(x=0, line_width=2, opacity=0.3, line_color='red')
+    fig.add_vline(x=0, line_width=2, opacity=0.3, line_color="red")
     fig.update_yaxes(showgrid=True)
     fig.show()
 
 
 def get_tree_feature_importance(split: Prediction):
     importance = Series(
-        split['model'][-1].inner.feature_importances_,
-        index=split['X_columns'],
+        split["model"][-1].inner.feature_importances_,
+        index=split["X_columns"],
     )
     return importance.sort_values(ascending=False)
 
@@ -161,27 +179,29 @@ def plot_standard_importance(
     importance = importance[::-1]
     importance = importance.T
     importance = format_features(importance, metadata)
-    fig = px.bar(importance, orientation='h')
+    fig = px.bar(importance, orientation="h")
     fig.update_layout(
         xaxis_title="Importance",
-        yaxis_title='Feature',
-        yaxis_tickmode='linear',
+        yaxis_title="Feature",
+        yaxis_tickmode="linear",
         showlegend=False,
     )
     fig.update_yaxes(showgrid=True)
     return fig
 
 
-def plot_standard_importance_(importance: DataFrame, ) -> Figure:
-    importance['mean'] = importance.mean(axis=1)
-    importance.sort_values(by='mean', ascending=True, inplace=True)
+def plot_standard_importance_(
+    importance: DataFrame,
+) -> Figure:
+    importance["mean"] = importance.mean(axis=1)
+    importance.sort_values(by="mean", ascending=True, inplace=True)
     print(importance)
     importance = importance.T
-    fig = px.strip(importance, orientation='h')
+    fig = px.strip(importance, orientation="h")
     fig.update_layout(
         xaxis_title="Importance",
-        yaxis_title='Feature',
-        yaxis_tickmode='linear',
+        yaxis_title="Feature",
+        yaxis_tickmode="linear",
         showlegend=False,
     )
     fig.update_yaxes(showgrid=True)
@@ -192,37 +212,42 @@ def get_model_importance(results: List[Result]) -> DataFrame:
     models = get_models_from_repeats(results)
     importances = [model.get_feature_importance() for model in models]
 
-    forest_importances = DataFrame({num: importance for num, importance in enumerate(importances)})
+    forest_importances = DataFrame(
+        {num: importance for num, importance in enumerate(importances)}
+    )
     forest_importance_avg = forest_importances.mean(axis=1).sort_values(ascending=False)
     return forest_importances.loc[forest_importance_avg.index]
 
 
 def plot_model_importance_results(results: List[Result]) -> Figure:
     importance = get_model_importance(results)[::-1]
+    print(importance)
     return plot_model_importance_results_(importance)
 
 
 def plot_model_importance_results_(importance):
     fig = px.strip(
         importance.T,
-        orientation='h',
+        orientation="h",
     )
     fig.update_traces(marker=dict(opacity=0.5))
     fig.update_layout(
         xaxis_title="Importance",
-        yaxis_title='Feature',
-        yaxis_tickmode='linear',
-        template='simple_white',
+        yaxis_title="Feature",
+        yaxis_tickmode="linear",
+        template="simple_white",
         height=get_plot_height(importance),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)'
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
     )
-    fig.add_vline(x=0, line_width=2, opacity=0.3, line_color='red')
+    fig.add_vline(x=0, line_width=2, opacity=0.3, line_color="red")
     fig.update_yaxes(showgrid=True)
     return fig
 
 
-def plot_model_importance_results_per_run(results: List[Result], limit: Optional[int] = 20) -> None:
+def plot_model_importance_results_per_run(
+    results: List[Result], limit: Optional[int] = 20
+) -> None:
     importance = get_model_importance(results)
     for _, importance_single in islice(importance.iteritems(), limit):
         plot_model_importance_results_per_run_(importance, importance_single)
@@ -231,16 +256,16 @@ def plot_model_importance_results_per_run(results: List[Result], limit: Optional
 def plot_model_importance_results_per_run_(importance_single):
     fig = px.bar(
         importance_single,
-        orientation='h',
+        orientation="h",
     )
     fig.update_layout(
         xaxis_title="Importance",
-        yaxis_title='Feature',
-        yaxis_tickmode='linear',
-        template='simple_white',
+        yaxis_title="Feature",
+        yaxis_tickmode="linear",
+        template="simple_white",
         height=get_plot_height(importance_single),
     )
-    fig.add_vline(x=0, line_width=2, opacity=0.3, line_color='red')
+    fig.add_vline(x=0, line_width=2, opacity=0.3, line_color="red")
     fig.update_yaxes(showgrid=True)
     fig.show()
 

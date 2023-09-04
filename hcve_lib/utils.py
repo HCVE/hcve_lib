@@ -1,4 +1,7 @@
 import argparse
+import asyncio
+
+from toolz import keyfilter
 import enum
 import itertools
 import multiprocessing
@@ -1275,3 +1278,41 @@ def get_variables_as_dict(module_path):
         if not callable(getattr(imported_module, attr)) and not attr.startswith("__")
     }
     return variables_dict
+
+
+def pick(whitelist, d):
+    return keyfilter(lambda k: k in whitelist, d)
+
+
+def omit(blacklist, d):
+    return keyfilter(lambda k: k not in blacklist, d)
+
+
+def retry_async(max_retries=15, retry_delay=1, exception=Exception):
+    def decorator(func):
+        async def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return await func(*args, **kwargs)
+                except exception as e:  # Catch the specified exception(s)
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                    else:
+                        raise e
+
+        return wrapper
+
+    return decorator
+
+
+def find_key(d: Dict, target_key: Any) -> bool:
+    if not isinstance(d, dict):
+        return False
+
+    if target_key in d:
+        return True
+
+    for key, value in d.items():
+        if isinstance(value, dict) and find_key(value, target_key):
+            return True
+    return False

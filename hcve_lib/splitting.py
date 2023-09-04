@@ -4,19 +4,34 @@ from typing import Callable, Sequence, List, Tuple, Dict
 
 from pandas import DataFrame, Index, Series
 from pandas.core.groupby import DataFrameGroupBy
-from sklearn.model_selection import KFold, StratifiedKFold, train_test_split, LeaveOneOut
+from sklearn.model_selection import (
+    KFold,
+    StratifiedKFold,
+    train_test_split,
+    LeaveOneOut,
+)
 from toolz import identity, merge
 from toolz.curried import valfilter, map
 
 from hcve_lib.custom_types import Target, TrainTestSplits, Prediction, ExceptionValue
 from hcve_lib.data import get_survival_y
 from hcve_lib.functional import pipe, mapl, accept_extra_parameters, flatten, valmap_
-from hcve_lib.utils import subtract_lists, map_groups_iloc, list_to_dict_index, get_fraction_missing, partial, loc, \
-    empty_dict, generate_steps
+from hcve_lib.utils import (
+    subtract_lists,
+    map_groups_iloc,
+    list_to_dict_index,
+    get_fraction_missing,
+    partial,
+    loc,
+    empty_dict,
+    generate_steps,
+)
 
 
 @accept_extra_parameters
-def get_lco_splits(X: DataFrame, data: DataFrame, column: str = 'STUDY') -> TrainTestSplits:
+def get_lco_splits(
+    X: DataFrame, data: DataFrame, column: str = "STUDY"
+) -> TrainTestSplits:
     return get_lo_splits(X, data, column)
 
 
@@ -67,7 +82,10 @@ def get_group_splits(
     flatten_data = data.apply(identity).loc[X.index]
     all_indexes = range(0, len(flatten_data))
     groups = map_groups_iloc(data, flatten_data)
-    return {key: (subtract_lists(list(all_indexes), subset), subset) for key, subset in groups}
+    return {
+        key: (subtract_lists(list(all_indexes), subset), subset)
+        for key, subset in groups
+    }
 
 
 @accept_extra_parameters
@@ -82,8 +100,10 @@ def get_splitting_per_group(
     groups = X.groupby(data[group_by_feature])
     return pipe(
         (
-            [((name, name_inner), split)
-             for name_inner, split in get_splits(group_df).items()]
+            [
+                ((name, name_inner), split)
+                for name_inner, split in get_splits(group_df).items()
+            ]
             for name, group_df in groups
         ),
         flatten,
@@ -111,12 +131,14 @@ def get_lm_splits(
 def get_reproduce_split(data: DataFrame) -> TrainTestSplits:
     return train_test_filter(
         data,
-        train_filter=lambda _data: _data['STUDY'].isin([
-            'HEALTHABC',
-            'PREDICTOR',
-            'PROSPER',
-        ]),
-        test_filter=lambda _data: _data['STUDY'] == 'ASCOT',
+        train_filter=lambda _data: _data["STUDY"].isin(
+            [
+                "HEALTHABC",
+                "PREDICTOR",
+                "PROSPER",
+            ]
+        ),
+        test_filter=lambda _data: _data["STUDY"] == "ASCOT",
     )
 
 
@@ -124,15 +146,19 @@ def get_reproduce_split(data: DataFrame) -> TrainTestSplits:
 def get_healthabc_ascot_split(data: DataFrame) -> TrainTestSplits:
     return train_test_filter(
         data,
-        train_filter=lambda _data: _data['STUDY'].isin([
-            'HEALTHABC',
-        ]),
-        test_filter=lambda _data: _data['STUDY'] == 'ASCOT',
+        train_filter=lambda _data: _data["STUDY"].isin(
+            [
+                "HEALTHABC",
+            ]
+        ),
+        test_filter=lambda _data: _data["STUDY"] == "ASCOT",
     )
 
 
 @accept_extra_parameters
-def get_loo_splits(X: DataFrame, ) -> TrainTestSplits:
+def get_loo_splits(
+    X: DataFrame,
+) -> TrainTestSplits:
     return pipe(
         LeaveOneOut().split(X),
         list,
@@ -170,12 +196,17 @@ def get_kfold_stratified_splits(
     n_splits: int = 10,
 ) -> TrainTestSplits:
     try:
-        y_ = y.data['label']
+        y_ = y.data["label"]
     except AttributeError:
         y_ = y
 
+    if str(y_.dtype).startswith("float"):
+        return get_kfold_splits(X, random_state, n_splits)
+
     return pipe(
-        StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state).split(X, y_),
+        StratifiedKFold(
+            n_splits=n_splits, shuffle=True, random_state=random_state
+        ).split(X, y_),
         list,
         map(mapl(partial(iloc_to_loc, X))),
         list_to_dict_index,
@@ -204,7 +235,7 @@ def get_train_test(
     )
     data_train_index = data_train.index.tolist()
     data_test_index = data_test.index.tolist()
-    return {'train_test': (data_train_index, data_test_index)}
+    return {"train_test": (data_train_index, data_test_index)}
 
 
 @accept_extra_parameters
@@ -232,7 +263,10 @@ def get_learning_curve_splits(
     data_test_index = data_test.index.tolist()
 
     steps = list(generate_steps(min_samples, len(data_train), n_steps))
-    return {f'train_test_n_{step}': (data_train_index[:step], data_test_index) for step in steps}
+    return {
+        f"train_test_n_{step}": (data_train_index[:step], data_test_index)
+        for step in steps
+    }
 
 
 @accept_extra_parameters
@@ -250,7 +284,7 @@ def train_test_filter(
         test_data = data[test_filter(data)]
 
     return {
-        'train_test_filter': (
+        "train_test_filter": (
             train_data.index.to_list(),
             test_data.index.to_list(),
         )
@@ -270,32 +304,33 @@ def filter_missing_features(
     x_test: Series,
     threshold: float = 1,
 ) -> bool:
-    return \
-            get_fraction_missing(x_train) >= threshold \
-            or get_fraction_missing(x_test) >= threshold
+    return (
+        get_fraction_missing(x_train) >= threshold
+        or get_fraction_missing(x_test) >= threshold
+    )
 
 
 def get_splitter(splitter_name: str) -> Callable:
     if splitter_name == "lco":
         return get_lco_splits
-    elif splitter_name == 'reproduce':
+    elif splitter_name == "reproduce":
         return get_reproduce_split
-    elif splitter_name == 'healtahc_ascot':
+    elif splitter_name == "healtahc_ascot":
         return get_healthabc_ascot_split
-    elif splitter_name == 'lm':
-        return partial(get_1_to_1_splits, group_by_column='STUDY')
-    elif splitter_name == 'cohort_10_fold':
+    elif splitter_name == "lm":
+        return partial(get_1_to_1_splits, group_by_column="STUDY")
+    elif splitter_name == "cohort_10_fold":
         return get_splitting_per_group
     elif splitter_name == "10_fold":
         return partial(get_kfold_stratified_splits, n_splits=10)
     elif splitter_name == "5_fold":
         return partial(get_kfold_stratified_splits, n_splits=5)
     else:
-        raise Exception('Splitting not know')
+        raise Exception("Splitting not know")
 
 
 def train_test_fold(data, fold: Prediction, metadata) -> Tuple[DataFrame, Target]:
-    return data[fold['X_columns']], get_survival_y(data, fold['y_column'], metadata)
+    return data[fold["X_columns"]], get_survival_y(data, fold["y_column"], metadata)
 
 
 def get_group_indexes(
@@ -310,11 +345,11 @@ def resample_prediction_test(
     index: Index,
     prediction: Prediction,
 ) -> Prediction:
-    y_pred = loc(index, prediction['y_pred'], ignore_not_present=True)
+    y_pred = loc(index, prediction["y_pred"], ignore_not_present=True)
     return merge(
         prediction,
         dict(
-            split=(prediction['split'][0], list(y_pred.index)),
+            split=(prediction["split"][0], list(y_pred.index)),
             y_pred=y_pred,
         ),
     )

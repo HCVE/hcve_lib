@@ -1,3 +1,5 @@
+from copy import copy
+
 import gc
 import logging
 import logging
@@ -180,11 +182,6 @@ def cross_validate(
 
         print()
         return results
-
-
-def _on_progress(on_progress: Callable[[float], None], progress: float):
-    if on_progress:
-        on_progress(progress)
 
 
 def cross_validate_single_repeat_(
@@ -629,7 +626,6 @@ def cross_validate_single_repeat(
             X,
             y,
             splits_dict,
-            random_state,
             column_masks,
             models,
             predict_method,
@@ -665,6 +661,56 @@ def cross_validate_single_repeat(
 # catch = ((Exception, ArithmeticError, RuntimeError) if self.catch_exceptions else ()),
 # callbacks = [*self.optimize_callbacks, *([self.mlflow_callback] if self.mlflow_callback else [])],
 #
+
+
+def get_predictions(results: List[Result]) -> Iterable[Prediction]:
+    for result in results:
+        for prediction in result.values():
+            yield prediction
+
+
+def external_validation(
+    X_test: DataFrame,
+    y_test: Target,
+    results: List[Result],
+    on_progress: Callable[[float, ...], None] = None,
+) -> List[Result]:
+    predictions = list(get_predictions(results))
+
+    if on_progress is not None:
+        reporter: Optional[ProgressReporter] = ProgressReporter()
+        reporter.total = len(predictions)
+        reporter.on_progress = on_progress
+    else:
+        reporter = None
+
+    new_results = []
+    for result in results:
+        new_result = {}
+        for split_name, prediction in result.items():
+            new_prediction = copy(prediction)
+            del new_prediction["split"]
+
+            predict_method_callable = getattr(prediction["model"], "predict")
+            prediction = Prediction(
+                split=([], X_test.index.tolist()),
+                X_columns=prediction["X_columns"],
+                y_column=prediction["y_column"],
+                y_pred=DataFrame(
+                    predict_method_callable(X_test),
+                    index=X_test.index,
+                ),
+                model=prediction["model"],
+            )
+
+            new_result[split_name] = prediction
+
+            if reporter is not None:
+                reporter.finished()
+
+        new_results.append(new_result)
+
+    return new_results
 
 
 def _objective_instantiate(self, trial, hyperparameters):
@@ -981,7 +1027,8 @@ def cross_validate_fit(
         estimator.fit(X, y, **fit_kwargs)
         run_id = None
 
-    reporter.finished()
+    if reporter:
+        reporter.finished()
 
     return run_id, estimator
 
@@ -1000,7 +1047,6 @@ def cross_validate_predict(
     X: DataFrame,
     y: Target,
     splits: TrainTestSplits,
-    random_state: int,
     filtered_columns: Dict[Hashable, Dict[Hashable, bool]],
     models: Dict[Hashable, Tuple[Optional[str], Model]],
     predict_method: str,

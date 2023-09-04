@@ -52,6 +52,8 @@ from hcve_lib.utils import (
     generate_steps,
     deep_merge,
     get_categorical_columns,
+    retry_async,
+    find_key,
 )
 from imblearn.under_sampling import RandomUnderSampler
 from numpy.testing import assert_array_equal
@@ -781,3 +783,66 @@ def test_generate_steps():
     assert list(generate_steps(1, 10, 4)) == [1, 4, 7, 10]
 
     assert list(generate_steps(1, 10, 5)) == [1, 3, 6, 8, 10]
+
+
+@pytest.mark.asyncio
+async def test_retry_async():
+    # 1. Test that it retries the specified number of times
+    call_count = 0
+
+    @retry_async(max_retries=5, retry_delay=0.1, exception=ValueError)
+    async def fail_until_last():
+        nonlocal call_count
+        call_count += 1
+        if call_count < 5:
+            raise ValueError()
+        return True
+
+    result = await fail_until_last()
+    assert call_count == 5
+    assert result is True
+
+    # 2. Ensure it raises the exception if retries are exceeded
+    call_count = 0
+
+    @retry_async(max_retries=3, retry_delay=0.1, exception=ValueError)
+    async def always_fail():
+        nonlocal call_count
+        call_count += 1
+        raise ValueError()
+
+    with pytest.raises(ValueError):
+        await always_fail()
+    assert call_count == 3
+
+    # 3. Ensure that delay is applied (not precise due to system scheduling, but for demonstration purposes)
+    import time
+
+    @retry_async(max_retries=3, retry_delay=1, exception=ValueError)
+    async def fail_three_times():
+        raise ValueError()
+
+    start_time = time.time()
+
+    with pytest.raises(ValueError):
+        await fail_three_times()
+
+    elapsed_time = time.time() - start_time
+    assert elapsed_time >= 2
+
+    @retry_async(max_retries=5, retry_delay=0.1, exception=ValueError)
+    async def always_succeed():
+        return "success"
+
+    assert await always_succeed() == "success"
+
+
+def test_find_key():
+    d = {"a": 1, "b": {"c": 2, "d": {"e": 3}}}
+
+    assert find_key(d, "a") is True
+    assert find_key(d, "e") is True
+    assert find_key(d, "f") is False
+    assert find_key(d, "b") is True
+    assert find_key(d, "c") is True
+    assert find_key({}, "a") is False

@@ -54,6 +54,8 @@ from hcve_lib.utils import (
     get_categorical_columns,
     retry_async,
     find_key,
+    merge_two_level_dict,
+    find_unpicklable_attr,
 )
 from imblearn.under_sampling import RandomUnderSampler
 from numpy.testing import assert_array_equal
@@ -846,3 +848,36 @@ def test_find_key():
     assert find_key(d, "b") is True
     assert find_key(d, "c") is True
     assert find_key({}, "a") is False
+
+
+def test_merge_two_level_dict():
+    input_dict = {
+        "group1": {"a": 1, "b": 2},
+        "group2": {"c": 3, "d": 4},
+    }
+    expected_output = {"group1_a": 1, "group1_b": 2, "group2_c": 3, "group2_d": 4}
+    assert merge_two_level_dict(input_dict) == expected_output
+
+    input_dict = {}
+    expected_output = {}
+    assert merge_two_level_dict(input_dict) == expected_output
+
+    input_dict = {"group1": {"a": 1}}
+    expected_output = {"group1_a": 1}
+    assert merge_two_level_dict(input_dict) == expected_output
+
+    input_dict = {"group1": {"a": 1}, "group2": "not a dict"}
+
+    with pytest.raises(AttributeError):
+        merge_two_level_dict(input_dict)
+
+
+def test_find_unpicklable_attr():
+    class TestClass:
+        def __init__(self):
+            self.a = 1
+            self.b = lambda x: x
+
+    d = {"key1": 1, "key2": {"nested_key": TestClass()}}
+
+    assert find_unpicklable_attr(d) == ["key2", "nested_key", "b"]

@@ -23,6 +23,7 @@ from sklearn.preprocessing import (
     FunctionTransformer,
     Binarizer,
 )
+from sksurv.preprocessing import OneHotEncoder
 from xgboost import XGBClassifier, XGBRegressor, XGBModel
 
 from hcve_lib.custom_types import Estimator, Target
@@ -183,6 +184,10 @@ class DFOrdinalEncoder(DFWrapped, OrdinalEncoder):
     ...
 
 
+class DFOneHotEncoder(DFWrapped, OneHotEncoder):
+    ...
+
+
 class DFVarianceThreshold(DFWrapped, VarianceThreshold):
     ...
 
@@ -228,7 +233,7 @@ class DFXGBRegressor(DFXGBase):
 
 
 # noinspection PyUnresolvedReferences
-Estimator.register(DFXGBRegressor)
+# Estimator.register(DFXGBRegressor)
 
 
 class DFPipeline(Pipeline, Estimator):

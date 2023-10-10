@@ -4,7 +4,6 @@ from collections import namedtuple
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
-from logging import Logger
 from typing import (
     Optional,
     Tuple,
@@ -17,7 +16,6 @@ from typing import (
     Hashable,
     Callable,
     Type,
-    Iterable,
 )
 from typing_extensions import TypedDict
 
@@ -169,7 +167,7 @@ class TargetTransformer(BaseEstimator):
         ...
 
 
-class Estimator(BaseEstimator, ABC):
+class Estimator:
     def fit(self, X, y, *args, **kwargs):
         ...
 
@@ -196,97 +194,6 @@ class Estimator(BaseEstimator, ABC):
     @classmethod
     def get_name(cls):
         return cls.__name__
-
-
-class Model(Estimator, ABC):
-    estimator: Estimator = None
-    params: Dict
-    target_type: TargetType
-
-    def __init__(
-        self,
-        random_state: int,
-        logger: Logger = None,
-        log_mlflow: bool = True,
-        target_type: TargetType = TargetType.NA,
-        verbose: int = None,
-        **kwargs,
-    ):
-        self.random_state = random_state
-        self.logger = logger
-        self.log_mlflow = log_mlflow
-        self.target_type = target_type
-        self.verbose = verbose
-        self.kwargs = kwargs
-        self.estimator = self.get_estimator_()
-        self.params = {}
-
-    def fit(self, X: DataFrame, y: TargetData, *args, **kwargs):
-        self.estimator = self.get_estimator_()
-        self.estimator.set_params(**self.params)
-        self.estimator.fit(X, y, *args, **kwargs)
-        return self
-
-    def transform(self, X: DataFrame):
-        return X
-
-    def predict(self, X: DataFrame, *args, **kwargs):
-        if self.target_type == TargetType.CLASSIFICATION:
-            y_pred: DataFrame = self.estimator.predict_proba(X, *args, **kwargs)
-
-            # HACK for two class prediction
-            if isinstance(y_pred, Series):
-                y_pred = DataFrame({0: 1 - y_pred, 1: y_pred})
-            elif len(y_pred.columns) == 1:
-                y_pred[1] = 1 - y_pred[0]
-
-            return y_pred
-
-        elif self.target_type == TargetType.REGRESSION:
-            return self.estimator.predict(X, *args, **kwargs)
-        elif self.target_type == TargetType.TIME_TO_EVENT:
-            return self.estimator.predict(X, *args, **kwargs)
-
-    @abstractmethod
-    def get_estimator(self) -> Estimator | Iterable[Estimator]:
-        raise NotImplementedError
-
-    def get_estimator_(self) -> Estimator:
-        try:
-            return self.get_estimator().set_params(
-                **self.kwargs
-                | ({"verbose": self.verbose} if self.verbose is not None else {}),
-            )
-        except ValueError:
-            # verbose not accepted
-            return self.get_estimator().set_params(
-                **self.kwargs,
-            )
-
-    def get_feature_importance(self) -> Series:
-        if not self.estimator:
-            raise Exception("Must be fit")
-        else:
-            return self.estimator.get_feature_importance()
-
-    def get_p_value_feature_importance(self, X: DataFrame, y: Target) -> Series:
-        raise NotImplementedError
-
-    def set_params(self, **kwargs):
-        self.params = kwargs
-        self.estimator.set_params(**kwargs)
-
-    def get_params(self, **kwargs):
-        return self.estimator.get_params(**kwargs)
-
-    def __getattr__(self, item):
-        if hasattr(self.estimator, item):
-            return getattr(self.estimator, item)
-        else:
-            raise AttributeError(f"AttributeError: object has no attribute '{item}'")
-
-    def __getitem__(self, item):
-        return self.estimator[item]
 
 
 class Pipeline:
@@ -394,6 +301,9 @@ class Prediction(TypedDict, total=False):
     split: TrainTestIndex
 
 
+Result = Dict[Hashable, Prediction]
+
+
 class Method(ABC):
     @staticmethod
     @abstractmethod
@@ -423,9 +333,6 @@ class Method(ABC):
         ...
 
 
-Result = Dict[Hashable, Prediction]
-
-
 class ExceptionValue:
     traceback: str
     value: Any
@@ -438,6 +345,11 @@ class ExceptionValue:
         self.traceback = traceback.format_exc()
         self.value = value
         self.exception = exception
+
+    def __getstate__(self):
+        return {
+            "value": self.value,
+        }
 
     def __repr__(self):
         return f"Value:\n {self.value}\n\n Exception:\n{self.exception}\n\n {self.traceback}"

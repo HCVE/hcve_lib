@@ -1,19 +1,26 @@
 import itertools
-from functools import partial
-from typing import Callable, Sequence, List, Tuple, Dict
+from collections import defaultdict
+from functools import partial, reduce
+from typing import Callable, Sequence, List, Tuple, Dict, Any, Hashable, cast
 
 from pandas import DataFrame, Index, Series
-from pandas.core.groupby import DataFrameGroupBy
+from pandas.core.groupby import DataFrameGroupBy, GroupBy
 from sklearn.model_selection import (
     KFold,
     StratifiedKFold,
     train_test_split,
     LeaveOneOut,
 )
-from toolz import identity, merge
+from toolz import identity, merge, valmap
 from toolz.curried import valfilter, map
 
-from hcve_lib.custom_types import Target, TrainTestSplits, Prediction, ExceptionValue
+from hcve_lib.custom_types import (
+    Target,
+    TrainTestSplits,
+    Prediction,
+    ExceptionValue,
+    TrainTestSplitter,
+)
 from hcve_lib.data import get_survival_y
 from hcve_lib.functional import pipe, mapl, accept_extra_parameters, flatten, valmap_
 from hcve_lib.utils import (
@@ -25,6 +32,8 @@ from hcve_lib.utils import (
     loc,
     empty_dict,
     generate_steps,
+    transpose_dict,
+    merge_two_level_dict,
 )
 
 
@@ -77,15 +86,19 @@ def get_1_to_1_splits(
 @accept_extra_parameters
 def get_group_splits(
     X: DataFrame,
-    data: DataFrameGroupBy,
+    group_by: Any,
 ) -> TrainTestSplits:
-    flatten_data = data.apply(identity).loc[X.index]
-    all_indexes = range(0, len(flatten_data))
-    groups = map_groups_iloc(data, flatten_data)
-    return {
-        key: (subtract_lists(list(all_indexes), subset), subset)
-        for key, subset in groups
-    }
+    all_indexes = X.index
+    return pipe(
+        {
+            key: (
+                subtract_lists(list(all_indexes), subset.index.tolist()),
+                loc(subset.index, X, ignore_not_present=True).index.tolist(),
+            )
+            for key, subset in group_by
+        },
+        valfilter(lambda split: len(split[0]) > 0 and len(split[1]) > 0),
+    )
 
 
 @accept_extra_parameters
@@ -186,6 +199,30 @@ def get_kfold_splits(
         list_to_dict_index,
     )
     return splits
+
+
+@accept_extra_parameters
+def get_per_subset_split(
+    X: DataFrame,
+    y: Target,
+    group_by: GroupBy,
+    get_splits: TrainTestSplitter,
+    random_state: int,
+) -> TrainTestSplits:
+    splits_subsets: Dict[Any, Dict[Hashable, Tuple[list, list]]] = {}
+
+    for name, train_idx in group_by.groups.items():
+        X_subset = loc(train_idx, X, ignore_not_present=True)
+        splits_subsets[name] = get_splits(X=X_subset, y=y, random_state=random_state)
+
+    output_splits = defaultdict(lambda: ([], []))
+
+    for key, value in transpose_dict(splits_subsets).items():
+        for train, test in value.values():
+            output_splits[key][0].extend(train)
+            output_splits[key][1].extend(test)
+
+    return dict(output_splits)
 
 
 @accept_extra_parameters

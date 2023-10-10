@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import pickle
 
 from toolz import keyfilter
 import enum
@@ -35,7 +36,7 @@ import numpy
 import numpy as np
 import pandas
 import pandas as pd
-from IPython import get_ipython
+
 from filelock import FileLock, UnixFileLock
 from flask_socketio import SocketIO
 from frozendict import frozendict
@@ -320,7 +321,7 @@ def index_data(indexes: Iterable[int], data: IndexData) -> IndexData:
 
 
 def loc(
-    index: Union[Index, List[int]],
+    index: Union[Index, List[int], ndarray],
     data: IndexData,
     ignore_not_present: bool = False,
     logger: Logger = None,
@@ -615,6 +616,8 @@ def cwd_root():
 
 
 def notebook_init():
+    from IPython import get_ipython
+
     cwd_root()
     pandas.set_option("display.max_columns", None)
     pyplot.rcParams["figure.facecolor"] = "white"
@@ -788,6 +791,11 @@ def binarize(s: Series, threshold: float) -> Series:
 
 def get_first_entry(something: Dict) -> Any:
     return something[next(iter(something))]
+
+
+def get_first_item(something: Dict) -> Tuple:
+    key = next(iter(something))
+    return key, something[key]
 
 
 def run_parallel(function: Callable, data: Dict, n_jobs: int = None) -> Dict:
@@ -1316,3 +1324,54 @@ def find_key(d: Dict, target_key: Any) -> bool:
         if isinstance(value, dict) and find_key(value, target_key):
             return True
     return False
+
+
+def merge_two_level_dict(d: dict) -> dict:
+    merged_dict = {}
+    for key1, inner_dict in d.items():
+        for key2, value in inner_dict.items():
+            merged_key = f"{key1}_{key2}"
+            merged_dict[merged_key] = value
+    return merged_dict
+
+
+def is_picklable(obj):
+    try:
+        pickle.dumps(obj)
+        return True
+    except (pickle.PicklingError, AttributeError, TypeError):
+        return False
+
+
+def find_unpicklable_attr(data, path=None) -> Optional[List[str]]:
+    if path is None:
+        path = []
+
+    if is_picklable(data):
+        return None
+
+    if isinstance(data, dict):
+        for key, value in data.items():
+            new_path = path + [key]
+            result = find_unpicklable_attr(value, new_path)
+            if result:
+                return result
+
+    elif isinstance(data, (list, tuple)):
+        for idx, value in enumerate(data):
+            new_path = path + [idx]
+            result = find_unpicklable_attr(value, new_path)
+            if result:
+                return result
+
+    elif isinstance(data, object):
+        for attr_name in dir(data):
+            if not attr_name.startswith("__"):
+                new_path = path + [attr_name]
+                attr_value = getattr(data, attr_name)
+                if not is_picklable(attr_value):
+                    return new_path
+                result = find_unpicklable_attr(attr_value, new_path)
+                if result:
+                    return result
+    return None

@@ -10,7 +10,8 @@ class ProgressReporter:
         total_items=None,
         finished_counter=None,
         lock=None,
-        on_progress: Callable[[float, ...], None] = None,
+        # on_progress: Callable[[float, ...], None] = None,
+        on_progress: Callable = None,
     ):
         self.finished_counter = finished_counter or Value("i", 0)
         self._total_items = total_items
@@ -35,10 +36,10 @@ class ProgressReporter:
 
         self.on_progress(self.fraction)
 
-    def default_callback(self, fraction: float = None):
+    def default_callback(self, fraction: float = None, message: str = None):
         if self.total is None:
             raise ValueError("total_items is not set.")
-        return f"{self.finished_counter.value}/{self.total} ({fraction*100:.1f}%) items finished."
+        return f"{self.finished_counter.value}/{self.total} ({fraction * 100:.1f}%) items finished."
 
     def set_message(self, message: str):
         self.message = message

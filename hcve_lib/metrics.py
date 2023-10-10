@@ -1,5 +1,7 @@
 from dataclasses import dataclass
-from typing import Union, Tuple, Optional, List, Callable, Any
+from typing import Union, Tuple, Optional, List, Callable, Any, Iterable
+
+from sksurv.metrics import integrated_brier_score
 from typing_extensions import Literal
 
 import dill
@@ -8,30 +10,44 @@ import numpy as np
 from itertools import product
 from numpy import mean
 from pandas import DataFrame, Series
-from sklearn.metrics import brier_score_loss, roc_auc_score, accuracy_score, mean_squared_error, \
-    average_precision_score, r2_score, mean_absolute_error, mean_absolute_percentage_error
+from sklearn.metrics import (
+    brier_score_loss,
+    roc_auc_score,
+    accuracy_score,
+    mean_squared_error,
+    average_precision_score,
+    r2_score,
+    mean_absolute_error,
+    mean_absolute_percentage_error,
+)
 from sklearn.metrics import confusion_matrix, precision_recall_curve
 from sklearn.utils import resample
 from toolz.curried import get_in
 
-from hcve_lib.custom_types import Prediction, Target, ExceptionValue, Splits, ValueWithStatistics, ValueWithCI, \
-    TargetType
+from hcve_lib.custom_types import (
+    Prediction,
+    Target,
+    ExceptionValue,
+    Splits,
+    ValueWithStatistics,
+    ValueWithCI,
+    TargetType,
+)
 from hcve_lib.data import binarize_event, to_survival_y_records
 from hcve_lib.functional import flatten, pipe
 from hcve_lib.metrics_types import Metric, OptimizationDirection
 from hcve_lib.pipelines import get_target_type
 from hcve_lib.splitting import resample_prediction_test
-from hcve_lib.utils import loc, transpose_list
+from hcve_lib.utils import loc, transpose_list, get_y_split
 
 
 class BootstrappedMetric(Metric):
-
     def __init__(
-            self,
-            metric: Metric,
-            random_state: int,
-            iterations: int = 100,
-            return_summary: bool = True,
+        self,
+        metric: Metric,
+        random_state: int,
+        iterations: int = 100,
+        return_summary: bool = True,
     ):
         super()
         self.metric = metric
@@ -40,28 +56,26 @@ class BootstrappedMetric(Metric):
         self.return_summary = return_summary
 
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
         return self.metric.get_names(prediction, y)
 
     def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[Union[ExceptionValue, float]]:
-
         metric_values = []
         iteration_tryout = 0
         iteration_success = 0
         max_iterations = self.iterations * 5
 
         while iteration_success < self.iterations and iteration_tryout < max_iterations:
-
             sample_index = resample(
-                prediction['y_score'].index,
-                n_samples=round(len(prediction['y_score'])),
+                prediction["y_score"].index,
+                n_samples=round(len(prediction["y_score"])),
                 random_state=self.random_state + iteration_tryout,
             )
 
@@ -93,7 +107,9 @@ class BootstrappedMetric(Metric):
             values_to_return = []
 
             for values in values_per_names:
-                values_ = [value for value in values if not isinstance(value, ExceptionValue)]
+                values_ = [
+                    value for value in values if not isinstance(value, ExceptionValue)
+                ]
                 if len(values_) == 0:
                     values_to_return.append((ExceptionValue(value=values)))
                 else:
@@ -119,62 +135,66 @@ def statistic_from_bootstrap(values):
 
 
 class Maximize:
-
     def get_direction(self) -> OptimizationDirection:
         return OptimizationDirection.MAXIMIZE
 
 
+class Minimize:
+    def get_direction(self) -> OptimizationDirection:
+        return OptimizationDirection.MINIMIZE
+
+
 @dataclass
 class WeightedCIndex(Maximize, Metric):
-
     def __init__(
-            self,
-            target: Literal['y_score', 'y_proba'] = 'y_score',
-            weight=None,
+        self,
+        target: Literal["y_score", "y_proba"] = "y_pred",
+        weight=None,
     ):
         self.target = target
         self.weight = weight
 
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
-        return ['c_index']
+        return ["c_index"]
 
     def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         from rpy2 import robjects
         from rpy2.interactive.packages import importr
 
         if len(prediction[self.target]) == 0:
-            return [ExceptionValue(
-                prediction[self.target],
-                ValueError('y_score empty'),
-            )]
+            return [
+                ExceptionValue(
+                    prediction[self.target],
+                    ValueError("y_score empty"),
+                )
+            ]
 
         # try:
         y_ = self.get_y(y, prediction)
         y_score = prediction[self.target]
+        y_ = loc(y_score.index, y)
         # TODO: HACK
-        y_score = y_score[y_score.index.isin(y_.data.index)]
+        # y_score = y_score[y_score.index.isin(y_.data.index)]
 
         if self.weight is not None:
-            weight = self.weight[y_.data.index]
+            weight = self.weight.loc[y_.data.index]
         else:
             weight = None
 
-        intsurv = importr('intsurv')
-        index = (
-            intsurv.cIndex(
-                robjects.FloatVector(y_.data['tte']),
-                robjects.FloatVector(y_.data['label']),
-                robjects.FloatVector(y_score),
-                *([robjects.FloatVector(weight)] if weight is not None else []),
-            )
+        intsurv = importr("intsurv")
+        index = intsurv.cIndex(
+            robjects.FloatVector(y_.data["tte"]),
+            robjects.FloatVector(y_.data["label"]),
+            robjects.FloatVector(y_score),
+            *([robjects.FloatVector(weight)] if weight is not None else []),
         )
         return [index[0]]
         # except ValueError as e:
@@ -183,71 +203,63 @@ class WeightedCIndex(Maximize, Metric):
 
 
 def get_y_proba_for_time(
-        prediction: Prediction,
-        X: DataFrame,
-        y: Target,
-        time: int,
+    prediction: Prediction,
+    X: DataFrame,
+    y: Target,
+    time: int,
 ) -> Series:
-    y_proba = prediction['y_proba'].get(time)
+    y_proba = prediction["y_proba"].get(time)
     if len(y_proba.isna()) == len(y_proba):
         y_proba = predict_proba_for_prediction(prediction, X, y, time)
     return y_proba
 
 
 def predict_proba_for_prediction(
-        prediction: Prediction,
-        X: DataFrame,
-        y: Target,
-        time: int,
+    prediction: Prediction,
+    X: DataFrame,
+    y: Target,
+    time: int,
 ) -> Prediction:
-    return prediction['method'].predict(
-        X,
-        y,
-        prediction['split'],
-        prediction['model'],
-        prediction['method'],
-        prediction['random_state'],
-        time=time,
-    )
+    return prediction["method"].predict(X)
 
 
 class ROC_AUC(Maximize, Metric):
-
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
-        return ['roc_auc']
+        return ["roc_auc"]
 
     def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         try:
             y_ = self.get_y(y, prediction)
-            return [roc_auc_score(y_, prediction['y_pred'][1])]
+            return [roc_auc_score(y_, prediction["y_pred"][1])]
         except ValueError as e:
             return [ExceptionValue(exception=e)]
 
 
 class FunctionMetric(Metric):
-
     def __init__(
-            self,
-            function: Callable,
-            direction: OptimizationDirection = OptimizationDirection.MAXIMIZE,
-            *args,
-            **kwargs,
+        self,
+        function: Callable,
+        direction: OptimizationDirection = OptimizationDirection.MAXIMIZE,
+        *args,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.function = function
         self.direction = direction
 
-    def get_values(self, prediction: Prediction, y: Target) -> List[Union[ExceptionValue, float, ValueWithCI]]:
+    def get_values(
+        self, prediction: Prediction, y: Target
+    ) -> List[Union[ExceptionValue, float, ValueWithCI]]:
         y_ = self.get_y(y, prediction)
-        return [self.function(y_, prediction['y_pred'])]
+        return [self.function(y_, prediction["y_pred"])]
 
     def get_direction(self) -> OptimizationDirection:
         return self.direction
@@ -257,147 +269,179 @@ class FunctionMetric(Metric):
 
 
 class PR_AUC(Maximize, Metric):
-
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
-        return ['pr_auc']
+        return ["pr_auc"]
 
     def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         try:
             y_ = self.get_y(y, prediction)
-            return [average_precision_score(y_, prediction['y_pred'][1])]
+            return [average_precision_score(y_, prediction["y_pred"][1])]
         except ValueError as e:
             return [ExceptionValue(exception=e)]
 
 
 class Accuracy(Maximize, Metric):
-
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
-        return ['accuracy']
+        return ["accuracy"]
 
     def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         try:
             y_ = self.get_y(y, prediction)
-            return [accuracy_score(
-                prediction['y_pred'][1],
-                y_,
-            )]
+            return [
+                accuracy_score(
+                    prediction["y_pred"][1],
+                    y_,
+                )
+            ]
         except ValueError as e:
             return [ExceptionValue(exception=e)]
 
 
 class MeanSquaredError(Maximize, Metric):
-
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
-        return ['mse']
+        return ["mse"]
 
     def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         try:
             y_ = self.get_y(y, prediction)
-            return [mean_squared_error(
-                prediction['y_pred'][1],
-                y_,
-            )]
+            return [
+                mean_squared_error(
+                    prediction["y_pred"][1],
+                    y_,
+                )
+            ]
         except ValueError as e:
             return [ExceptionValue(exception=e)]
 
 
 @dataclass
 class CIndex(Maximize, Metric):
-
     def __init__(
-            self,
-            target: str = 'y_pred',
+        self,
+        target: str = "y_pred",
     ):
         self.target = target
 
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
-        return ['c_index']
+        return ["c_index"]
 
     def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         if len(prediction[self.target]) == 0:
-            return [ExceptionValue(
-                prediction[self.target],
-                ValueError('y_score empty'),
-            )]
+            return [
+                ExceptionValue(
+                    prediction[self.target],
+                    ValueError("y_score empty"),
+                )
+            ]
 
         try:
             y_ = self.get_y(y, prediction)
             from sksurv.metrics import concordance_index_censored
+
             index: Tuple = concordance_index_censored(
-                y_.data['label'].to_numpy().astype(numpy.bool_),
-                y_.data['tte'],
+                y_.data["label"].to_numpy().astype(numpy.bool_),
+                y_.data["tte"],
                 # TODO: HACK
-                prediction[self.target]
-                [prediction[self.target].index.isin(y_.data.index.to_list())].to_numpy().flatten(),
+                prediction[self.target][
+                    prediction[self.target].index.isin(y_.data.index.to_list())
+                ]
+                .to_numpy()
+                .flatten(),
             )
             return [index[0]]
         except ValueError as e:
             return [ExceptionValue(exception=e)]
 
 
-def get_y_proba_for_time(
+@dataclass
+class IBS(Minimize, Metric):
+    def __init__(
+        self, X: DataFrame, times: Iterable[int] = None, target: str = "y_pred"
+    ):
+        super().__init__()
+        self.times = times
+        self.target = target
+        self.X = X
+
+    def get_names(
+        self,
         prediction: Prediction,
-        X: DataFrame,
         y: Target,
-        time: int,
+    ) -> List[str]:
+        return ["ibs"]
+
+    def get_values(
+        self,
+        prediction: Prediction,
+        y: Target,
+    ) -> List[Union[ExceptionValue, float]]:
+        print("xxx")
+        y_train, y_test = get_y_split(y, prediction)
+        y_proba_table = prediction["model"].predict_proba_table(self.X).T
+        print(y_proba_table)
+        ibs = integrated_brier_score(
+            to_survival_y_records(y_train),
+            to_survival_y_records(y_test),
+            y_proba_table.to_numpy(),
+            y_proba_table.columns,
+        )
+        print(ibs)
+
+
+def get_y_proba_for_time(
+    prediction: Prediction,
+    X: DataFrame,
+    y: Target,
+    time: int,
 ) -> Series:
-    y_proba = prediction['y_proba'].get(time)
+    y_proba = prediction["y_proba"].get(time)
     if len(y_proba.isna()) == len(y_proba):
         y_proba = predict_proba_for_prediction(prediction, X, y, time)
     return y_proba
 
 
 def predict_proba_for_prediction(
-        prediction: Prediction,
-        X: DataFrame,
-        y: Target,
-        time: int,
+    prediction: Prediction,
+    X: DataFrame,
+    y: Target,
+    time: int,
 ) -> Prediction:
-    return prediction['method'].predict(
-        X,
-        y,
-        prediction['split'],
-        prediction['model'],
-        prediction['method'],
-        prediction['random_state'],
-        time=time,
-    )
+    return prediction["method"].predict(X)
 
 
 class Minimize:
-
     def get_direction(self) -> OptimizationDirection:
         return OptimizationDirection.MINIMIZE
 
@@ -407,20 +451,20 @@ class Brier(Minimize, Metric):
     time: Optional[int]
 
     def __init__(
-            self,
-            X: DataFrame,
-            time: Optional[int] = None,
-            *args,
-            **kwargs,
+        self,
+        X: DataFrame,
+        time: Optional[int] = None,
+        *args,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.X = X
         self.time = time
 
     def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         y_train, y_test = self.get_y(y, prediction, both=True)
         y_train_ = target_to_survival_y_records(y_train)
@@ -430,6 +474,7 @@ class Brier(Minimize, Metric):
         for time in self.get_times(prediction):
             try:
                 from sksurv.metrics import brier_score
+
                 values.append(
                     brier_score(
                         y_train_.data,
@@ -447,70 +492,75 @@ class Brier(Minimize, Metric):
                 values.append(ExceptionValue(e))
 
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
-        return [f'brier_{time}' for time in self.get_times(prediction)]
+        return [f"brier_{time}" for time in self.get_times(prediction)]
 
     def get_times(
-            self,
-            prediction: Prediction,
+        self,
+        prediction: Prediction,
     ) -> List[int]:
         if self.time:
             return [self.time]
         else:
-            available = list(prediction['y_proba'].keys())
+            available = list(prediction["y_proba"].keys())
             if len(available) > 0:
                 return available
             else:
-                raise ValueError('There are no available y_proba to compute brier score')
+                raise ValueError(
+                    "There are no available y_proba to compute brier score"
+                )
 
 
 class SimpleBrier(Minimize, Metric):
     time: Optional[int]
 
     def __init__(
-            self,
-            X: DataFrame,
-            time: Optional[int] = None,
-            *args,
-            **kwargs,
+        self,
+        X: DataFrame,
+        time: Optional[int] = None,
+        *args,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.X = X
         self.time = time
 
     def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         y_ = self.get_y(y, prediction)
-        return [get_simple_brier_for_time(time, self.X, y_, prediction) for time in self.get_times(prediction)]
+        return [
+            get_simple_brier_for_time(time, self.X, y_, prediction)
+            for time in self.get_times(prediction)
+        ]
 
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
-        return [f'simple_brier_{time}' for time in self.get_times(prediction)]
+        return [f"simple_brier_{time}" for time in self.get_times(prediction)]
 
     def get_times(self, prediction: Prediction) -> List[int]:
         if self.time:
             return [self.time]
         else:
-            return list(prediction['y_proba'].keys())
+            return list(prediction["y_proba"].keys())
 
 
 def get_simple_brier_for_time(
-        time: int,
-        X: DataFrame,
-        y: Target,
-        prediction: Prediction,
+    time: int,
+    X: DataFrame,
+    y: Target,
+    prediction: Prediction,
 ):
     try:
-        y_binary = 1 - binarize_event(time, y.data).dropna(),
+        y_binary = (1 - binarize_event(time, y.data).dropna(),)
         return brier_score_loss(
             y_binary,
             get_y_proba_for_time(
@@ -566,47 +616,48 @@ def get_simple_brier_for_time(
     #                 values.append(ExceptionValue(e))
 
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
-        return [f'brier_{time}' for time in self.get_times(prediction, y)]
+        return [f"brier_{time}" for time in self.get_times(prediction, y)]
 
     def get_times(
-            self,
-            prediction: Prediction,
+        self,
+        prediction: Prediction,
     ) -> List[int]:
         if self.time:
             return [self.time]
         else:
-            available = list(prediction['y_proba'].keys())
+            available = list(prediction["y_proba"].keys())
             if len(available) > 0:
                 return available
             else:
-                raise ValueError('There are no available y_proba to compute brier score')
+                raise ValueError(
+                    "There are no available y_proba to compute brier score"
+                )
 
 
 class AtTime:
     time: Optional[int] = None
 
     def get_times(self, prediction: Prediction, y: Target) -> List[int]:
-        if self.time == 'all_times':
-            return y.data['tte'].to_list()
+        if self.time == "all_times":
+            return y.data["tte"].to_list()
         if self.time:
             return [self.time]
         else:
-            return list(prediction['y_proba'].keys())
+            return list(prediction["y_proba"].keys())
 
 
 class BinaryMetricAtTime(Metric, AtTime):
-
     def __init__(
-            self,
-            binary_metric: Callable,
-            time: Optional[int] = None,
-            direction: OptimizationDirection = OptimizationDirection.MAXIMIZE,
-            *args,
-            **kwargs,
+        self,
+        binary_metric: Callable,
+        time: Optional[int] = None,
+        direction: OptimizationDirection = OptimizationDirection.MAXIMIZE,
+        *args,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.time = time
@@ -614,9 +665,9 @@ class BinaryMetricAtTime(Metric, AtTime):
         self.direction = direction
 
     def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[Any]:
         y_ = self.get_y(y, prediction)
         y_binarized = binarize_event(self.time, y_.data)
@@ -626,36 +677,39 @@ class BinaryMetricAtTime(Metric, AtTime):
                     y_binarized,
                     loc(
                         y_binarized.index,
-                        1 - prediction['y_proba'][time],
+                        1 - prediction["y_proba"][time],
                         ignore_not_present=True,
                     ),
-                ) for time in self.get_times(prediction, y)
+                )
+                for time in self.get_times(prediction, y)
             ]
         except KeyError as e:
             raise KeyError(f'Only {prediction["y_proba"].keys()} available')
 
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
-        return [f'{self.binary_metric.__name__}_{time}' for time in self.get_times(prediction, y)]
+        return [
+            f"{self.binary_metric.__name__}_{time}"
+            for time in self.get_times(prediction, y)
+        ]
 
     def get_direction(self) -> OptimizationDirection:
         return self.direction
 
 
 class BinaryMetricFromScore(Metric, AtTime):
-
     def __init__(
-            self,
-            binary_metric: Callable,
-            time: Union[Optional[int], str] = None,
-            direction: OptimizationDirection = OptimizationDirection.MAXIMIZE,
-            target=get_in(['y_score']),
-            sample_weight: Series = None,
-            *args,
-            **kwargs,
+        self,
+        binary_metric: Callable,
+        time: Union[Optional[int], str] = None,
+        direction: OptimizationDirection = OptimizationDirection.MAXIMIZE,
+        target=get_in(["y_score"]),
+        sample_weight: Series = None,
+        *args,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.time = time
@@ -664,9 +718,9 @@ class BinaryMetricFromScore(Metric, AtTime):
         self.sample_weight = sample_weight
 
     def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[Any]:
         y_ = self.get_y(y, prediction)
         out = []
@@ -677,8 +731,10 @@ class BinaryMetricFromScore(Metric, AtTime):
             else:
                 sample_weight_ = None
 
-            y_score = prediction['y_score'][(prediction['y_score'].index.isin(y_.data.index))
-                                            & (prediction['y_score'].index.isin(y_binarized.index))]
+            y_score = prediction["y_score"][
+                (prediction["y_score"].index.isin(y_.data.index))
+                & (prediction["y_score"].index.isin(y_binarized.index))
+            ]
 
             out.append(
                 self.binary_metric(
@@ -691,36 +747,48 @@ class BinaryMetricFromScore(Metric, AtTime):
         return out
 
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
-        return [f'{self.binary_metric.__name__}_{time}' for time in self.get_times(prediction, y)]
+        return [
+            f"{self.binary_metric.__name__}_{time}"
+            for time in self.get_times(prediction, y)
+        ]
 
     def get_direction(self) -> OptimizationDirection:
         return self.direction
 
 
-def precision_recall_curve_with_confusion(y_true, probas_pred, *args, sample_weight=None, **kwargs):
+def precision_recall_curve_with_confusion(
+    y_true, probas_pred, *args, sample_weight=None, **kwargs
+):
     # TODO: HACK
-    index_intersection = probas_pred.index.drop_duplicates().intersection(y_true.index.drop_duplicates()
-                                                                          ).drop_duplicates()
+    index_intersection = (
+        probas_pred.index.drop_duplicates()
+        .intersection(y_true.index.drop_duplicates())
+        .drop_duplicates()
+    )
 
     # print(len(index_intersection))
     probas_pred_ = Series(
         [
-            probas_pred.loc[index] if isinstance(probas_pred.loc[index], float) else probas_pred.loc[index].iloc[0]
+            probas_pred.loc[index]
+            if isinstance(probas_pred.loc[index], float)
+            else probas_pred.loc[index].iloc[0]
             for index in probas_pred.index.drop_duplicates()
         ],
-        index=index_intersection.drop_duplicates()
+        index=index_intersection.drop_duplicates(),
     )
     # print(len(probas_pred_))
     y_true_ = Series(
         [
-            y_true.loc[index] if isinstance(y_true.loc[index], float) else y_true.loc[index].iloc[0]
+            y_true.loc[index]
+            if isinstance(y_true.loc[index], float)
+            else y_true.loc[index].iloc[0]
             for index in probas_pred_.index.drop_duplicates()
         ],
-        index=probas_pred_.index.drop_duplicates()
+        index=probas_pred_.index.drop_duplicates(),
     )
     # print(len(y_true_))
 
@@ -728,15 +796,16 @@ def precision_recall_curve_with_confusion(y_true, probas_pred, *args, sample_wei
         sample_weight_ = Series(
             [
                 sample_weight.loc[index]
-                if isinstance(sample_weight.loc[index], float) else sample_weight.loc[index].iloc[0]
+                if isinstance(sample_weight.loc[index], float)
+                else sample_weight.loc[index].iloc[0]
                 for index in probas_pred_.index.drop_duplicates()
             ],
-            index=probas_pred_.index.drop_duplicates()
+            index=probas_pred_.index.drop_duplicates(),
         )
     else:
         sample_weight_ = None
 
-    with open('./output/session.plk', 'wb') as f:
+    with open("./output/session.plk", "wb") as f:
         dill.dump([y_true, probas_pred, y_true_, probas_pred_, index_intersection], f)
 
     precision, recall, thresholds = precision_recall_curve(
@@ -748,38 +817,40 @@ def precision_recall_curve_with_confusion(y_true, probas_pred, *args, sample_wei
     )
     confusion_matrices = []
     for threshold in thresholds:
-        confusion_matrices.append(confusion_matrix(y_true_, probas_pred_ >= threshold, *args, **kwargs))
+        confusion_matrices.append(
+            confusion_matrix(y_true_, probas_pred_ >= threshold, *args, **kwargs)
+        )
 
     return precision, recall, confusion_matrices, thresholds
 
 
 class StratifiedMetric(Metric):
-
     def __init__(
-            self,
-            metric: Metric,
-            splits: Splits,
+        self,
+        metric: Metric,
+        splits: Splits,
     ):
         super()
         self.metric = metric
         self.splits = splits
 
     def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[str]:
         return [
-            f'{prefix}__{name}' for prefix, name in product(
+            f"{prefix}__{name}"
+            for prefix, name in product(
                 self.splits.keys(),
                 self.metric.get_names(prediction, y),
             )
         ]
 
     def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
+        self,
+        prediction: Prediction,
+        y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         return pipe(
             self.get_values_(prediction, y),
@@ -791,13 +862,17 @@ class StratifiedMetric(Metric):
     def get_values_(self, prediction, y):
         for name, index in self.splits.items():
             subsampled_prediction = resample_prediction_test(index, prediction)
-            if len(subsampled_prediction['y_pred'][1]) > 0:
+            if len(subsampled_prediction["y_pred"][1]) > 0:
                 yield self.metric.get_values(
                     subsampled_prediction,
-                    loc(subsampled_prediction['split'][1], y, ignore_not_present=True),
+                    loc(subsampled_prediction["split"][1], y, ignore_not_present=True),
                 )
             else:
-                yield ExceptionValue(exception=ExceptionValue(ValueError(f'Missing y_pred for split "{name}"')))
+                yield ExceptionValue(
+                    exception=ExceptionValue(
+                        ValueError(f'Missing y_pred for split "{name}"')
+                    )
+                )
 
     def get_direction(self) -> OptimizationDirection:
         return self.metric.get_direction()
@@ -842,6 +917,6 @@ def get_standard_time_to_event_metrics() -> List[Metric]:
 
 def target_to_survival_y_records(y):
     if not isinstance(y.data, numpy.recarray):
-        return {**y, 'data': to_survival_y_records(y)}
+        return {**y, "data": to_survival_y_records(y)}
     else:
         return y

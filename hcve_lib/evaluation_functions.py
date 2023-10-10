@@ -134,6 +134,34 @@ def compute_metrics_per_prediction(
     return metrics_merged
 
 
+def compute_metrics_per_prediction_merge_repeats(
+    results: List[Result],
+    y: Target,
+    metrics: List[Metric] = None,
+    skip_metrics: List[str] = None,
+) -> Dict[Any, Dict[Any, float]]:
+    if metrics is None:
+        metrics = get_standard_metrics(y)
+
+    metrics_runs = []
+
+    for result in results:
+        metrics_runs.append(
+            compute_metrics_result_per_prediction(
+                result, y, metrics, skip_metrics=skip_metrics
+            )
+        )
+
+    metrics_renamed = [
+        {f"{split}_{num}": pred for split, pred in result.items()}
+        for num, result in enumerate(metrics_runs)
+    ]
+
+    metrics_merged = toolz.merge(metrics_renamed)
+
+    return metrics_merged
+
+
 def average_metric_values(
     values: Dict[Any, Dict[Any, float]]
 ) -> Dict[Any, ValueWithStatistics]:

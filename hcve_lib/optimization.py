@@ -12,7 +12,6 @@ from hcve_lib.tracking import log_metrics
 
 
 class EarlyStoppingCallback(object):
-
     def __init__(
         self,
         early_stopping_rounds: int,
@@ -50,35 +49,34 @@ class EarlyStoppingCallback(object):
         return study
 
 
-
 def optuna_report_mlflow(study, _):
     if len(study.get_trials(states=[TrialState.COMPLETE])) == 0:
         return study
 
     set_tag(
-        'trials',
+        "trials",
         len(study.trials),
     )
 
     set_tag(
-        'failed',
+        "failed",
         toolz.count(1 for trial in study.trials if trial.state.name == "FAIL"),
     )
 
     mlflow.log_figure(
         optuna.visualization.plot_optimization_history(study, error_bar=True),
-        'optimization_history.html',
+        "optimization_history.html",
     )
 
     mlflow.log_figure(
         optuna.visualization.plot_parallel_coordinate(study),
-        'parallel_coordinate_hyperparams.html',
+        "parallel_coordinate_hyperparams.html",
     )
     try:
         if len(study.get_trials(states=[TrialState.COMPLETE])) > 1:
             mlflow.log_figure(
                 optuna.visualization.plot_param_importances(study),
-                'plot_hyperparam_importances.html',
+                "plot_hyperparam_importances.html",
             )
 
         # log_metrics(

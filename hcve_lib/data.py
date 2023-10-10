@@ -68,7 +68,8 @@ def format_features(
     data: DataFrame,
     metadata: Metadata,
     axis: int = 1,
-    formatter: Callable[..., str] = None,
+    # formatter: Callable[..., str] = None,
+    formatter: Callable = None,
 ) -> DataFrame:
     if formatter is None:
         formatter = format_identifier

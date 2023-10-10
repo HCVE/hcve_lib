@@ -67,7 +67,7 @@ def get_shap_values_(
     X_train, X_test = get_X_split(X, prediction, logger=logger)
     X_test_or_train = X_test if is_test else X_train
     Xt = prediction["model"].transform(X_test_or_train)
-    explainer = shap.Explainer(prediction["model"].estimator, Xt)
+    explainer = shap.Explainer(prediction["model"]._estimator, Xt)
 
     try:
         shap_values = explainer.shap_values(Xt, check_additivity=False)

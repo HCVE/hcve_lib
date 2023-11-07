@@ -531,15 +531,11 @@ class FederatedForest(BaseEstimator):
 
         test_idxs = {}
         local_forests = {}
-        print(f"{len(X)=}")
 
         for group_key, train_idx in self.group_by.groups.items():
             X_train, y_train = loc(train_idx, X, ignore_not_present=True), loc(
                 train_idx, y, ignore_not_present=True
             )
-
-            print(group_key)
-            print(f"{len(train_idx)=}")
 
             subset_size = len(X_train)
             weight_subset = int(
@@ -549,7 +545,6 @@ class FederatedForest(BaseEstimator):
             weight_subset = int(
                 self.n_estimators_federated * (subset_size / total_data)
             )
-            print(f"{(weight_subset)=}")
             choose_n_estimators = max(1, weight_subset)
             local_forest = RandomForest(
                 n_estimators=choose_n_estimators,

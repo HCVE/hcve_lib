@@ -1375,3 +1375,9 @@ def find_unpicklable_attr(data, path=None) -> Optional[List[str]]:
                 if result:
                     return result
     return None
+
+
+def split_dict_by_keys(d, keys):
+    subset = {k: d[k] for k in keys if k in d}
+    remaining = {k: v for k, v in d.items() if k not in keys}
+    return subset, remaining

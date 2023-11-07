@@ -81,10 +81,10 @@ class TransformTarget:
 
 class TransformerTarget(BaseEstimator):
     def __init__(
-            self,
-            inner: Estimator,
-            transformer: TargetTransformer,
-            inverse: bool = True,
+        self,
+        inner: Estimator,
+        transformer: TargetTransformer,
+        inverse: bool = True,
     ):
         self.inner = inner
         self.transformer = transformer
@@ -132,11 +132,11 @@ def subsample_data(X: DataFrame) -> DataFrame:
 
 class Callback(BaseEstimator, TransformerMixin):
     def __init__(
-            self,
-            fit_callback: Callable[[DataFrame, Target], Any] = None,
-            transform_callback: Callable[[DataFrame], Any] = None,
-            breakpoint_fit: bool = False,
-            breakpoint_transform: bool = False,
+        self,
+        fit_callback: Callable[[DataFrame, Target], Any] = None,
+        transform_callback: Callable[[DataFrame], Any] = None,
+        breakpoint_fit: bool = False,
+        breakpoint_transform: bool = False,
     ):
         self.breakpoint_fit = breakpoint_fit
         self.breakpoint_transform = breakpoint_transform
@@ -179,8 +179,8 @@ class LifeTime(EstimatorDecorator, BaseEstimator):
             return ExceptionValue(e)
 
     def predict_survival_function(
-            self,
-            X: DataFrame,
+        self,
+        X: DataFrame,
     ) -> Callable[[int], float]:
         survival_functions = self._estimator.predict_survival_function(X)
         return (
@@ -195,13 +195,13 @@ class Model(Estimator):
     target_type: TargetType
 
     def __init__(
-            self,
-            random_state: int,
-            logger: Logger = None,
-            log_mlflow: bool = True,
-            target_type: TargetType = TargetType.NA,
-            verbose: int = None,
-            **kwargs,
+        self,
+        random_state: int,
+        logger: Logger = None,
+        log_mlflow: bool = True,
+        target_type: TargetType = TargetType.NA,
+        verbose: int = None,
+        **kwargs,
     ):
         self.random_state = random_state
         self.logger = logger
@@ -250,7 +250,10 @@ class Model(Estimator):
     def get_estimator_(self, X: DataFrame = None) -> Any:
         try:
             return self.get_estimator(X).set_params(
-                **{**self.kwargs, **({"verbose": self.verbose} if self.verbose is not None else {})},
+                **{
+                    **self.kwargs,
+                    **({"verbose": self.verbose} if self.verbose is not None else {}),
+                },
             )
         except ValueError:
             # verbose not accepted
@@ -291,7 +294,7 @@ class Model(Estimator):
 
 class XGBoost(Model):
     def suggest_optuna(
-            self, trial: Trial, X: DataFrame, prefix: str = ""
+        self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         hyperparameters = {
             "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 200),
@@ -414,6 +417,7 @@ class Ensemble(Model):
 class XGBSEBase(Model):
     def fit(self, X: DataFrame, y: TargetData, *args, **kwargs):
         from xgbse.converters import convert_to_structured
+
         self._estimator.fit(
             X, convert_to_structured(y["tte"], y["label"]), *args, **kwargs
         )
@@ -429,35 +433,36 @@ class XGBSEKNN(XGBSEBase):
     def get_estimator(self, X=None):
         from xgbse import XGBSEKaplanNeighbors
         from xgbse._kaplan_neighbors import DEFAULT_PARAMS as KNN_DEFAULT_PARAMS
+
         return XGBSEKaplanNeighbors(
             xgb_params=KNN_DEFAULT_PARAMS | dict(tree_method="gpu_hist", gpu_id=0)
         )
 
     def suggest_optuna(
-            self, trial: Trial, X: DataFrame, prefix: str = ""
+        self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         from xgbse._kaplan_neighbors import DEFAULT_PARAMS as KNN_DEFAULT_PARAMS
 
         hyperparameters = {
             "n_neighbors": trial.suggest_int(f"{prefix}_n_neighbors", 1, 100),
             "xgb_params": KNN_DEFAULT_PARAMS
-                          | {
-                              # "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 200),
-                              "max_depth": trial.suggest_int(f"{prefix}_max_depth", 1, 10),
-                              "learning_rate": trial.suggest_float(
-                                  f"{prefix}_learning_rate", 0.001, 1, log=True
-                              ),
-                              "subsample": trial.suggest_float(
-                                  f"{prefix}_estimator_subsample", 0.1, 1
-                              ),
-                              "colsample_bynode": trial.suggest_float(
-                                  f"{prefix}_colsample_bytree", 0.1, 1
-                              ),
-                              # "min_split_loss": trial.suggest_float(f"{prefix}_min_split_loss", 0.1, 10),
-                              # "min_child_weight": trial.suggest_int(f"{prefix}_min_child_weight", 1, 100),
-                              # "reg_alpha": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
-                              # "reg_lambda": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
-                          },
+            | {
+                # "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 200),
+                "max_depth": trial.suggest_int(f"{prefix}_max_depth", 1, 10),
+                "learning_rate": trial.suggest_float(
+                    f"{prefix}_learning_rate", 0.001, 1, log=True
+                ),
+                "subsample": trial.suggest_float(
+                    f"{prefix}_estimator_subsample", 0.1, 1
+                ),
+                "colsample_bynode": trial.suggest_float(
+                    f"{prefix}_colsample_bytree", 0.1, 1
+                ),
+                # "min_split_loss": trial.suggest_float(f"{prefix}_min_split_loss", 0.1, 10),
+                # "min_child_weight": trial.suggest_int(f"{prefix}_min_child_weight", 1, 100),
+                # "reg_alpha": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
+                # "reg_lambda": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
+            },
         }
         return trial, hyperparameters
 
@@ -465,10 +470,11 @@ class XGBSEKNN(XGBSEBase):
 class XGBSEBCE(XGBSEBase):
     def get_estimator(self, X=None):
         from xgbse import XGBSEKaplanNeighbors
+
         return XGBSEKaplanNeighbors()
 
     def suggest_optuna(
-            self, trial: Trial, X: DataFrame, prefix: str = ""
+        self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         from xgbse._kaplan_neighbors import DEFAULT_PARAMS as KNN_DEFAULT_PARAMS
         from xgbse._debiased_bce import DEFAULT_PARAMS_LR
@@ -476,38 +482,38 @@ class XGBSEBCE(XGBSEBase):
         hyperparameters = {
             "lr_params": {
                 **DEFAULT_PARAMS_LR,
-                "C": trial.suggest_float(f"{prefix}_C", 0.01, 10 ** 3, log=True),
+                "C": trial.suggest_float(f"{prefix}_C", 0.01, 10**3, log=True),
             },
             "xgb_params": KNN_DEFAULT_PARAMS
-                          | {
-                              # "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 200),
-                              "max_depth": trial.suggest_int(f"{prefix}_max_depth", 1, 10),
-                              "learning_rate": trial.suggest_float(
-                                  f"{prefix}_learning_rate", 0.001, 1, log=True
-                              ),
-                              "subsample": trial.suggest_float(
-                                  f"{prefix}_estimator_subsample", 0.1, 1
-                              ),
-                              "colsample_bynode": trial.suggest_float(
-                                  f"{prefix}_colsample_bytree", 0.1, 1
-                              ),
-                              # "min_split_loss": trial.suggest_float(f"{prefix}_min_split_loss", 0.1, 10),
-                              # "min_child_weight": trial.suggest_int(f"{prefix}_min_child_weight", 1, 100),
-                              # "reg_alpha": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
-                              # "reg_lambda": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
-                          },
+            | {
+                # "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 200),
+                "max_depth": trial.suggest_int(f"{prefix}_max_depth", 1, 10),
+                "learning_rate": trial.suggest_float(
+                    f"{prefix}_learning_rate", 0.001, 1, log=True
+                ),
+                "subsample": trial.suggest_float(
+                    f"{prefix}_estimator_subsample", 0.1, 1
+                ),
+                "colsample_bynode": trial.suggest_float(
+                    f"{prefix}_colsample_bytree", 0.1, 1
+                ),
+                # "min_split_loss": trial.suggest_float(f"{prefix}_min_split_loss", 0.1, 10),
+                # "min_child_weight": trial.suggest_int(f"{prefix}_min_child_weight", 1, 100),
+                # "reg_alpha": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
+                # "reg_lambda": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
+            },
         }
         return trial, hyperparameters
 
 
 class FederatedForest(BaseEstimator):
     def __init__(
-            self,
-            group_by: DataFrameGroupBy,
-            random_state: int,
-            n_estimators_local=100,
-            n_estimators_federated=500,
-            target_type: TargetType = None,
+        self,
+        group_by: DataFrameGroupBy,
+        random_state: int,
+        n_estimators_local=100,
+        n_estimators_federated=200,
+        target_type: TargetType = None,
     ):
         self.group_by = group_by
         self.random_state = random_state
@@ -516,30 +522,39 @@ class FederatedForest(BaseEstimator):
         self.global_forest = None
         self.target_type = target_type
 
+    def get_name(self):
+        return "FederatedForest"
+
     def fit(self, X: DataFrame, y):
         total_data = len(X)
         local_best_trees_list = []
 
         test_idxs = {}
         local_forests = {}
+        print(f"{len(X)=}")
 
         for group_key, train_idx in self.group_by.groups.items():
             X_train, y_train = loc(train_idx, X, ignore_not_present=True), loc(
                 train_idx, y, ignore_not_present=True
             )
 
+            print(group_key)
+            print(f"{len(train_idx)=}")
+
             subset_size = len(X_train)
             weight_subset = int(
                 self.n_estimators_federated
                 * (len(y.data["label"]) / len(y.data["label"]))
             )
-            weight_subset = int(self.n_estimators_federated / len(self.group_by.groups))
-            print(weight_subset)
+            weight_subset = int(
+                self.n_estimators_federated * (subset_size / total_data)
+            )
+            print(f"{(weight_subset)=}")
             choose_n_estimators = max(1, weight_subset)
             local_forest = RandomForest(
                 n_estimators=choose_n_estimators,
                 n_jobs=-1,
-                # max_depth=3,
+                max_depth=3,
                 random_state=self.random_state,
                 target_type=get_target_type(y),
             )
@@ -559,17 +574,17 @@ class FederatedForest(BaseEstimator):
             # noinspection PyUnresolvedReferences
             local_best_trees_list.extend(
                 local_forest.estimators_[
-                : min(choose_n_estimators, len(local_forest._estimator.estimators_))
+                    : min(choose_n_estimators, len(local_forest._estimator.estimators_))
                 ]
             )
-
+        print("TRAINING FINISHED")
         # local_best_trees_list = sorted(
         #     local_best_trees_list, key=lambda x: x[0], reverse=True
         # )[: self.n_estimators_federated]
 
-        self.global_forest = copy(local_forest)
-        self.global_forest._estimator.n_estimators = len(local_best_trees_list)
-        self.global_forest._estimator.estimators_ = local_best_trees_list
+        self.global_forest = local_forest
+        self.global_forest.estimator.n_estimators = len(local_best_trees_list)
+        self.global_forest.estimator.estimators_ = local_best_trees_list
 
         brier_per_model_per_group = defaultdict(dict)
 
@@ -603,28 +618,35 @@ class FederatedForest(BaseEstimator):
         return self
 
     def predict(self, X: DataFrame):
+        print("PREDICT")
+
         if not self.global_forest:
             raise Exception("The model has not been fitted yet.")
-        survival_functions = [
-            tree.predict_survival_function(X)
-            for tree in self.global_forest._estimator.estimators_
-        ]
-        survs = [
-            mean((-fn[i](1200) for fn in survival_functions)) for i in range(len(X))
-        ]
-        return Series(
-            survs,
-            index=X.index,
-        )
+        y_pred = self.global_forest.predict_survival_function(X)
+
+        return y_pred
+        # survival_functions = [
+        #     tree.predict_survival_function(X)
+        #     for tree in self.global_forest.estimator.estimators_
+        # ]
+
+        # survs = [
+        #     mean((-fn[i](1200) for fn in survival_functions)) for i in range(len(X))
+        # ]
+        #
+        # return Series(
+        #     survs,
+        #     index=X.index,
+        # )
 
 
 class RandomForest(Model):
     def suggest_optuna(
-            self, trial: Trial, X: DataFrame, prefix: str = ""
+        self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         if (
-                self.target_type == TargetType.REGRESSION
-                or self.target_type == TargetType.CLASSIFICATION
+            self.target_type == TargetType.REGRESSION
+            or self.target_type == TargetType.CLASSIFICATION
         ):
             hyperparameters = {
                 "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 2000),
@@ -712,18 +734,18 @@ class RandomForest(Model):
 
 class DeepSurv(Model):
     def __init__(
-            self,
-            random_state: int,
-            nodes_hidden: int = 32,
-            n_layers: int = 1,
-            batch_norm: bool = False,
-            dropout: float = 0.1,
-            output_bias: bool = False,
-            batch_size: int = 10,
-            learning_rate: float = 0.001,
-            input_features=5,
-            *args,
-            **kwargs,
+        self,
+        random_state: int,
+        nodes_hidden: int = 32,
+        n_layers: int = 1,
+        batch_norm: bool = False,
+        dropout: float = 0.1,
+        output_bias: bool = False,
+        batch_size: int = 10,
+        learning_rate: float = 0.001,
+        input_features=33,
+        *args,
+        **kwargs,
     ):
         self.nodes_hidden = nodes_hidden
         self.n_layers = n_layers
@@ -754,7 +776,7 @@ class DeepSurv(Model):
             setattr(self, key, value)
 
     def suggest_optuna(
-            self, trial: Trial, X: DataFrame, prefix: str = ""
+        self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         hyperparameters = {
             "nodes_hidden": trial.suggest_int(f"{prefix}nodes_hidden", 3, 50),
@@ -764,7 +786,7 @@ class DeepSurv(Model):
             ),
             "dropout": trial.suggest_float(f"{prefix}dropout", 0, 0.5),
             "learning_rate": trial.suggest_float(
-                f"{prefix}learning_rate", 10 ** -7, 10 ** -1, log=True
+                f"{prefix}learning_rate", 10**-7, 10**-1, log=True
             ),
             "output_bias": trial.suggest_categorical(
                 f"{prefix}output_bias", [True, False]
@@ -831,7 +853,7 @@ class DeepSurv(Model):
 
 class LinearModel(Model):
     def suggest_optuna(
-            self, trial: Trial, X: DataFrame, prefix: str = ""
+        self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         if self.target_type == TargetType.REGRESSION:
             hyperparameters = {
@@ -843,7 +865,7 @@ class LinearModel(Model):
                 "penalty": trial.suggest_categorical(
                     f"{prefix}_penalty", ["l1", "l2", "elasticnet"]
                 ),
-                "C": trial.suggest_float(f"{prefix}_C", 0.01, 10 ** 3, log=True),
+                "C": trial.suggest_float(f"{prefix}_C", 0.01, 10**3, log=True),
             }
 
             if hyperparameters["penalty"] == "elasticnet":
@@ -855,8 +877,11 @@ class LinearModel(Model):
                 hyperparameters["solver"] = "saga"
         elif self.target_type == TargetType.TIME_TO_EVENT:
             hyperparameters = {
-                "l1_ratio": 1 - trial.suggest_loguniform(f"{prefix}_l1_ratio", 0.1, 1),
-                "alphas": [trial.suggest_loguniform(f"{prefix}_alphas", 10 ** -2, 1)],
+                "l1_ratio": 1
+                - trial.suggest_float(f"{prefix}_l1_ratio", 0.1, 1, log=True),
+                "alphas": [
+                    trial.suggest_float(f"{prefix}_alphas", 10**-2, 1, log=True)
+                ],
             }
         else:
             raise NotImplementedError
@@ -911,7 +936,7 @@ class CoxNet(Model):
     def suggest_optuna(self, trial: Trial, prefix: str = "") -> Tuple[Trial, Dict]:
         hyperparameters = {
             "l1_ratio": 1 - trial.suggest_loguniform(f"{prefix}_l1_ratio", 0.1, 1),
-            "alphas": [trial.suggest_loguniform(f"{prefix}_alphas", 10 ** -2, 1)],
+            "alphas": [trial.suggest_loguniform(f"{prefix}_alphas", 10**-2, 1)],
         }
         return trial, hyperparameters
 
@@ -925,7 +950,7 @@ class RandomSurvivalForest(Model):
     def suggest_optuna(self, trial: Trial, prefix: str = "") -> Tuple[Trial, Dict]:
         hyperparameters = {
             "l1_ratio": 1 - trial.suggest_loguniform(f"{prefix}_l1_ratio", 0.1, 1),
-            "alphas": [trial.suggest_loguniform(f"{prefix}_alphas", 10 ** -2, 1)],
+            "alphas": [trial.suggest_loguniform(f"{prefix}_alphas", 10**-2, 1)],
         }
         return trial, hyperparameters
 
@@ -950,6 +975,7 @@ class PooledCohort_(BaseEstimator, ClassifierMixin):
         X_ = X.copy()
 
         def predict_(row: Series) -> float:
+            print(row)
             # TODO
             # if row['AGE'] < 30:
             #     return np.nan
@@ -968,16 +994,21 @@ class PooledCohort_(BaseEstimator, ClassifierMixin):
                 csmk = 0
             elif row["SMK"] == 1:
                 csmk = 1
+            else:
+                csmk = 0
+
             try:
                 ln_age = log(row["AGE"])
             except ValueError:
                 print(row["AGE"])
 
-            ln_age_sq = ln_age ** 2
+            ln_age_sq = ln_age**2
             ln_tchol = log(row["CHOL"])
             ln_hchol = log(row["HDL"])
             ln_sbp = log(row["SBP"])
             hdm = row["DIABETES"]
+            if hdm != 0 and hdm != 1:
+                hdm = 0
             ln_agesbp = ln_age * ln_sbp
             ln_agecsmk = ln_age * csmk
             ln_bsug = log(bsug_adj)
@@ -1009,30 +1040,30 @@ class PooledCohort_(BaseEstimator, ClassifierMixin):
 
             if sex == 1:
                 IndSum = (
-                        ln_age * 41.94
-                        + ln_age_sq * (-0.88)
-                        + ln_sbp * coeff_sbp
-                        + csmk * 0.74
-                        + ln_bsug * coeff_bsug
-                        + ln_tchol * 0.49
-                        + ln_hchol * (-0.44)
-                        + ln_bmi * 37.2
-                        + ln_agebmi * (-8.83)
-                        + ln_qrs * 0.63
+                    ln_age * 41.94
+                    + ln_age_sq * (-0.88)
+                    + ln_sbp * coeff_sbp
+                    + csmk * 0.74
+                    + ln_bsug * coeff_bsug
+                    + ln_tchol * 0.49
+                    + ln_hchol * (-0.44)
+                    + ln_bmi * 37.2
+                    + ln_agebmi * (-8.83)
+                    + ln_qrs * 0.63
                 )
 
                 HF_risk = 100 * (1 - (0.98752 ** exp(IndSum - 171.5)))
             elif sex == 2:
                 IndSum = (
-                        ln_age * 20.55
-                        + ln_sbp * coeff_sbp
-                        + ln_agesbp * coeff_agesbp
-                        + csmk * 11.02
-                        + ln_agecsmk * (-2.50)
-                        + ln_bsug * coeff_bsug
-                        + ln_hchol * (-0.07)
-                        + ln_bmi * 1.33
-                        + ln_qrs * 1.06
+                    ln_age * 20.55
+                    + ln_sbp * coeff_sbp
+                    + ln_agesbp * coeff_agesbp
+                    + csmk * 11.02
+                    + ln_agecsmk * (-2.50)
+                    + ln_bsug * coeff_bsug
+                    + ln_hchol * (-0.07)
+                    + ln_bmi * 1.33
+                    + ln_qrs * 1.06
                 )
                 HF_risk = 100 * (1 - (0.99348 ** exp(IndSum - 99.73)))
 
@@ -1046,11 +1077,11 @@ class PooledCohort_(BaseEstimator, ClassifierMixin):
 
 class RepeatedEnsemble(Estimator):
     def __init__(
-            self,
-            get_pipeline: Callable,
-            n_repeats: int = 10,
-            random_state: int = None,
-            bootstrap: bool = False,
+        self,
+        get_pipeline: Callable,
+        n_repeats: int = 10,
+        random_state: int = None,
+        bootstrap: bool = False,
     ):
         self.get_pipeline = get_pipeline
         self.n_repeats = n_repeats
@@ -1098,7 +1129,7 @@ class RepeatedEnsemble(Estimator):
         return y_preds_averaged
 
     def suggest_optuna(
-            self, trial: Trial, X: DataFrame, prefix: str = ""
+        self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         return self.estimators[0].suggest_optuna(trial, X, prefix=prefix)
 
@@ -1159,8 +1190,8 @@ def get_target_type(y: Target) -> TargetType:
 
 
 def aggregate_results(
-        results: Union[List[Result], Result],
-        callback: Callable[[Estimator], Any],
+    results: Union[List[Result], Result],
+    callback: Callable[[Estimator], Any],
 ) -> DataFrame:
     if isinstance(results, list):
         results_ = results
@@ -1170,8 +1201,8 @@ def aggregate_results(
     model_output = {}
 
     for (
-            repeat_n,
-            result,
+        repeat_n,
+        result,
     ) in enumerate(results_):
         for split_name, prediction in result.items():
             model_output[f"{repeat_n}_{split_name}"] = callback(prediction)
@@ -1186,7 +1217,7 @@ def get_results_feature_importance(results: Union[List[Result], Result]) -> Data
 
 
 def get_results_p_value_feature_importance(
-        results: Union[List[Result], Result], X: DataFrame, y: Target
+    results: Union[List[Result], Result], X: DataFrame, y: Target
 ) -> DataFrame:
     return aggregate_results(
         results,
@@ -1195,10 +1226,10 @@ def get_results_p_value_feature_importance(
 
 
 def get_supervised_pipeline(
-        X: DataFrame,
-        y: Target,
-        random_state: int,
-        get_estimator: Callable[..., Estimator],
+    X: DataFrame,
+    y: Target,
+    random_state: int,
+    get_estimator: Callable[..., Estimator],
 ) -> DFPipeline:
     categorical = estimate_categorical_columns(X)
     continuous = list(set(X.columns) - set(categorical))

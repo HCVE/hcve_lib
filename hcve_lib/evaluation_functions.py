@@ -270,6 +270,7 @@ def compute_metrics_prediction(
 
     metric_names: Iterable[str] = iter(())
     metric_values: Iterable[Union[float, ExceptionValue]] = iter(())
+
     for metric in metrics:
         new_names, new_values = compute_metric_prediction_items(
             metric,

@@ -56,6 +56,7 @@ from hcve_lib.utils import (
     find_key,
     merge_two_level_dict,
     find_unpicklable_attr,
+    split_dict_by_keys,
 )
 from imblearn.under_sampling import RandomUnderSampler
 from numpy.testing import assert_array_equal
@@ -881,3 +882,20 @@ def test_find_unpicklable_attr():
     d = {"key1": 1, "key2": {"nested_key": TestClass()}}
 
     assert find_unpicklable_attr(d) == ["key2", "nested_key", "b"]
+
+
+def test_split_dict_by_keys():
+    d = {"a": 1, "b": 2, "c": 3, "d": 4}
+    keys = {"a", "c"}
+
+    subset, remaining = split_dict_by_keys(d, keys)
+
+    assert subset == {"a": 1, "c": 3}
+    assert remaining == {"b": 2, "d": 4}
+
+    # Testing with keys not present in dict
+    keys = {"a", "c", "e"}
+    subset, remaining = split_dict_by_keys(d, keys)
+
+    assert subset == {"a": 1, "c": 3}  # 'e' should not be in the subset
+    assert remaining == {"b": 2, "d": 4}

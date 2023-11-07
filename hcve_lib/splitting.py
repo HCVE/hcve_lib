@@ -230,7 +230,7 @@ def get_kfold_stratified_splits(
     X: DataFrame,
     y: Target,
     random_state: int,
-    n_splits: int = 10,
+    n_splits: int = 5,
 ) -> TrainTestSplits:
     try:
         y_ = y.data["label"]

@@ -407,17 +407,14 @@ class IBS(Minimize, Metric):
         prediction: Prediction,
         y: Target,
     ) -> List[Union[ExceptionValue, float]]:
-        print("xxx")
         y_train, y_test = get_y_split(y, prediction)
         y_proba_table = prediction["model"].predict_proba_table(self.X).T
-        print(y_proba_table)
         ibs = integrated_brier_score(
             to_survival_y_records(y_train),
             to_survival_y_records(y_test),
             y_proba_table.to_numpy(),
             y_proba_table.columns,
         )
-        print(ibs)
 
 
 def get_y_proba_for_time(

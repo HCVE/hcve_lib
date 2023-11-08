@@ -183,7 +183,6 @@ def cross_validate(
             log_results(results)
             set_tag("root", True)
 
-        print()
         return results
 
 
@@ -818,13 +817,7 @@ class OptimizeEstimator(Optimize, Estimator):
     def fit(self, X, y, *args, **kwargs):
         super().fit(X, y, *args, **kwargs)
 
-        trials_ = pipe(
-            self.study.trials,
-            partial(filter, lambda _trial: not is_noneish(_trial.value)),
-            partial(sorted, key=lambda _trial: _trial.value, reverse=True),
-        )
-
-        for trial in trials_:
+        for trial in self.trials:
             self.fit_best_model = self.get_pipeline(
                 X=X, y=y, random_state=self.random_state
             )
@@ -836,6 +829,14 @@ class OptimizeEstimator(Optimize, Estimator):
             return self
 
         raise RuntimeError("No trials successful")
+
+    @property
+    def trials(self):
+        return pipe(
+            self.study.trials,
+            partial(filter, lambda _trial: not is_noneish(_trial.value)),
+            partial(sorted, key=lambda _trial: _trial.value, reverse=True),
+        )
 
     def predict(self, X):
         return self.fit_best_model.predict(X)
@@ -1027,7 +1028,7 @@ def cross_validate_fit(
 ) -> Tuple[Optional[str], Estimator]:
     if fit_kwargs is None:
         fit_kwargs = {}
-    print("Training", split_name)
+
     random_seed(random_state)
 
     if mlflow:

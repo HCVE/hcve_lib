@@ -1,7 +1,9 @@
 import argparse
 import asyncio
 import pickle
+from datetime import datetime
 
+import dill as pickle
 from toolz import keyfilter
 import enum
 import itertools
@@ -1381,3 +1383,14 @@ def split_dict_by_keys(d, keys):
     subset = {k: d[k] for k in keys if k in d}
     remaining = {k: v for k, v in d.items() if k not in keys}
     return subset, remaining
+
+
+def dump_results(dump_tag, get_splits, metrics, pipeline_name, results):
+    first_metric_key, first_metric_value = get_first_item(metrics)
+    dump_name = f"output/{pipeline_name} {get_splits.__name__} {get_date_time()} {' '.join(dump_tag)} {first_metric_key}={first_metric_value['mean']:.2f}.pkl"
+    with open(dump_name, "wb") as f:
+        pickle.dump(results, f)
+
+
+def get_date_time():
+    return datetime.now().strftime("%Y-%m-%d %H:%M")

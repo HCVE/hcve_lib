@@ -895,7 +895,6 @@ def get_standard_regression_metrics():
     return [
         FunctionMetric(r2_score),
         FunctionMetric(mean_absolute_error),
-        FunctionMetric(mean_absolute_percentage_error),
     ]
 
 

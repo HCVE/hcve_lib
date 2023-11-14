@@ -14,6 +14,7 @@ from plotly.graph_objs import Figure
 from scipy.stats import gaussian_kde
 from toolz import merge
 
+from hcve_lib.custom_types import Result, Target
 from hcve_lib.data import Metadata, format_features_and_values
 from hcve_lib.formatting import format_number
 from hcve_lib.functional import flatten, pipe, itemmap_recursive, itemmap_recursive_
@@ -114,7 +115,11 @@ def show_dtale(data: DataFrame, metadata: Metadata) -> None:
     )
     return table
 
-
+def f:
+    @dataclass
+    class ResultWithY:
+        results: List[Result]
+        y: Target
 def print_formatted(something: Any) -> None:
     print(yaml.dump(json.loads(json.dumps(something, default=str))))
 

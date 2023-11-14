@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional, List, Tuple, Dict
-
+import warnings
 import numpy as np
 from optuna import Trial
 from pandas import Series, DataFrame
@@ -243,6 +243,7 @@ class DFPipeline(Pipeline, Estimator):
         self, steps, *, memory=None, verbose=False, transform_y: Estimator = None
     ):
         super().__init__(steps, memory=memory, verbose=verbose)
+        warnings.filterwarnings("ignore", message="X has feature names")
         self.transform_y = transform_y
 
     def fit(self, X: DataFrame, y: Target = None, **fit_params) -> None:

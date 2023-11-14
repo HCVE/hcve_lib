@@ -33,7 +33,8 @@ def get_shap_values(
 ) -> List[ShapResult]:
     predictions = list(get_predictions_from_results(results))
 
-    reporter.total = len(predictions)
+    if reporter:
+        reporter.total = len(predictions)
 
     args = ((prediction, X, is_test, logger, reporter) for prediction in predictions)
     if n_jobs == 1:
@@ -112,6 +113,7 @@ def average_shap_values(shap_results: List[ShapResult]) -> ShapResult:
     shap_values_per_bootstrap_sample_df_concat = pandas.concat(
         shap_values_per_bootstrap_sample_df
     )
+
     base_values_per_bootstrap_sample_df_concat = pandas.concat(
         base_values_per_bootstrap_sample_df
     )
@@ -125,9 +127,11 @@ def average_shap_values(shap_results: List[ShapResult]) -> ShapResult:
     ).mean()
 
     X_final = pandas.concat(Xts_per_bootstrap_sample)
-    X_final.reset_index(inplace=True)
+    X_final["index"] = X_final.index
+    X_final.reset_index(inplace=True, drop=True)
     X_final.drop_duplicates(subset="index", keep="first", inplace=True)
-    X_final.set_index("index", inplace=True)
+    X_final.index = X_final["index"]
+    X_final.drop(columns=["index"], inplace=True)
 
     shap_values = deepcopy(shap_results[0][2])
     shap_values.values = shap_values_averaged_df.to_numpy()

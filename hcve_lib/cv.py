@@ -320,7 +320,7 @@ def objective_predictive_performance(
         hyperparameters=hyperparameters,
         logger=logger,
         n_jobs=1,
-        return_models=False,
+        return_models=True,
     )
 
     metrics = compute_metrics_result(split_runs, y, [objective_metric])
@@ -1011,9 +1011,7 @@ def cross_validate_train(
         for fold_name, (train_split, test_split) in splits_dict.items()
     }
 
-    aaa = run_parallel(cross_validate_fit, fold_data, n_jobs)
-
-    return aaa
+    return run_parallel(cross_validate_fit, fold_data, n_jobs)
 
 
 def cross_validate_fit(

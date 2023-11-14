@@ -211,7 +211,6 @@ def plot_standard_importance_(
 def get_model_importance(results: List[Result]) -> DataFrame:
     models = get_models_from_repeats(results)
     importances = [model.get_feature_importance() for model in models]
-
     forest_importances = DataFrame(
         {num: importance for num, importance in enumerate(importances)}
     )
@@ -219,9 +218,12 @@ def get_model_importance(results: List[Result]) -> DataFrame:
     return forest_importances.loc[forest_importance_avg.index]
 
 
-def plot_model_importance_results(results: List[Result]) -> Figure:
+def plot_model_importance_results(results: List[Result], limit=None) -> Figure:
+    if limit is None:
+        limit = len(results)
+
     importance = get_model_importance(results)[::-1]
-    return plot_model_importance_results_(importance.iloc[:20])
+    return plot_model_importance_results_(importance[:limit])
 
 
 def plot_model_importance_results_(importance):
@@ -234,7 +236,7 @@ def plot_model_importance_results_(importance):
         xaxis_title="Importance",
         yaxis_title="Feature",
         yaxis_tickmode="linear",
-        template="simple_white",
+        # template="simple_white",
         height=get_plot_height(importance),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",

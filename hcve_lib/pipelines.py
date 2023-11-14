@@ -212,6 +212,10 @@ class Model(Estimator):
         self._estimator = self.get_estimator_()
         self.params = {}
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        return state
+
     def fit(self, X: DataFrame, y: Any, *args, **kwargs):
         self._estimator = self.get_estimator_()
         self._estimator.set_params(**self.params)
@@ -970,7 +974,6 @@ class PooledCohort_(BaseEstimator, ClassifierMixin):
         X_ = X.copy()
 
         def predict_(row: Series) -> float:
-            print(row)
             # TODO
             # if row['AGE'] < 30:
             #     return np.nan

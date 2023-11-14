@@ -828,6 +828,9 @@ class OptimizeEstimator(Optimize, Estimator):
 
             return self
 
+        # TODO:
+        del self.study
+
         raise RuntimeError("No trials successful")
 
     @property

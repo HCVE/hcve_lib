@@ -115,6 +115,7 @@ def show_dtale(data: DataFrame, metadata: Metadata) -> None:
     )
     return table
 
+
 def print_formatted(something: Any) -> None:
     print(yaml.dump(json.loads(json.dumps(something, default=str))))
 

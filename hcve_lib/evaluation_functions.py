@@ -259,6 +259,17 @@ def compute_metric_result(
     }
 
 
+def compute_metrics_y(
+        model: Estimator,
+        y: Target,
+        metrics: List[Metric] = None,
+):
+    if metrics is None:
+        metrics = get_standard_metrics(y)
+
+    for metric in metrics:
+        ...
+
 def compute_metrics_prediction(
     prediction: Prediction,
     y: Target,

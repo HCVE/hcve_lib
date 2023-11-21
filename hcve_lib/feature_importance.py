@@ -219,11 +219,11 @@ def get_model_importance(results: List[Result]) -> DataFrame:
 
 
 def plot_model_importance_results(results: List[Result], limit=None) -> Figure:
+    importance = get_model_importance(results)
     if limit is None:
-        limit = len(results)
+        limit = len(importance)
 
-    importance = get_model_importance(results)[::-1]
-    return plot_model_importance_results_(importance[:limit])
+    return plot_model_importance_results_(importance[:limit][::-1])
 
 
 def plot_model_importance_results_(importance):

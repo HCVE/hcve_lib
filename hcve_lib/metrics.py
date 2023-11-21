@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Union, Tuple, Optional, List, Callable, Any, Iterable
 
-from sksurv.metrics import integrated_brier_score
+from sksurv.metrics import integrated_brier_score, concordance_index_censored
 from typing_extensions import Literal
 
 import dill
@@ -18,7 +18,6 @@ from sklearn.metrics import (
     average_precision_score,
     r2_score,
     mean_absolute_error,
-    mean_absolute_percentage_error,
 )
 from sklearn.metrics import confusion_matrix, precision_recall_curve
 from sklearn.utils import resample
@@ -231,14 +230,11 @@ class ROC_AUC(Maximize, Metric):
     ) -> List[str]:
         return ["roc_auc"]
 
-    def get_values(
-        self,
-        prediction: Prediction,
-        y: Target,
-    ) -> List[Union[ExceptionValue, float]]:
+    def compute(
+        self, y_true: Target, y_pred: DataFrame
+    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
         try:
-            y_ = self.get_y(y, prediction)
-            return [roc_auc_score(y_, prediction["y_pred"][1])]
+            return [roc_auc_score(y_true, y_pred[1])]
         except ValueError as e:
             return [ExceptionValue(exception=e)]
 
@@ -276,14 +272,9 @@ class PR_AUC(Maximize, Metric):
     ) -> List[str]:
         return ["pr_auc"]
 
-    def get_values(
-        self,
-        prediction: Prediction,
-        y: Target,
-    ) -> List[Union[ExceptionValue, float]]:
+    def compute(self, y_true: Target, y_pred: DataFrame):
         try:
-            y_ = self.get_y(y, prediction)
-            return [average_precision_score(y_, prediction["y_pred"][1])]
+            return [average_precision_score(y_true, y_pred[1])]
         except ValueError as e:
             return [ExceptionValue(exception=e)]
 
@@ -340,12 +331,6 @@ class MeanSquaredError(Maximize, Metric):
 
 @dataclass
 class CIndex(Maximize, Metric):
-    def __init__(
-        self,
-        target: str = "y_pred",
-    ):
-        self.target = target
-
     def get_names(
         self,
         prediction: Prediction,
@@ -353,34 +338,16 @@ class CIndex(Maximize, Metric):
     ) -> List[str]:
         return ["c_index"]
 
-    def get_values(
-        self,
-        prediction: Prediction,
-        y: Target,
-    ) -> List[Union[ExceptionValue, float]]:
-        if len(prediction[self.target]) == 0:
-            return [
-                ExceptionValue(
-                    prediction[self.target],
-                    ValueError("y_score empty"),
-                )
-            ]
-
+    def compute(
+        self, y_true: Target, y_pred: DataFrame
+    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
         try:
-            y_ = self.get_y(y, prediction)
-            from sksurv.metrics import concordance_index_censored
-
-            index: Tuple = concordance_index_censored(
-                y_.data["label"].to_numpy().astype(numpy.bool_),
-                y_.data["tte"],
-                # TODO: HACK
-                prediction[self.target][
-                    prediction[self.target].index.isin(y_.data.index.to_list())
-                ]
-                .to_numpy()
-                .flatten(),
+            value = concordance_index_censored(
+                y_true.data["label"].to_numpy().astype(numpy.bool_),
+                y_true.data["tte"],
+                y_pred[1],
             )
-            return [index[0]]
+            return [value]
         except ValueError as e:
             return [ExceptionValue(exception=e)]
 

@@ -1390,7 +1390,7 @@ def dump_results(pipeline_name, metrics, results, get_splits, dump_tag=None):
         dump_tag = []
 
     first_metric_key, first_metric_value = get_first_item(metrics)
-    dump_name = f"output/{pipeline_name} {' '.join(dump_tag)} {get_splits.__name__} {get_date_time()}{first_metric_key}={first_metric_value['mean']:.2f}.pkl"
+    dump_name = f"output/{pipeline_name} {' '.join(dump_tag)} {get_splits.__name__} {get_date_time()} {first_metric_key}={first_metric_value['mean']:.2f}.pkl"
     with open(dump_name, "wb") as f:
         pickle.dump(results, f)
 

@@ -2,7 +2,16 @@ from abc import ABC, abstractmethod
 from enum import auto
 from typing import Union, List
 
-from hcve_lib.custom_types import Prediction, Target, ExceptionValue, TargetData, ValueWithCI, StrEnum
+from pandas import DataFrame
+
+from hcve_lib.custom_types import (
+    Prediction,
+    Target,
+    ExceptionValue,
+    TargetData,
+    ValueWithCI,
+    StrEnum,
+)
 from hcve_lib.utils import get_y_split
 
 
@@ -14,32 +23,35 @@ class OptimizationDirection(StrEnum):
 class Metric(ABC):
     is_test = True
 
-    def __init__(self, is_test: bool = True):
-        self.is_test = is_test
-
     def get_y(
-            self,
-            y: Target,
-            prediction: Prediction,
+        self,
+        y: Target,
+        prediction: Prediction,
     ) -> TargetData:
         y_train, y_test = get_y_split(y, prediction)
         return y_test if self.is_test else y_train
 
     @abstractmethod
-    def get_names(
-            self,
-            prediction: Prediction,
-            y: Target,
-    ) -> List[str]:
+    def compute(
+        self, y_true: Target, y_pred: DataFrame
+    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
         ...
 
     @abstractmethod
-    def get_values(
-            self,
-            prediction: Prediction,
-            y: Target,
-    ) -> List[Union[ExceptionValue, float, ValueWithCI]]:
+    def get_names(
+        self,
+        prediction: Prediction,
+        y: Target,
+    ) -> List[str]:
         ...
+
+    def get_values(
+        self,
+        prediction: Prediction,
+        y: Target,
+    ) -> List[Union[ExceptionValue, float]]:
+        _y = self.get_y(y, prediction)
+        return self.compute(_y, prediction["y_pred"])
 
     @abstractmethod
     def get_direction(self) -> OptimizationDirection:

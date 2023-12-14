@@ -10,6 +10,7 @@ from sklearn.ensemble import (
     RandomForestClassifier,
     RandomForestRegressor,
     BaggingClassifier,
+    ExtraTreesClassifier,
 )
 from sklearn.ensemble._hist_gradient_boosting.binning import _BinMapper
 from sklearn.exceptions import NotFittedError
@@ -22,6 +23,7 @@ from sklearn.preprocessing import (
     OrdinalEncoder,
     FunctionTransformer,
     Binarizer,
+    MinMaxScaler,
 )
 from sksurv.preprocessing import OneHotEncoder
 from xgboost import XGBClassifier, XGBRegressor, XGBModel
@@ -33,7 +35,7 @@ from hcve_lib.data import to_survival_y_records
 class DFWrapped:
     fit_feature_names: List[str]
 
-    def fit(self, X, y=None, *args, **kwargs):
+    def fit(self, X: DataFrame, y: Target = None, *args, **kwargs):
         self.save_fit_features(X)
         super().fit(X.to_numpy(), y, *args, **kwargs)
         return self
@@ -177,6 +179,10 @@ class DFSimpleImputer(DFWrapped, SimpleImputer):
 
 
 class DFStandardScaler(DFWrapped, StandardScaler):
+    ...
+
+
+class DFMinMaxScaler(DFWrapped, MinMaxScaler):
     ...
 
 
@@ -345,6 +351,10 @@ class DFBinMapper(DFWrapped, _BinMapper):
 
 
 class DFFunctionTransformer(DFWrapped, FunctionTransformer):
+    ...
+
+
+class DFExtraTreesClassifier(DFWrapped, ExtraTreesClassifier):
     ...
 
 

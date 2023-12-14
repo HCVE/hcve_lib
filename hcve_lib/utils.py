@@ -1397,3 +1397,7 @@ def dump_results(pipeline_name, metrics, results, get_splits, dump_tag=None):
 
 def get_date_time():
     return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def count_lines(input_string: str) -> int:
+    return len(input_string.splitlines())

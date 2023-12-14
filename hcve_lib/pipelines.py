@@ -1,24 +1,48 @@
+import logging
+import multiprocessing
 from abc import abstractmethod
 from collections import defaultdict
-from copy import copy
-from functools import partial, reduce
+from functools import partial
+from functools import reduce
+from logging import INFO
 from logging import Logger
 from math import log, exp
-from statistics import mean
-from typing import Any, Tuple, Dict, Union, Iterable
+from time import sleep
+from typing import Any, Tuple, Dict, Union, Iterable, Hashable
 from typing import List, Callable
 
+import flwr
 import numpy as np
 import pandas
+import ray
+import toolz
+import xgboost as xgb
+from flwr.common import (
+    Code,
+    FitIns,
+    FitRes,
+    GetParametersIns,
+    GetParametersRes,
+    Parameters,
+    Status,
+    EvaluateIns,
+    EvaluateRes,
+    logger,
+)
+
+from flwr.common.logger import log as flwr_log, FLOWER_LOGGER, console_handler
+from flwr.server.strategy import FedXgbBagging
 from optuna import Trial
 from pandas import DataFrame
 from pandas import Series
 from pandas.core.groupby import DataFrameGroupBy
 from sklearn.base import BaseEstimator
 from sklearn.base import TransformerMixin, ClassifierMixin
-from sklearn.ensemble import StackingClassifier, StackingRegressor
+from sklearn.ensemble import StackingClassifier, StackingRegressor, ExtraTreesClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
+from toolz import dissoc
+from xgboost import Booster
 
 from hcve_lib.custom_types import (
     Estimator,
@@ -29,13 +53,16 @@ from hcve_lib.custom_types import (
     Result,
     TargetObject,
     TargetData,
+    Prediction,
 )
 from hcve_lib.custom_types import ExceptionValue
+from hcve_lib.splitting import get_train_test
 from hcve_lib.utils import (
     is_numerical,
     estimate_categorical_columns,
     remove_column_prefix,
     loc,
+    run_parallel,
 )
 from hcve_lib.wrapped_sklearn import (
     DFPipeline,
@@ -48,6 +75,8 @@ from hcve_lib.wrapped_sklearn import (
     DFStandardScaler,
     DFElasticNet,
     DFXGBClassifier,
+    DFWrapped,
+    DFExtraTreesClassifier,
 )
 
 
@@ -373,8 +402,8 @@ class XGBoost(Model):
             return DFXGBClassifier(
                 random_state=self.random_state,
                 seed=self.random_state,
-                tree_method="gpu_hist",
                 gpu_id=0,
+                device="cuda",
                 enable_categorical=True,
             )
         else:
@@ -510,6 +539,353 @@ class XGBSEBCE(XGBSEBase):
         return trial, hyperparameters
 
 
+class Federated(BaseEstimator):
+    models: List[Estimator]
+    params: Dict
+
+    def __init__(
+        self,
+        group_by: DataFrameGroupBy,
+        random_state: int,
+        start_server: Callable,
+        start_client: Callable,
+        target_type: TargetType = None,
+        X_all: DataFrame = None,
+        y_all: Target = None,
+    ):
+        self.group_by = group_by
+        self.random_state = random_state
+        self.start_server = start_server
+        self.start_client = start_client
+        self.X_all = X_all
+        self.y_all = y_all
+        self.params = {
+            "num_rounds": 5,
+        }
+
+    def get_name(self):
+        return "Federated"
+
+    def suggest_optuna(
+        self, trial: Trial, X: DataFrame, prefix: str = ""
+    ) -> Tuple[Trial, Dict]:
+        hyperparameters = {
+            "num_local_rounds": trial.suggest_int(f"{prefix}_num_local_rounds", 1, 10),
+            "num_rounds": trial.suggest_int(f"{prefix}_num_rounds", 1, 100),
+            # "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 200),
+            "max_depth": trial.suggest_int(f"{prefix}_max_depth", 1, 10),
+            "learning_rate": trial.suggest_float(
+                f"{prefix}_learning_rate", 0.001, 1, log=True
+            ),
+            # "subsample": trial.suggest_float(f"{prefix}_estimator_subsample", 0.1, 1),
+            # "colsample_bytree": trial.suggest_float(
+            #     f"{prefix}_colsample_bytree", 0.1, 1
+            # ),
+            # "min_split_loss": trial.suggest_float(f"{prefix}_min_split_loss", 0.1, 10),
+            # "min_child_weight": trial.suggest_int(f"{prefix}_min_child_weight", 1, 100),
+            # "reg_alpha": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
+            # "reg_lambda": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
+        }
+        return trial, hyperparameters
+
+    def set_params(self, **kwargs):
+        self.params = toolz.merge(self.params, kwargs)
+
+    def get_params(self, deep=True):
+        return toolz.merge(DFXGBClassifier().get_params(), self.params)
+
+    def fit(
+        self, X: DataFrame, y, X_validate: DataFrame = None, y_validate: Target = None
+    ):
+        if self.X_all is not None:
+            # complement of X
+            X_validate = self.X_all.loc[self.X_all.index.difference(X.index)][X.columns]
+            y_validate = self.y_all.loc[X_validate.index]
+        else:
+            X_validate = None
+            y_validate = None
+
+        X_clients_train = list(X.groupby(self.group_by))
+        y_clients_train = list(y.groupby(self.group_by))
+
+        print(f"Training on {len(X_clients_train)} clients")
+
+        server_future = ray.remote(self.start_server).remote(
+            len(X_clients_train), self.params
+        )
+
+        sleep(0.1)
+
+        futures = [
+            ray.remote(self.start_client).remote(
+                client_id,
+                X_clients_train[client_id][1],
+                y_clients_train[client_id][1],
+                X_validate,
+                y_validate,
+                self.params,
+            )
+            for client_id in range(len(X_clients_train))
+        ]
+
+        self.models = ray.get(futures)
+
+        history = ray.get(server_future)
+        print(history)
+
+    def predict(self, X: DataFrame) -> Any:
+        return self.models[0].predict(X)
+
+
+def evaluate_metrics_aggregation(eval_metrics):
+    total_num = sum([num for num, _ in eval_metrics])
+    auc_aggregated = (
+        sum([metrics["AUC"] * num for num, metrics in eval_metrics]) / total_num
+    )
+    metrics_aggregated = {"AUC": auc_aggregated}
+    return metrics_aggregated
+
+
+def start_xgb_server(num_client: int, hyperparameters: Dict = None):
+    FLOWER_LOGGER.setLevel(logging.ERROR)
+    console_handler.setFormatter(logging.Formatter("%(message)s"))
+
+    hyperparameters = toolz.merge(
+        {
+            "num_rounds": 10,
+        },
+        hyperparameters or {},
+    )
+
+    strategy = FedXgbBagging(
+        min_fit_clients=num_client,
+        min_available_clients=num_client,
+        min_evaluate_clients=num_client,
+        fraction_fit=1,
+        fraction_evaluate=1.0,
+        evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation,
+    )
+
+    return flwr.server.start_server(
+        server_address="0.0.0.0:8080",
+        strategy=strategy,
+        config=flwr.server.ServerConfig(num_rounds=hyperparameters["num_rounds"]),
+    )
+
+
+def start_xgb_client(
+    client_id: int,
+    X: DataFrame,
+    y,
+    X_validate: DataFrame = None,
+    y_validate: Target = None,
+    hyperparameters: Dict = None,
+):
+    print(f"Starting client {client_id}")
+
+    FLOWER_LOGGER.setLevel(INFO)
+    console_handler.setFormatter(logging.Formatter("%(message)s"))
+
+    client = FederatedXGBoostFlowerClient(
+        client_id,
+        X,
+        y,
+        X_validate=X_validate,
+        y_validate=y_validate,
+        hyperparameters=hyperparameters,
+    )
+
+    flwr.client.start_client(
+        server_address="127.0.0.1:8080",
+        client=client,
+    )
+    return client.model
+    # return client
+
+
+class FederatedXGBoost(DFWrapped, Estimator):
+    booster: Booster = None
+    X_train: DataFrame
+    y_train: Target
+
+    def __init__(
+        self,
+        hyperparameters: Dict = None,
+        X_validate: DataFrame = None,
+        y_validate: Target = None,
+    ):
+        if hyperparameters is None:
+            hyperparameters = {}
+
+        self.hyperparameters = toolz.merge(
+            hyperparameters,
+            {
+                "num_local_rounds": 1,
+                "objective": "binary:logistic",
+                "eta": 0.05,
+                "max_depth": 2,
+                "eval_metric": ["auc"],
+                "nthread": 16,
+                "num_parallel_tree": 1,
+                "subsample": 1,
+                "tree_method": "hist",
+            },
+        )
+
+        self.X_validate = X_validate
+        self.y_validate = y_validate
+
+    def fit(self, X: DataFrame, y: Target, *args, **kwargs):
+        self.save_fit_features(X)
+        self.X_train = X
+        self.y_train = y
+        train_dmatrix = xgb.DMatrix(
+            X,
+            y,
+            enable_categorical=True,
+        )
+
+        evals = [(train_dmatrix, "train_xgboost")]
+
+        if self.X_validate is not None:
+            evals.append(
+                (
+                    xgb.DMatrix(
+                        self.X_validate,
+                        self.y_validate,
+                        enable_categorical=True,
+                    ),
+                    "validate",
+                )
+            )
+        self.booster = xgb.train(
+            self.booster_hyperparameters,
+            train_dmatrix,
+            num_boost_round=self.hyperparameters["num_local_rounds"],
+            evals=evals,
+        )
+
+    def predict(self, X: DataFrame):
+        test_dmatrix = xgb.DMatrix(
+            X,
+            enable_categorical=True,
+        )
+        y_pred = self.booster.predict(test_dmatrix)
+        return DataFrame(
+            {
+                0: 1 - y_pred,
+                1: y_pred,
+            },
+            index=X.index,
+        )
+
+    @property
+    def booster_hyperparameters(self):
+        return dissoc(self.hyperparameters, "num_rounds", "num_local_rounds")
+
+    def local_boost(self):
+        train_dmatrix = xgb.DMatrix(
+            self.X_train,
+            self.y_train,
+            enable_categorical=True,
+        )
+        for i in range(self.hyperparameters["num_local_rounds"]):
+            self.booster.update(train_dmatrix, self.booster.num_boosted_rounds())
+
+        return self.booster[
+            self.booster.num_boosted_rounds()
+            - self.hyperparameters[
+                "num_local_rounds"
+            ] : self.booster.num_boosted_rounds()
+        ]
+
+
+class FederatedXGBoostFlowerClient(flwr.client.Client):
+    model: FederatedXGBoost = None
+    config: str = None
+
+    def __init__(
+        self,
+        client_id,
+        X_train,
+        y_train,
+        X_validate=None,
+        y_validate=None,
+        hyperparameters=None,
+    ):
+        self.hyperparameters = hyperparameters
+        self.client_id = client_id
+        self.X_train = X_train
+        self.y_train = y_train
+        self.X_validate = X_validate
+        self.y_validate = y_validate
+
+    def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:
+        _ = (self, ins)
+        return GetParametersRes(
+            status=Status(
+                code=Code.OK,
+                message="OK",
+            ),
+            parameters=Parameters(tensor_type="", tensors=[]),
+        )
+
+    def fit(self, ins: FitIns) -> FitRes:
+        if not self.model:
+            self.model = FederatedXGBoost(
+                X_validate=self.X_validate,
+                y_validate=self.y_validate,
+                hyperparameters=self.hyperparameters,
+            )
+            self.model.fit(self.X_train, self.y_train)
+            self.config = self.model.booster.save_config()
+        else:
+            global_model = None
+            for item in ins.parameters.tensors:
+                global_model = bytearray(item)
+
+            # Load global model into booster
+            self.model.booster.load_model(global_model)
+            self.model.booster.load_config(self.config)
+            self.model.local_boost()
+
+        local_model = self.model.booster.save_raw("json")
+        local_model_bytes = bytes(local_model)
+
+        return FitRes(
+            status=Status(
+                code=Code.OK,
+                message="OK",
+            ),
+            parameters=Parameters(tensor_type="", tensors=[local_model_bytes]),
+            num_examples=len(self.X_train),
+            metrics={},
+        )
+
+    def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
+        valid_dmatrix = xgb.DMatrix(
+            self.X_validate,
+            self.y_validate,
+            enable_categorical=True,
+        )
+
+        eval_results = self.model.booster.eval_set(
+            evals=[(valid_dmatrix, "valid")],
+            iteration=self.model.booster.num_boosted_rounds() - 1,
+        )
+        auc = round(float(eval_results.split("\t")[1].split(":")[1]), 4)
+
+        return EvaluateRes(
+            status=Status(
+                code=Code.OK,
+                message="OK",
+            ),
+            loss=0.0,
+            num_examples=len(self.X_validate),
+            metrics={"AUC": auc},
+        )
+
+
 class FederatedForest(BaseEstimator):
     def __init__(
         self,
@@ -639,6 +1015,45 @@ class FederatedForest(BaseEstimator):
         # )
 
 
+class ExtraTrees(Model):
+    def suggest_optuna(
+        self, trial: Trial, X: DataFrame, prefix: str = ""
+    ) -> Tuple[Trial, Dict]:
+        if (
+            self.target_type == TargetType.REGRESSION
+            or self.target_type == TargetType.CLASSIFICATION
+        ):
+            hyperparameters = {
+                "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 2000),
+                "max_depth": trial.suggest_int(f"{prefix}_max_depth", 1, 10),
+                "min_samples_split": trial.suggest_int(
+                    f"{prefix}_min_samples_split", 2, 100
+                ),
+                "max_features": trial.suggest_categorical(
+                    f"{prefix}_max_features", ["sqrt", "log2", *range(1, 50)]
+                ),
+            }
+        elif self.target_type == TargetType.TIME_TO_EVENT:
+            hyperparameters = {
+                "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 2000),
+                "max_depth": trial.suggest_int(f"{prefix}_max_depth", 1, 10),
+                "min_samples_split": trial.suggest_int(
+                    f"{prefix}_min_samples_split", 2, 100
+                ),
+                "max_features": trial.suggest_categorical(
+                    f"{prefix}_max_features",
+                    ["sqrt", "log2", *range(1, len(X.columns))],
+                ),
+            }
+        else:
+            raise NotImplementedError
+
+        return trial, hyperparameters
+
+    def get_estimator(self, X=None):
+        return DFExtraTreesClassifier(random_state=self.random_state)
+
+
 class RandomForest(Model):
     def suggest_optuna(
         self, trial: Trial, X: DataFrame, prefix: str = ""
@@ -715,17 +1130,23 @@ class RandomForest(Model):
     def get_estimator(self, X=None) -> Estimator:
         if self.target_type == TargetType.REGRESSION:
             return DFRandomForestRegressor(
-                random_state=self.random_state, n_estimators=100
+                random_state=self.random_state,
+                n_estimators=100,
+                n_jobs=-1,
             )
         elif self.target_type == TargetType.CLASSIFICATION:
             return DFRandomForestClassifier(
-                random_state=self.random_state, n_estimators=100
+                random_state=self.random_state,
+                n_estimators=100,
+                n_jobs=-1,
             )
         elif self.target_type == TargetType.TIME_TO_EVENT:
             from hcve_lib.wrapped_sksurv import DFRandomSurvivalForest
 
             return DFRandomSurvivalForest(
-                random_state=self.random_state, n_estimators=100
+                random_state=self.random_state,
+                n_estimators=100,
+                n_jobs=-1,
             )
         else:
             raise NotImplementedError

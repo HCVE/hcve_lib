@@ -3,7 +3,7 @@ from collections import defaultdict
 from functools import partial, reduce
 from typing import Callable, Sequence, List, Tuple, Dict, Any, Hashable, cast
 
-from pandas import DataFrame, Index, Series
+from pandas import DataFrame, Series
 from pandas.core.groupby import DataFrameGroupBy, GroupBy
 from sklearn.model_selection import (
     KFold,
@@ -20,6 +20,7 @@ from hcve_lib.custom_types import (
     Prediction,
     ExceptionValue,
     TrainTestSplitter,
+    Index,
 )
 from hcve_lib.data import get_survival_y
 from hcve_lib.functional import pipe, mapl, accept_extra_parameters, flatten, valmap_
@@ -38,9 +39,7 @@ from hcve_lib.utils import (
 
 
 @accept_extra_parameters
-def get_lco_splits(
-    X: DataFrame, data: DataFrame, column: str = "STUDY"
-) -> TrainTestSplits:
+def get_lco(X: DataFrame, data: DataFrame, column: str = "STUDY") -> TrainTestSplits:
     return get_lo_splits(X, data, column)
 
 
@@ -109,7 +108,7 @@ def get_splitting_per_group(
     group_by_feature: str = "STUDY",
 ):
     if get_splits is None:
-        get_splits = get_kfold_splits
+        get_splits = get_k_fold
     groups = X.groupby(data[group_by_feature])
     return pipe(
         (
@@ -125,11 +124,11 @@ def get_splitting_per_group(
 
 
 @accept_extra_parameters
-def get_lm_splits(
+def get_lm(
     X: DataFrame,
     data: DataFrame,
 ) -> TrainTestSplits:
-    lco_splits: TrainTestSplits = get_lco_splits(X, data)
+    lco_splits: TrainTestSplits = get_lco(X, data)
     return {
         key: pipe(
             fold_input,
@@ -181,7 +180,7 @@ def get_loo_splits(
 
 
 @accept_extra_parameters
-def get_kfold_splits(
+def get_k_fold(
     X: DataFrame,
     random_state: int,
     n_splits: int = 5,
@@ -238,7 +237,7 @@ def get_kfold_stratified_splits(
         y_ = y
 
     if str(y_.dtype).startswith("float"):
-        return get_kfold_splits(X, random_state, n_splits)
+        return get_k_fold(X, random_state, n_splits)
 
     return pipe(
         StratifiedKFold(
@@ -349,7 +348,7 @@ def filter_missing_features(
 
 def get_splitter(splitter_name: str) -> Callable:
     if splitter_name == "lco":
-        return get_lco_splits
+        return get_lco
     elif splitter_name == "reproduce":
         return get_reproduce_split
     elif splitter_name == "healtahc_ascot":

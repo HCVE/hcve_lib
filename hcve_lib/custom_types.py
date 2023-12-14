@@ -168,7 +168,13 @@ class TargetTransformer(BaseEstimator):
 
 
 class Estimator:
-    def fit(self, X, y, *args, **kwargs):
+    def fit(
+        self,
+        X: DataFrame,
+        y: Target,
+        X_validate: DataFrame = None,
+        y_validate: Target = None,
+    ):
         ...
 
     def predict(self, X: DataFrame):

@@ -57,6 +57,7 @@ from hcve_lib.utils import (
     merge_two_level_dict,
     find_unpicklable_attr,
     split_dict_by_keys,
+    count_lines,
 )
 from imblearn.under_sampling import RandomUnderSampler
 from numpy.testing import assert_array_equal
@@ -899,3 +900,7 @@ def test_split_dict_by_keys():
 
     assert subset == {"a": 1, "c": 3}  # 'e' should not be in the subset
     assert remaining == {"b": 2, "d": 4}
+
+
+def test_count_lines():
+    return count_lines("my super\n lines\n") == 3

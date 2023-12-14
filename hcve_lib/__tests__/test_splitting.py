@@ -21,7 +21,7 @@ from hcve_lib.splitting import (
     get_1_to_1_splits,
     train_test_filter,
     filter_missing_features,
-    get_kfold_splits,
+    get_k_fold,
     get_splitting_per_group,
     get_group_indexes,
     resample_prediction_test,
@@ -57,7 +57,7 @@ def test_iloc_to_loc():
 
 
 def test_get_kfold_splits():
-    assert get_kfold_splits(
+    assert get_k_fold(
         X=DataFrame({"x": [100, 200, 300]}, index=[10, 20, 30]),
         n_splits=3,
         random_state=1,

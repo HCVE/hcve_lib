@@ -28,7 +28,13 @@ def display_number(i: Rational) -> None:
 
 def display_html(html: str) -> None:
     # noinspection PyTypeChecker
-    display(HTML(html))
+    display(
+        HTML(
+            html.replace("\n", "<br>")
+            .replace(" ", "&nbsp;")
+            .replace("\t", "&nbsp;" * 4)
+        )
+    )
 
 
 def h1(text: str) -> None:
@@ -116,8 +122,12 @@ def show_dtale(data: DataFrame, metadata: Metadata) -> None:
     return table
 
 
+def get_formatted(something: Any) -> None:
+    return yaml.dump(json.loads(json.dumps(something, default=str)))
+
+
 def print_formatted(something: Any) -> None:
-    print(yaml.dump(json.loads(json.dumps(something, default=str))))
+    print(get_formatted(something))
 
 
 def display_tree(what: Any, levels: int = 5) -> None:

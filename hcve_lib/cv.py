@@ -57,7 +57,7 @@ from hcve_lib.optimization import optuna_report_mlflow, EarlyStoppingCallback
 from hcve_lib.progress_reporter import ProgressReporter
 from hcve_lib.splitting import (
     get_train_test,
-    get_kfold_splits,
+    get_k_fold,
     get_kfold_stratified_splits,
 )
 from hcve_lib.tracking import (
@@ -353,7 +353,7 @@ def objective_variance(
         get_pipeline,
         X,
         y,
-        get_splits=partial(get_kfold_splits, n_splits=10),
+        get_splits=partial(get_k_fold, n_splits=10),
         random_state=random_state,
         predict_method=predict_method,
         hyperparameters=hyperparameters,
@@ -393,7 +393,7 @@ def objective_variance_prediction(
         get_pipeline,
         X,
         y,
-        get_splits=get_kfold_splits,
+        get_splits=get_k_fold,
         random_state=random_state,
         predict_method=predict_method,
         hyperparameters=hyperparameters,
@@ -506,6 +506,7 @@ class Optimize:
             decorator = self.mlflow_callback.track_in_mlflow()
         else:
             decorator = identity
+
         catch = (
             (
                 (Exception, ArithmeticError, RuntimeError)
@@ -513,6 +514,7 @@ class Optimize:
                 else ()
             ),
         )
+
         self.study.optimize(
             partial(self.objective, X=X, y=y),
             n_trials=self.optimize_params.n_trials,
@@ -567,7 +569,7 @@ def cross_validate_single_repeat(
     y_data = y.data if y is Dict else y
 
     if get_splits is None:
-        splits = get_kfold_splits(X, y_data, random_state=random_state)
+        splits = get_k_fold(X, y_data, random_state=random_state)
     else:
         splits = get_splits(X=X, y=y_data, random_state=random_state)
 
@@ -1042,6 +1044,7 @@ def cross_validate_fit(
             estimator.fit(X, y, **fit_kwargs)
     else:
         estimator.fit(X, y, **fit_kwargs)
+
         run_id = None
 
     if reporter:

@@ -31,6 +31,7 @@ from hcve_lib.custom_types import (
     ValueWithStatistics,
     ValueWithCI,
     TargetType,
+    Index,
 )
 from hcve_lib.data import binarize_event, to_survival_y_records
 from hcve_lib.functional import flatten, pipe
@@ -792,11 +793,11 @@ class StratifiedMetric(Metric):
     def __init__(
         self,
         metric: Metric,
-        splits: Splits,
+        by: Splits,
     ):
         super()
         self.metric = metric
-        self.splits = splits
+        self.by = by
 
     def get_names(
         self,
@@ -806,7 +807,7 @@ class StratifiedMetric(Metric):
         return [
             f"{prefix}__{name}"
             for prefix, name in product(
-                self.splits.keys(),
+                self.by.keys(),
                 self.metric.get_names(prediction, y),
             )
         ]
@@ -823,8 +824,13 @@ class StratifiedMetric(Metric):
             list,
         )
 
+    def compute(
+        self, y_true: Target, y_pred: DataFrame
+    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
+        raise NotImplementedError
+
     def get_values_(self, prediction, y):
-        for name, index in self.splits.items():
+        for name, index in self.by.items():
             subsampled_prediction = resample_prediction_test(index, prediction)
             if len(subsampled_prediction["y_pred"][1]) > 0:
                 yield self.metric.get_values(
@@ -833,9 +839,7 @@ class StratifiedMetric(Metric):
                 )
             else:
                 yield ExceptionValue(
-                    exception=ExceptionValue(
-                        ValueError(f'Missing y_pred for split "{name}"')
-                    )
+                    exception=ValueError(f'Missing y_pred for split "{name}"')
                 )
 
     def get_direction(self) -> OptimizationDirection:

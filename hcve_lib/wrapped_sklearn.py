@@ -120,7 +120,7 @@ def use_df_fn(
     output_data: Any,
     reuse_columns=True,
     reuse_index=True,
-    reuse_dtypes=False,
+    reuse_dtypes=True,
     columns: Optional[List] = None,
 ) -> DataFrame:
     df_arguments = {}
@@ -149,10 +149,10 @@ def use_df_fn(
         **df_arguments,
     )
 
-    # if reuse_dtypes:
-    #     return new_data.astype(dtypes)
-    # else:
-    return new_data
+    if reuse_dtypes:
+        return new_data.astype(dtypes)
+    else:
+        return new_data
 
 
 class DFColumnTransformer(DFWrapped, ColumnTransformer):

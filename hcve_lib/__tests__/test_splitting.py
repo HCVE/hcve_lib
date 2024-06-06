@@ -22,7 +22,7 @@ from hcve_lib.splitting import (
     train_test_filter,
     filter_missing_features,
     get_k_fold,
-    get_splitting_per_group,
+    get_splits_per_group,
     get_group_indexes,
     resample_prediction_test,
     get_learning_curve_splits,
@@ -239,7 +239,7 @@ def test_get_splitting_per_group():
             "y": (group.index.tolist()[1:], group.index.tolist()[0:1]),
         }
 
-    assert get_splitting_per_group(
+    assert get_splits_per_group(
         DataFrame(
             {"x": [100, 110, 300, 310, 320]},
             index=[10, 20, 40, 50, 60],
@@ -299,7 +299,7 @@ def test_get_learning_curve_splits():
         X=DataFrame({"x": [10, 20, 30, 40, 50]}),
         y=Series([1, 2, 3, 4, 5]),
         test_size=0.20,
-        n_steps=3,
+        n_step=3,
         min_samples=2,
         random_state=1,
         shuffle=False,
@@ -334,12 +334,9 @@ def test_get_per_subset_split():
 
 
 def test_get_per_subset_split_empty():
-    # Given
     X = pd.DataFrame({"a": [], "b": []})
 
-    # When
     result = get_per_subset_split(X, mock_group_by, mock_train_test_splitter)
 
-    # Then
     assert isinstance(result, Dict)
     assert result == {}

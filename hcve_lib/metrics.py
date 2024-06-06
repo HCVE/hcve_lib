@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from typing import Union, Tuple, Optional, List, Callable, Any, Iterable
 
+from prettytable import PLAIN_COLUMNS, PrettyTable
 from sksurv.metrics import integrated_brier_score, concordance_index_censored
+from toolz import valmap
 from typing_extensions import Literal
 
 import dill
@@ -38,7 +40,27 @@ from hcve_lib.functional import flatten, pipe
 from hcve_lib.metrics_types import Metric, OptimizationDirection
 from hcve_lib.pipelines import get_target_type
 from hcve_lib.splitting import resample_prediction_test
-from hcve_lib.utils import loc, transpose_list, get_y_split
+from hcve_lib.utils import (
+    loc,
+    transpose_list,
+    get_y_split,
+    get_1_class_y_score,
+    is_noneish,
+)
+from hcve_lib.visualisation import display_html, p
+
+
+def statistic_from_bootstrap(values):
+    alpha = 0.95
+    p = ((1.0 - alpha) / 2.0) * 100
+    lower = numpy.percentile(values, p)
+    p = (alpha + ((1.0 - alpha) / 2.0)) * 100
+    upper = numpy.percentile(values, p)
+    return ValueWithStatistics(
+        mean=mean(values),
+        ci=(lower, upper),
+        std=(np.sum((values - np.mean(values)) ** 2) / (len(values) - 2)) ** (1 / 2),
+    )
 
 
 class BootstrappedMetric(Metric):
@@ -121,19 +143,6 @@ class BootstrappedMetric(Metric):
         return self.metric.get_direction()
 
 
-def statistic_from_bootstrap(values):
-    alpha = 0.95
-    p = ((1.0 - alpha) / 2.0) * 100
-    lower = numpy.percentile(values, p)
-    p = (alpha + ((1.0 - alpha) / 2.0)) * 100
-    upper = numpy.percentile(values, p)
-    return ValueWithStatistics(
-        mean=mean(values),
-        ci=(lower, upper),
-        std=(np.sum((values - np.mean(values)) ** 2) / (len(values) - 2)) ** (1 / 2),
-    )
-
-
 class Maximize:
     def get_direction(self) -> OptimizationDirection:
         return OptimizationDirection.MAXIMIZE
@@ -148,10 +157,8 @@ class Minimize:
 class WeightedCIndex(Maximize, Metric):
     def __init__(
         self,
-        target: Literal["y_score", "y_proba"] = "y_pred",
         weight=None,
     ):
-        self.target = target
         self.weight = weight
 
     def get_names(
@@ -169,37 +176,35 @@ class WeightedCIndex(Maximize, Metric):
         from rpy2 import robjects
         from rpy2.interactive.packages import importr
 
-        if len(prediction[self.target]) == 0:
-            return [
-                ExceptionValue(
-                    prediction[self.target],
-                    ValueError("y_score empty"),
-                )
-            ]
-
         # try:
         y_ = self.get_y(y, prediction)
-        y_score = prediction[self.target]
+        y_score = prediction["y_pred"]
         y_ = loc(y_score.index, y)
         # TODO: HACK
         # y_score = y_score[y_score.index.isin(y_.data.index)]
 
+        print(y_score.value_counts())
         if self.weight is not None:
             weight = self.weight.loc[y_.data.index]
         else:
             weight = None
 
         intsurv = importr("intsurv")
+
         index = intsurv.cIndex(
             robjects.FloatVector(y_.data["tte"]),
             robjects.FloatVector(y_.data["label"]),
             robjects.FloatVector(y_score),
             *([robjects.FloatVector(weight)] if weight is not None else []),
         )
+        print(index)
         return [index[0]]
         # except ValueError as e:
         #     print(f'{e=}')
         #     return [ExceptionValue(exception=e)]
+
+    def compute(self):
+        ...
 
 
 def get_y_proba_for_time(
@@ -208,7 +213,7 @@ def get_y_proba_for_time(
     y: Target,
     time: int,
 ) -> Series:
-    y_proba = prediction["y_proba"].get(time)
+    y_proba = prediction["y_pred"].get(time)
     if len(y_proba.isna()) == len(y_proba):
         y_proba = predict_proba_for_prediction(prediction, X, y, time)
     return y_proba
@@ -224,6 +229,9 @@ def predict_proba_for_prediction(
 
 
 class ROC_AUC(Maximize, Metric):
+    def __init__(self):
+        super().__init__()
+
     def get_names(
         self,
         prediction: Prediction,
@@ -235,7 +243,11 @@ class ROC_AUC(Maximize, Metric):
         self, y_true: Target, y_pred: DataFrame
     ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
         try:
-            return [roc_auc_score(y_true, y_pred[1])]
+            if len(y_true.unique()) <= 2:
+                return [roc_auc_score(y_true, y_pred[1])]
+
+            else:
+                return [roc_auc_score(y_true, y_pred, multi_class="ovo")]
         except ValueError as e:
             return [ExceptionValue(exception=e)]
 
@@ -264,6 +276,10 @@ class FunctionMetric(Metric):
     def get_names(self, prediction: Prediction, y: Target) -> List[str]:
         return [self.function.__name__]
 
+    def compute(
+        self, y_true: Target, y_pred: DataFrame
+    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
+        return self.function(y_true, y_pred)
 
 class PR_AUC(Maximize, Metric):
     def get_names(
@@ -346,9 +362,9 @@ class CIndex(Maximize, Metric):
             value = concordance_index_censored(
                 y_true.data["label"].to_numpy().astype(numpy.bool_),
                 y_true.data["tte"],
-                y_pred[1],
+                get_1_class_y_score(y_pred),
             )
-            return [value]
+            return [value[0]]
         except ValueError as e:
             return [ExceptionValue(exception=e)]
 
@@ -431,7 +447,7 @@ class Brier(Minimize, Metric):
         prediction: Prediction,
         y: Target,
     ) -> List[Union[ExceptionValue, float]]:
-        y_train, y_test = self.get_y(y, prediction, both=True)
+        y_train, y_test = get_y_split(y, prediction)
         y_train_ = target_to_survival_y_records(y_train)
         y_test_ = target_to_survival_y_records(y_test)
         values = []
@@ -442,19 +458,26 @@ class Brier(Minimize, Metric):
 
                 values.append(
                     brier_score(
-                        y_train_.data,
-                        y_test_.data,
+                        y_train_["data"],
+                        y_test_["data"],
                         get_y_proba_for_time(
                             prediction,
                             self.X,
                             y,
                             time,
-                        ).loc[y_test.data.index],
+                        ).loc[y_test["data"].index],
                         time,
                     )[0]
                 )
             except Exception as e:
                 values.append(ExceptionValue(e))
+
+        return values
+
+    def compute(
+        self, y_true: Target, y_pred: DataFrame
+    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
+        raise NotImplementedError
 
     def get_names(
         self,
@@ -470,7 +493,7 @@ class Brier(Minimize, Metric):
         if self.time:
             return [self.time]
         else:
-            available = list(prediction["y_proba"].keys())
+            available = list(prediction["y_pred"].keys())
             if len(available) > 0:
                 return available
             else:
@@ -735,7 +758,6 @@ def precision_recall_curve_with_confusion(
         .drop_duplicates()
     )
 
-    # print(len(index_intersection))
     probas_pred_ = Series(
         [
             probas_pred.loc[index]
@@ -745,7 +767,7 @@ def precision_recall_curve_with_confusion(
         ],
         index=index_intersection.drop_duplicates(),
     )
-    # print(len(probas_pred_))
+
     y_true_ = Series(
         [
             y_true.loc[index]
@@ -755,7 +777,6 @@ def precision_recall_curve_with_confusion(
         ],
         index=probas_pred_.index.drop_duplicates(),
     )
-    # print(len(y_true_))
 
     if sample_weight is not None:
         sample_weight_ = Series(
@@ -789,6 +810,34 @@ def precision_recall_curve_with_confusion(
     return precision, recall, confusion_matrices, thresholds
 
 
+class WeightedMetric(Metric):
+    def __init__(
+        self,
+        metric: Metric,
+        weights: Series,
+    ):
+        super()
+        self.metric = metric
+        self.weights = weights
+
+    def get_names(
+        self,
+        prediction: Prediction,
+        y: Target,
+    ) -> List:
+        return ["Weighted" + name for name in self.metric.get_names(prediction, y)]
+
+    def compute(
+        self, y_true: Target, y_pred: DataFrame
+    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
+        y_pred_resampled = y_pred.sample(frac=1, replace=True, weights=self.weights)
+        y_true_resampled = loc(y_pred_resampled.index, y_true)
+        return self.metric.compute(y_true_resampled, y_pred_resampled)
+
+    def get_direction(self) -> OptimizationDirection:
+        return self.metric.get_direction()
+
+
 class StratifiedMetric(Metric):
     def __init__(
         self,
@@ -803,9 +852,9 @@ class StratifiedMetric(Metric):
         self,
         prediction: Prediction,
         y: Target,
-    ) -> List[str]:
+    ) -> List:
         return [
-            f"{prefix}__{name}"
+            (prefix, name)
             for prefix, name in product(
                 self.by.keys(),
                 self.metric.get_names(prediction, y),
@@ -832,7 +881,7 @@ class StratifiedMetric(Metric):
     def get_values_(self, prediction, y):
         for name, index in self.by.items():
             subsampled_prediction = resample_prediction_test(index, prediction)
-            if len(subsampled_prediction["y_pred"][1]) > 0:
+            if len(subsampled_prediction["y_pred"]) > 0:
                 yield self.metric.get_values(
                     subsampled_prediction,
                     loc(subsampled_prediction["split"][1], y, ignore_not_present=True),
@@ -876,14 +925,14 @@ def get_standard_classification_metrics() -> List[Metric]:
     ]
 
 
-def get_standard_time_to_event_metrics() -> List[Metric]:
-    return [
-        CIndex(),
-    ]
-
-
 def target_to_survival_y_records(y):
     if not isinstance(y.data, numpy.recarray):
         return {**y, "data": to_survival_y_records(y)}
     else:
         return y
+
+
+def get_standard_time_to_event_metrics() -> List[Metric]:
+    return [
+        CIndex(),
+    ]

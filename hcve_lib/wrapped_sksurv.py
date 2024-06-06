@@ -1,4 +1,4 @@
-from sksurv.ensemble import RandomSurvivalForest
+from sksurv.ensemble import RandomSurvivalForest, GradientBoostingSurvivalAnalysis
 from sksurv.linear_model import CoxnetSurvivalAnalysis, CoxPHSurvivalAnalysis
 from sksurv.meta import Stacking
 
@@ -14,6 +14,12 @@ class DFCoxPHSurvivalAnalysis(DFWrapped, CoxPHSurvivalAnalysis):
 
 
 class DFRandomSurvivalForest(DFWrapped, ToSurvivalRecord, RandomSurvivalForest):
+    ...
+
+
+class DFSurvivalGradientBoosting(
+    DFWrapped, ToSurvivalRecord, GradientBoostingSurvivalAnalysis
+):
     ...
 
 

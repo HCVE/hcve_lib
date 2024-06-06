@@ -35,6 +35,7 @@ from hcve_lib.utils import (
     generate_steps,
     transpose_dict,
     merge_two_level_dict,
+    flatten_dict,
 )
 
 
@@ -101,20 +102,26 @@ def get_group_splits(
 
 
 @accept_extra_parameters
-def get_splitting_per_group(
+def get_splits_per_group(
     X: DataFrame,
+    y: Target,
     data: DataFrame,
+    random_state: int,
     get_splits: Callable = None,
     group_by_feature: str = "STUDY",
 ):
     if get_splits is None:
-        get_splits = get_k_fold
+        get_splits = partial(get_kfold_stratified_splits, random_state=random_state)
+
     groups = X.groupby(data[group_by_feature])
+
     return pipe(
         (
             [
                 ((name, name_inner), split)
-                for name_inner, split in get_splits(group_df).items()
+                for name_inner, split in get_splits(
+                    X=group_df, y=loc(group_df.index, y)
+                ).items()
             ]
             for name, group_df in groups
         ),
@@ -127,16 +134,29 @@ def get_splitting_per_group(
 def get_lm(
     X: DataFrame,
     data: DataFrame,
+    random_state: int,
+    bootstrap: bool = True,
+    include_local_in_test: bool = True,
 ) -> TrainTestSplits:
-    lco_splits: TrainTestSplits = get_lco(X, data)
-    return {
-        key: pipe(
-            fold_input,
-            reversed,
-            list,
-        )
-        for key, fold_input in lco_splits.items()
-    }
+    # if bootstrap:
+        # _X = X.sample(frac=0.8, replace=False, random_state=random_state)
+    # else:
+    _X = X
+
+    lco_splits: TrainTestSplits = get_lco(_X, data)
+    lm_splits = {}
+    for key, fold_input in lco_splits.items():
+        lm_split = list(reversed(fold_input))
+        if include_local_in_test:
+            lm_train_series = Series(lm_split[0])
+            local_in_test = lm_train_series.sample(frac=0.2, random_state=random_state)
+
+            lm_split[1].extend(list(local_in_test))
+            lm_split[0] = lm_train_series.drop(index=local_in_test.index).tolist()
+
+        lm_splits[key] = lm_split
+
+    return lm_splits
 
 
 @accept_extra_parameters
@@ -232,8 +252,8 @@ def get_kfold_stratified_splits(
     n_splits: int = 5,
 ) -> TrainTestSplits:
     try:
-        y_ = y.data["label"]
-    except AttributeError:
+        y_ = y["label"]
+    except KeyError:
         y_ = y
 
     if str(y_.dtype).startswith("float"):
@@ -257,6 +277,7 @@ def get_train_test(
     test_size=0.1,
     train_size=None,
     shuffle=True,
+    stratify=None,
     *args,
     **kwargs,
 ) -> TrainTestSplits:
@@ -266,6 +287,7 @@ def get_train_test(
         train_size=train_size,
         random_state=random_state,
         shuffle=shuffle,
+        stratify=stratify.loc[X.index] if stratify is not None else None,
         *args,
         **kwargs,
     )
@@ -281,8 +303,8 @@ def get_learning_curve_splits(
     random_state: int,
     test_size=0.1,
     shuffle=True,
-    n_steps: int = 10,
-    min_samples: int = 100,
+    n_step: int = 100,
+    min_samples: int = 500,
     *args,
     **kwargs,
 ) -> TrainTestSplits:
@@ -298,11 +320,8 @@ def get_learning_curve_splits(
     data_train_index = data_train.index.tolist()
     data_test_index = data_test.index.tolist()
 
-    steps = list(generate_steps(min_samples, len(data_train), n_steps))
-    return {
-        f"train_test_n_{step}": (data_train_index[:step], data_test_index)
-        for step in steps
-    }
+    steps = list(range(min_samples, len(data_train_index), n_step))
+    return {step: (data_train_index[:step], data_test_index) for step in steps}
 
 
 @accept_extra_parameters
@@ -356,7 +375,7 @@ def get_splitter(splitter_name: str) -> Callable:
     elif splitter_name == "lm":
         return partial(get_1_to_1_splits, group_by_column="STUDY")
     elif splitter_name == "cohort_10_fold":
-        return get_splitting_per_group
+        return get_splits_per_group
     elif splitter_name == "10_fold":
         return partial(get_kfold_stratified_splits, n_splits=10)
     elif splitter_name == "5_fold":
@@ -381,7 +400,7 @@ def resample_prediction_test(
     index: Index,
     prediction: Prediction,
 ) -> Prediction:
-    y_pred = loc(index, prediction["y_pred"], ignore_not_present=True)
+    y_pred = loc(index, prediction["y_pred"].copy(), ignore_not_present=True)
     return merge(
         prediction,
         dict(

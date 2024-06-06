@@ -11,7 +11,7 @@ from sklearn.preprocessing import FunctionTransformer
 from statsmodels.compat.pandas import assert_frame_equal
 
 from hcve_lib.cv import cross_validate_single_repeat
-from hcve_lib.pipelines import prepend_timeline, aggregate_results, Model
+from hcve_lib.pipelines import prepend_timeline, aggregate_results, PredictionMethod
 from hcve_lib.splitting import get_train_test
 from hcve_lib.wrapped_sklearn import DFPipeline
 
@@ -45,7 +45,7 @@ def test_prepend_timeline():
 def test_Model():
     data = DataFrame({"x": list(range(10, 20)), "y": list(range(100, 200, 10))})
 
-    class TestModel(Model):
+    class TestModel(PredictionMethod):
         def get_estimator(self, X=None) -> BaseEstimator:
             return LinearRegression()
 
@@ -69,7 +69,7 @@ def test_Model():
 
 
 def test_Model_suggest_optuna():
-    class TestStep1(Model):
+    class TestStep1(PredictionMethod):
         @staticmethod
         def suggest_optuna(trial: Trial, prefix: str = "") -> Tuple[Trial, Dict]:
             return trial, {
@@ -78,7 +78,7 @@ def test_Model_suggest_optuna():
                 )
             }
 
-    class TestStep2(Model):
+    class TestStep2(PredictionMethod):
         @staticmethod
         def suggest_optuna(trial: Trial, prefix: str = "") -> Tuple[Trial, Dict]:
             return trial, {
@@ -102,7 +102,7 @@ def test_Model_suggest_optuna():
 
 
 def test_Optimize_Pipeline():
-    class TestStep1(Model):
+    class TestStep1(PredictionMethod):
         @staticmethod
         def suggest_optuna(trial: Trial, prefix: str = "") -> Tuple[Trial, Dict]:
             return trial, {
@@ -111,7 +111,7 @@ def test_Optimize_Pipeline():
                 )
             }
 
-    class TestStep2(Model):
+    class TestStep2(PredictionMethod):
         @staticmethod
         def suggest_optuna(trial: Trial, prefix: str = "") -> Tuple[Trial, Dict]:
             return trial, {

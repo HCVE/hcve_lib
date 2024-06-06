@@ -3,7 +3,6 @@ import asyncio
 import pickle
 from datetime import datetime
 
-import dill as pickle
 from toolz import keyfilter
 import enum
 import itertools
@@ -1390,7 +1389,7 @@ def dump_results(pipeline_name, metrics, results, get_splits, dump_tag=None):
         dump_tag = []
 
     first_metric_key, first_metric_value = get_first_item(metrics)
-    dump_name = f"output/{pipeline_name} {' '.join(dump_tag)} {get_splits.__name__} {get_date_time()} {first_metric_key}={first_metric_value['mean']:.2f}.pkl"
+    dump_name = f"output/{pipeline_name}{(' '+' '.join(dump_tag)) if len(dump_tag) > 0 else ''} {get_splits.__name__} {get_date_time()} {first_metric_key}={first_metric_value['mean']:.2f}.pkl"
     with open(dump_name, "wb") as f:
         pickle.dump(results, f)
 
@@ -1401,3 +1400,49 @@ def get_date_time():
 
 def count_lines(input_string: str) -> int:
     return len(input_string.splitlines())
+
+
+def compute_classification_scores_statistics(
+    predictions: Dict[Hashable, DataFrame]
+) -> Dict[Hashable, Dict[str, float]]:
+    statistics = {}
+    for key, prediction in predictions.items():
+        statistics[key] = {
+            "mean": float(get_1_class_y_score(prediction).mean()),
+            "median": float(get_1_class_y_score(prediction).median()),
+            "std": float(get_1_class_y_score(prediction).std()),
+            "min": float(get_1_class_y_score(prediction).min()),
+            "max": float(get_1_class_y_score(prediction).max()),
+        }
+    return statistics
+
+
+def average_classification_scores(predictions: Dict[Hashable, DataFrame]) -> DataFrame:
+    results = None
+    for prediction in predictions.values():
+        if results is None:
+            results = prediction
+        else:
+            results += prediction
+    return results / len(results)
+
+
+def get_1_class_y_score(y_score: Union[DataFrame, Series]) -> Series:
+    if isinstance(y_score, Series):
+        return y_score
+    else:
+        if len(y_score.columns) == 1:
+            return y_score.iloc[:, 0]
+        else:
+            return y_score.iloc[:, 1]
+
+
+def flatten_dict(d: Dict, parent_key: str = "", delimiter: str = " ") -> Dict:
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{delimiter}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, new_key, delimiter=delimiter).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)

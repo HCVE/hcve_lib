@@ -58,6 +58,9 @@ from hcve_lib.utils import (
     find_unpicklable_attr,
     split_dict_by_keys,
     count_lines,
+    compute_classification_scores_statistics,
+    average_classification_scores,
+    flatten_dict,
 )
 from imblearn.under_sampling import RandomUnderSampler
 from numpy.testing import assert_array_equal
@@ -904,3 +907,47 @@ def test_split_dict_by_keys():
 
 def test_count_lines():
     return count_lines("my super\n lines\n") == 3
+
+
+def test_compute_classification_scores_statistics():
+    predictions = {
+        0: DataFrame({0: [0.9, 0.7], 1: [0.1, 0.3]}),
+        1: DataFrame({0: [0.9, 0.7], 1: [0.1, 0.3]}),
+    }
+    assert compute_classification_scores_statistics(predictions) == {
+        0: {
+            "mean": 0.2,
+            "median": 0.2,
+            "std": 0.1414213562373095,
+            "min": 0.1,
+            "max": 0.3,
+        },
+        1: {
+            "mean": 0.2,
+            "median": 0.2,
+            "std": 0.1414213562373095,
+            "min": 0.1,
+            "max": 0.3,
+        },
+    }
+
+
+def test_average_classification_scores():
+    predictions = DataFrame({"class_0_proba": [0.9, 0.7], "class_1_proba": [0.1, 0.3]})
+    averaged_df = average_classification_scores(predictions)
+    assert "average_class_1" in averaged_df.columns
+    np.testing.assert_almost_equal(averaged_df["average_class_1"].iloc[0], 0.2)
+
+
+def test_flatten_dict():
+    nested_dict = {"key1": {"subkey1": "value1", "subkey2": "value2"}, "key2": "value3"}
+
+    expected_flat_dict = {
+        "key1 subkey1": "value1",
+        "key1 subkey2": "value2",
+        "key2": "value3",
+    }
+
+    flat_dict = flatten_dict(nested_dict)
+
+    assert flat_dict == expected_flat_dict

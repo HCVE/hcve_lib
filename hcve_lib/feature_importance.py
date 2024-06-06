@@ -195,7 +195,6 @@ def plot_standard_importance_(
 ) -> Figure:
     importance["mean"] = importance.mean(axis=1)
     importance.sort_values(by="mean", ascending=True, inplace=True)
-    print(importance)
     importance = importance.T
     fig = px.strip(importance, orientation="h")
     fig.update_layout(
@@ -222,15 +221,16 @@ def plot_model_importance_results(results: List[Result], limit=None) -> Figure:
     importance = get_model_importance(results)
     if limit is None:
         limit = len(importance)
+    return plot_model_importance_results_runs(importance[:limit][::-1])
 
-    return plot_model_importance_results_(importance[:limit][::-1])
 
-
-def plot_model_importance_results_(importance):
+def plot_model_importance_results_runs(importance: DataFrame) -> Figure:
+    importance = importance.loc[importance.mean(axis=1).abs().sort_values().index]
     fig = px.strip(
         importance.T,
         orientation="h",
     )
+
     fig.update_traces(marker=dict(opacity=0.5))
     fig.update_layout(
         xaxis_title="Importance",
@@ -241,6 +241,7 @@ def plot_model_importance_results_(importance):
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
+
     fig.add_vline(x=0, line_width=2, opacity=0.3, line_color="red")
     fig.update_yaxes(showgrid=True)
     return fig
@@ -255,6 +256,9 @@ def plot_model_importance_results_per_run(
 
 
 def plot_model_importance_results_per_run_(importance_single):
+    importance_single = importance_single.loc[
+        importance_single.abs().sort_values().index
+    ]
     fig = px.bar(
         importance_single,
         orientation="h",

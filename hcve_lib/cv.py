@@ -43,7 +43,7 @@ from hcve_lib.custom_types import (
     TrainTestSplitter,
     TargetType,
 )
-from hcve_lib.pipelines import Model, get_target_type
+from hcve_lib.pipelines import PredictionMethod, get_target_type
 from hcve_lib.evaluation_functions import (
     compute_metrics_result,
     log_repeat_metrics,
@@ -119,8 +119,11 @@ def cross_validate(
 
     splits = get_splits(X=X, y=y, random_state=random_state)
 
-    # reporter = ProgressReporter(n_repeats * len(splits), on_progress=on_progress)
-    # reporter.set_message("Training models...")
+    if n_jobs == 1:
+        reporter = ProgressReporter(n_repeats * len(splits), on_progress=on_progress)
+        reporter.set_message("Training models...")
+    else:
+        reporter = None
 
     if not get_repeat_context:
         if mlflow:
@@ -161,7 +164,7 @@ def cross_validate(
             n_jobs_rest,
             mlflow,
             optimize,
-            # reporter,
+            reporter,
             *args,
             **kwargs,
         )
@@ -173,6 +176,7 @@ def cross_validate(
             ).values(),
             list,
         )
+        print()
 
         if mlflow:
             metrics = compute_metrics_fn(
@@ -683,7 +687,6 @@ def external_validation(
     X_test: DataFrame,
     y_test: Target,
     results: List[Result],
-    # on_progress: Callable[[float, ...], None] = None,
     on_progress: Callable[[float], None] = None,
 ) -> List[Result]:
     predictions = list(get_predictions(results))
@@ -1010,8 +1013,7 @@ def cross_validate_train(
             random_state,
             mlflow,
             fit_params,
-            # TODO:
-            # reporter,
+            reporter,
         )
         for fold_name, (train_split, test_split) in splits_dict.items()
     }
@@ -1068,7 +1070,7 @@ def cross_validate_predict(
     y: Target,
     splits: TrainTestSplits,
     filtered_columns: Dict[Hashable, Dict[Hashable, bool]],
-    models: Dict[Hashable, Tuple[Optional[str], Model]],
+    models: Dict[Hashable, Tuple[Optional[str], PredictionMethod]],
     predict_method: str,
     mlflow: bool = False,
     return_models: bool = True,
@@ -1092,7 +1094,7 @@ def cross_validate_predict(
             X_columns=X.columns.tolist(),
             y_column=y.name,
             y_pred=y_pred,
-            model=model if return_models else None,
+            model=model.estimators[0] if return_models else None,
         )
 
         if mlflow:

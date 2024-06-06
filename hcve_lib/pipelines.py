@@ -1,3 +1,4 @@
+import json
 import logging
 import multiprocessing
 from abc import abstractmethod
@@ -7,8 +8,9 @@ from functools import reduce
 from logging import INFO
 from logging import Logger
 from math import log, exp
+from statistics import mean
 from time import sleep
-from typing import Any, Tuple, Dict, Union, Iterable, Hashable
+from typing import Any, Tuple, Dict, Union, Iterable, Hashable, Optional
 from typing import List, Callable
 
 import flwr
@@ -32,6 +34,7 @@ from flwr.common import (
 
 from flwr.common.logger import log as flwr_log, FLOWER_LOGGER, console_handler
 from flwr.server.strategy import FedXgbBagging
+from numpy import transpose
 from optuna import Trial
 from pandas import DataFrame
 from pandas import Series
@@ -41,8 +44,9 @@ from sklearn.base import TransformerMixin, ClassifierMixin
 from sklearn.ensemble import StackingClassifier, StackingRegressor, ExtraTreesClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
+from sksurv.ensemble import RandomSurvivalForest
 from toolz import dissoc
-from xgboost import Booster
+from xgboost import Booster, DMatrix
 
 from hcve_lib.custom_types import (
     Estimator,
@@ -56,6 +60,7 @@ from hcve_lib.custom_types import (
     Prediction,
 )
 from hcve_lib.custom_types import ExceptionValue
+from hcve_lib.functional import t
 from hcve_lib.splitting import get_train_test
 from hcve_lib.utils import (
     is_numerical,
@@ -63,7 +68,10 @@ from hcve_lib.utils import (
     remove_column_prefix,
     loc,
     run_parallel,
+    compute_classification_scores_statistics,
+    average_classification_scores,
 )
+from hcve_lib.visualisation import print_formatted
 from hcve_lib.wrapped_sklearn import (
     DFPipeline,
     DFRandomForestRegressor,
@@ -77,7 +85,9 @@ from hcve_lib.wrapped_sklearn import (
     DFXGBClassifier,
     DFWrapped,
     DFExtraTreesClassifier,
+    DFSurvivalXGB,
 )
+from hcve_lib.wrapped_sksurv import DFSurvivalGradientBoosting
 
 
 class EstimatorDecorator:
@@ -201,12 +211,6 @@ class LifeTime(EstimatorDecorator, BaseEstimator):
         self._estimator.fit(X, y_transformed)
         return self
 
-    def add_age(self, survival_function, age: Series, t: int):
-        try:
-            return survival_function(t + age * 365)
-        except ValueError as e:
-            return ExceptionValue(e)
-
     def predict_survival_function(
         self,
         X: DataFrame,
@@ -217,8 +221,14 @@ class LifeTime(EstimatorDecorator, BaseEstimator):
             for age, fn in zip(X["AGE"], survival_functions)
         )
 
+    def add_age(self, survival_function, age: Series, t: int):
+        try:
+            return survival_function(t + age * 365)
+        except ValueError as e:
+            return ExceptionValue(e)
 
-class Model(Estimator):
+
+class PredictionMethod(Estimator):
     _estimator: Any
     params: Dict
     target_type: TargetType
@@ -241,9 +251,9 @@ class Model(Estimator):
         self._estimator = self.get_estimator_()
         self.params = {}
 
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        return state
+    # def __getstate__(self):
+    #     state = self.__dict__.copy()
+    #     return state
 
     def fit(self, X: DataFrame, y: Any, *args, **kwargs):
         self._estimator = self.get_estimator_()
@@ -325,25 +335,61 @@ class Model(Estimator):
         return self._estimator[item]
 
 
-class XGBoost(Model):
+class XGBoost(PredictionMethod):
     def suggest_optuna(
         self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
-        hyperparameters = {
-            "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 200),
-            "max_depth": trial.suggest_int(f"{prefix}_max_depth", 1, 10),
-            "learning_rate": trial.suggest_float(
-                f"{prefix}_learning_rate", 0.001, 1, log=True
-            ),
-            "subsample": trial.suggest_float(f"{prefix}_estimator_subsample", 0.1, 1),
-            "colsample_bytree": trial.suggest_float(
-                f"{prefix}_colsample_bytree", 0.1, 1
-            ),
-            "min_split_loss": trial.suggest_float(f"{prefix}_min_split_loss", 0.1, 10),
-            "min_child_weight": trial.suggest_int(f"{prefix}_min_child_weight", 1, 100),
-            "reg_alpha": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
-            "reg_lambda": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
-        }
+        if self.target_type == TargetType.TIME_TO_EVENT:
+            hyperparameters = {
+                # "aft_loss_distribution": trial.suggest_categorical(
+                #     "aft_loss_distribution", ["normal", "logistic", "extreme"]
+                # ),
+                # "aft_loss_distribution_scale": trial.suggest_loguniform(
+                #     "aft_loss_distribution_scale", 0.1, 10.0
+                # ),
+                "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 200),
+                "learning_rate": trial.suggest_float(
+                    f"{prefix}_learning_rate", 0.001, 1, log=True
+                ),
+                "max_depth": trial.suggest_int("max_depth", 1, 8),
+                "lambda": trial.suggest_loguniform("lambda", 1e-8, 1.0),
+                "alpha": trial.suggest_loguniform("alpha", 1e-8, 1.0),
+                "subsample": trial.suggest_float(
+                    f"{prefix}_estimator_subsample", 0.1, 1
+                ),
+                # "colsample_bytree": trial.suggest_float(
+                #     f"{prefix}_colsample_bytree", 0.1, 1
+                # ),
+                # "min_split_loss": trial.suggest_float(
+                #     f"{prefix}_min_split_loss", 0.1, 10
+                # ),
+                # "min_child_weight": trial.suggest_int(
+                #     f"{prefix}_min_child_weight", 1, 100
+                # ),
+            }
+        else:
+            hyperparameters = {
+                "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 200),
+                "max_depth": trial.suggest_int(f"{prefix}_max_depth", 1, 10),
+                "learning_rate": trial.suggest_float(
+                    f"{prefix}_learning_rate", 0.001, 1, log=True
+                ),
+                "subsample": trial.suggest_float(
+                    f"{prefix}_estimator_subsample", 0.1, 1
+                ),
+                "colsample_bytree": trial.suggest_float(
+                    f"{prefix}_colsample_bytree", 0.1, 1
+                ),
+                "min_split_loss": trial.suggest_float(
+                    f"{prefix}_min_split_loss", 0.1, 10
+                ),
+                "min_child_weight": trial.suggest_int(
+                    f"{prefix}_min_child_weight", 1, 100
+                ),
+                "reg_alpha": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
+                "reg_lambda": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
+            }
+
         return trial, hyperparameters
 
     # noinspection PyUnresolvedReferences
@@ -402,15 +448,18 @@ class XGBoost(Model):
             return DFXGBClassifier(
                 random_state=self.random_state,
                 seed=self.random_state,
-                gpu_id=0,
-                device="cuda",
-                enable_categorical=True,
+                # enable_categorical=True,
+            )
+        elif self.target_type == TargetType.TIME_TO_EVENT:
+            return DFSurvivalXGB(
+                random_state=self.random_state,
+                seed=self.random_state,
             )
         else:
             raise NotImplementedError
 
 
-class Ensemble(Model):
+class Ensemble(PredictionMethod):
     def get_estimator(self, X=None) -> Estimator:
         if self.target_type == TargetType.REGRESSION:
             return StackingRegressor(
@@ -447,7 +496,7 @@ class Ensemble(Model):
             raise NotImplementedError
 
 
-class XGBSEBase(Model):
+class XGBSEBase(PredictionMethod):
     def fit(self, X: DataFrame, y: TargetData, *args, **kwargs):
         from xgbse.converters import convert_to_structured
 
@@ -467,8 +516,10 @@ class XGBSEKNN(XGBSEBase):
         from xgbse import XGBSEKaplanNeighbors
         from xgbse._kaplan_neighbors import DEFAULT_PARAMS as KNN_DEFAULT_PARAMS
 
+        # TODO: XGB 2.
+        # return XGBSEKaplanNeighbors(xgb_params=KNN_DEFAULT_PARAMS | dict(device="cuda"))
         return XGBSEKaplanNeighbors(
-            xgb_params=KNN_DEFAULT_PARAMS | dict(tree_method="gpu_hist", gpu_id=0)
+            xgb_params=KNN_DEFAULT_PARAMS | dict(tree_method="gpu_hist")
         )
 
     def suggest_optuna(
@@ -498,6 +549,11 @@ class XGBSEKNN(XGBSEBase):
             },
         }
         return trial, hyperparameters
+
+
+class SurvivalGradientBoosting(PredictionMethod):
+    def get_estimator_(self, X: DataFrame = None) -> Any:
+        return DFSurvivalGradientBoosting()
 
 
 class XGBSEBCE(XGBSEBase):
@@ -545,13 +601,15 @@ class Federated(BaseEstimator):
 
     def __init__(
         self,
-        group_by: DataFrameGroupBy,
+        group_by: Series,
         random_state: int,
         start_server: Callable,
         start_client: Callable,
         target_type: TargetType = None,
         X_all: DataFrame = None,
         y_all: Target = None,
+        *args,
+        **kwargs,
     ):
         self.group_by = group_by
         self.random_state = random_state
@@ -559,8 +617,12 @@ class Federated(BaseEstimator):
         self.start_client = start_client
         self.X_all = X_all
         self.y_all = y_all
+        self.args = args
+        self.kwargs = kwargs
         self.params = {
-            "num_rounds": 5,
+            "server": {
+                "num_rounds": 5,
+            }
         }
 
     def get_name(self):
@@ -570,22 +632,42 @@ class Federated(BaseEstimator):
         self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         hyperparameters = {
-            "num_local_rounds": trial.suggest_int(f"{prefix}_num_local_rounds", 1, 10),
-            "num_rounds": trial.suggest_int(f"{prefix}_num_rounds", 1, 100),
-            # "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 200),
-            "max_depth": trial.suggest_int(f"{prefix}_max_depth", 1, 10),
-            "learning_rate": trial.suggest_float(
-                f"{prefix}_learning_rate", 0.001, 1, log=True
-            ),
-            # "subsample": trial.suggest_float(f"{prefix}_estimator_subsample", 0.1, 1),
-            # "colsample_bytree": trial.suggest_float(
-            #     f"{prefix}_colsample_bytree", 0.1, 1
-            # ),
-            # "min_split_loss": trial.suggest_float(f"{prefix}_min_split_loss", 0.1, 10),
-            # "min_child_weight": trial.suggest_int(f"{prefix}_min_child_weight", 1, 100),
-            # "reg_alpha": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
-            # "reg_lambda": trial.suggest_float(f"{prefix}_reg_alpha", 0, 10),
+            "server": {
+                "num_rounds": trial.suggest_int(f"{prefix}_num_rounds", 1, 100),
+            },
+            "clients": {},
         }
+        for cohort_number in range(len(self.group_by.unique())):
+            hyperparameters["clients"][cohort_number] = {
+                "num_local_rounds": trial.suggest_int(
+                    f"{prefix}_num_local_rounds_{cohort_number}", 1, 10
+                ),
+                # "n_estimators": trial.suggest_int(f"{prefix}_n_estimators", 5, 200),
+                "max_depth": trial.suggest_int(
+                    f"{prefix}_max_depth_{cohort_number}", 1, 10
+                ),
+                "learning_rate": trial.suggest_float(
+                    f"{prefix}_learning_rate_{cohort_number}", 0.001, 1, log=True
+                ),
+                "subsample": trial.suggest_float(
+                    f"{prefix}_estimator_subsample_{cohort_number}", 0.1, 1
+                ),
+                "colsample_bytree": trial.suggest_float(
+                    f"{prefix}_colsample_bytree_{cohort_number}", 0.1, 1
+                ),
+                "min_split_loss": trial.suggest_float(
+                    f"{prefix}_min_split_loss_{cohort_number}", 0.1, 10
+                ),
+                "min_child_weight": trial.suggest_int(
+                    f"{prefix}_min_child_weight_{cohort_number}", 1, 100
+                ),
+                "reg_alpha": trial.suggest_float(
+                    f"{prefix}_reg_alpha_{cohort_number}", 0, 10
+                ),
+                "reg_lambda": trial.suggest_float(
+                    f"{prefix}_reg_alpha_{cohort_number}", 0, 10
+                ),
+            }
         return trial, hyperparameters
 
     def set_params(self, **kwargs):
@@ -611,7 +693,7 @@ class Federated(BaseEstimator):
         print(f"Training on {len(X_clients_train)} clients")
 
         server_future = ray.remote(self.start_server).remote(
-            len(X_clients_train), self.params
+            len(X_clients_train), self.params["server"]
         )
 
         sleep(0.1)
@@ -623,7 +705,9 @@ class Federated(BaseEstimator):
                 y_clients_train[client_id][1],
                 X_validate,
                 y_validate,
-                self.params,
+                self.params["clients"][client_id],
+                *self.args,
+                **self.kwargs,
             )
             for client_id in range(len(X_clients_train))
         ]
@@ -634,7 +718,13 @@ class Federated(BaseEstimator):
         print(history)
 
     def predict(self, X: DataFrame) -> Any:
-        return self.models[0].predict(X)
+        predictions = {}
+        for i, model in enumerate(self.models):
+            predictions[i] = model.predict(X)
+
+        print_formatted(compute_classification_scores_statistics(predictions))
+
+        return average_classification_scores(predictions)
 
 
 def evaluate_metrics_aggregation(eval_metrics):
@@ -680,6 +770,7 @@ def start_xgb_client(
     X_validate: DataFrame = None,
     y_validate: Target = None,
     hyperparameters: Dict = None,
+    sample_weights: Series = None,
 ):
     print(f"Starting client {client_id}")
 
@@ -693,26 +784,195 @@ def start_xgb_client(
         X_validate=X_validate,
         y_validate=y_validate,
         hyperparameters=hyperparameters,
+        sample_weights=sample_weights,
     )
 
     flwr.client.start_client(
         server_address="127.0.0.1:8080",
         client=client,
     )
+
     return client.model
     # return client
 
 
-class FederatedXGBoost(DFWrapped, Estimator):
+class FederatedXGBoost(Estimator):
+    def __init__(
+        self,
+        group_by: DataFrameGroupBy,
+        random_state: int,
+        target_type: TargetType = None,
+        **kwargs,
+    ):
+        self.group_by = group_by
+        self.random_state = random_state
+        self.target_type = target_type
+        self.model = None
+        self.local_models = {}
+        self.params = toolz.merge(
+            kwargs,
+            {
+                "global_iterations": 1,
+                "local_iterations": 10,
+            },
+        )
+
+    def fit(
+        self,
+        X: DataFrame,
+        y: Target,
+        X_validate: DataFrame = None,
+        y_validate: Target = None,
+    ):
+        local_X_y_train = {}
+        self.local_models = {}
+
+        for group_key, train_idx in self.group_by.groups.items():
+            X_train, y_train = loc(train_idx, X, ignore_not_present=True), loc(
+                train_idx, y, ignore_not_present=True
+            )
+            if len(X_train) == 0:
+                continue
+
+            local_X_y_train[group_key] = (X_train, y_train)
+
+            self.local_models[group_key] = XGBoost(
+                random_state=self.random_state,
+                target_type=self.target_type,
+                # n_estimators=10,
+            )
+            if "clients" in self.params:
+                self.local_models[group_key].set_params(
+                    **self.params["clients"][group_key]
+                )
+
+        global_model = None
+        model = None
+
+        for iteration_number in range(self.params["global_iterations"]):
+            for group_key, model, (X_train, y_train) in zip(
+                self.local_models.keys(),
+                self.local_models.values(),
+                local_X_y_train.values(),
+            ):
+                if iteration_number == 0:
+                    model.fit(X_train, y_train)
+                else:
+                    model.estimator.booster.load_model(bytearray(global_model))
+                    if "clients" in self.params:
+                        local_iterations = self.params["clients"][group_key][
+                            "local_iterations"
+                        ]
+                    else:
+                        local_iterations = self.params["local_iterations"]
+
+                    model.boost(X_train, y_train, rounds=local_iterations)
+
+            for group_key, model in zip(
+                self.local_models.keys(), self.local_models.values()
+            ):
+                local_model = model.estimator.booster.save_raw("json")
+                local_model_bytes = bytes(local_model)
+                global_model = aggregate(global_model, local_model_bytes)
+
+            if model:
+                self.model = model
+                self.model.estimator.booster.load_model(bytearray(global_model))
+
+    def predict(self, X: DataFrame):
+        return self.model.predict(X)
+
+    def suggest_optuna(
+        self, trial: Trial, X: DataFrame, prefix: str = ""
+    ) -> Tuple[Trial, Dict]:
+        hyperparameters = {
+            "clients": {},
+            "global_iterations": trial.suggest_int("global_iterations", 1, 50),
+        }
+        for cohort_name in self.group_by.groups.keys():
+            prefix = prefix + "_" + str(cohort_name)
+            hyperparameters["clients"][cohort_name] = XGBoost(
+                random_state=self.random_state,
+                target_type=self.target_type,
+            ).suggest_optuna(trial, X, prefix)[1]
+            hyperparameters["clients"][cohort_name][
+                "local_iterations"
+            ] = trial.suggest_int(f"{prefix}_local_iterations_{cohort_name}", 1, 50)
+
+        return trial, hyperparameters
+
+    def set_params(self, **kwargs):
+        self.params = kwargs
+
+
+def aggregate(
+    bst_prev_org: Optional[bytes],
+    bst_curr_org: bytes,
+) -> bytes:
+    """Conduct bagging aggregation for given trees."""
+    if not bst_prev_org:
+        return bst_curr_org
+
+    # Get the tree numbers
+    tree_num_prev, _ = _get_tree_nums(bst_prev_org)
+    _, paral_tree_num_curr = _get_tree_nums(bst_curr_org)
+
+    bst_prev = json.loads(bytearray(bst_prev_org))
+    bst_curr = json.loads(bytearray(bst_curr_org))
+
+    bst_prev["learner"]["gradient_booster"]["model"]["gbtree_model_param"][
+        "num_trees"
+    ] = str(tree_num_prev + paral_tree_num_curr)
+    iteration_indptr = bst_prev["learner"]["gradient_booster"]["model"][
+        "iteration_indptr"
+    ]
+    bst_prev["learner"]["gradient_booster"]["model"]["iteration_indptr"].append(
+        iteration_indptr[-1] + paral_tree_num_curr
+    )
+
+    # Aggregate new trees
+    trees_curr = bst_curr["learner"]["gradient_booster"]["model"]["trees"]
+    for tree_count in range(paral_tree_num_curr):
+        trees_curr[tree_count]["id"] = tree_num_prev + tree_count
+        bst_prev["learner"]["gradient_booster"]["model"]["trees"].append(
+            trees_curr[tree_count]
+        )
+        bst_prev["learner"]["gradient_booster"]["model"]["tree_info"].append(0)
+
+    bst_prev_bytes = bytes(json.dumps(bst_prev), "utf-8")
+
+    return bst_prev_bytes
+
+
+def _get_tree_nums(xgb_model_org: bytes) -> Tuple[int, int]:
+    xgb_model = json.loads(bytearray(xgb_model_org))
+    # Get the number of trees
+    tree_num = int(
+        xgb_model["learner"]["gradient_booster"]["model"]["gbtree_model_param"][
+            "num_trees"
+        ]
+    )
+    # Get the number of parallel trees
+    paral_tree_num = int(
+        xgb_model["learner"]["gradient_booster"]["model"]["gbtree_model_param"][
+            "num_parallel_tree"
+        ]
+    )
+    return tree_num, paral_tree_num
+
+
+class _FederatedXGBoost(DFWrapped, Estimator):
     booster: Booster = None
     X_train: DataFrame
     y_train: Target
+    sample_weights: Series = None
 
     def __init__(
         self,
         hyperparameters: Dict = None,
         X_validate: DataFrame = None,
         y_validate: Target = None,
+        sample_weights: Series = None,
     ):
         if hyperparameters is None:
             hyperparameters = {}
@@ -734,6 +994,7 @@ class FederatedXGBoost(DFWrapped, Estimator):
 
         self.X_validate = X_validate
         self.y_validate = y_validate
+        self.sample_weights = sample_weights
 
     def fit(self, X: DataFrame, y: Target, *args, **kwargs):
         self.save_fit_features(X)
@@ -744,6 +1005,12 @@ class FederatedXGBoost(DFWrapped, Estimator):
             y,
             enable_categorical=True,
         )
+        local_models = {}
+
+        if self.sample_weights:
+            train_dmatrix.set_info(
+                feature_weights=self.sample_weights.loc[X.index].to_numpy()
+            )
 
         evals = [(train_dmatrix, "train_xgboost")]
 
@@ -758,6 +1025,7 @@ class FederatedXGBoost(DFWrapped, Estimator):
                     "validate",
                 )
             )
+
         self.booster = xgb.train(
             self.booster_hyperparameters,
             train_dmatrix,
@@ -770,7 +1038,9 @@ class FederatedXGBoost(DFWrapped, Estimator):
             X,
             enable_categorical=True,
         )
+
         y_pred = self.booster.predict(test_dmatrix)
+
         return DataFrame(
             {
                 0: 1 - y_pred,
@@ -789,6 +1059,7 @@ class FederatedXGBoost(DFWrapped, Estimator):
             self.y_train,
             enable_categorical=True,
         )
+
         for i in range(self.hyperparameters["num_local_rounds"]):
             self.booster.update(train_dmatrix, self.booster.num_boosted_rounds())
 
@@ -800,8 +1071,112 @@ class FederatedXGBoost(DFWrapped, Estimator):
         ]
 
 
+class FederatedSurvivalXGBoost(DFWrapped, Estimator):
+    booster: Booster = None
+    X_train: DataFrame
+    y_train: Target
+    sample_weights: Series = None
+
+    def __init__(
+        self,
+        hyperparameters: Dict = None,
+        X_validate: DataFrame = None,
+        y_validate: Target = None,
+        sample_weights: Series = None,
+    ):
+        if hyperparameters is None:
+            hyperparameters = {}
+
+        self.hyperparameters = toolz.merge(
+            hyperparameters,
+            {
+                "num_local_rounds": 1,
+                "eta": 0.05,
+                "nthread": 16,
+                "num_parallel_tree": 1,
+                "subsample": 1,
+                "objective": "survival:aft",
+                "eval_metric": "aft-nloglik",
+                "aft_loss_distribution": "normal",
+                "aft_loss_distribution_scale": 1.20,
+                "learning_rate": 0.05,
+                "max_depth": 2,
+                "tree_method": "hist",
+                # "gpu_id": "0",
+            },
+        )
+
+        self.X_validate = X_validate
+        self.y_validate = y_validate
+        self.sample_weights = sample_weights
+
+    def fit(self, X: DataFrame, y: Target, *args, **kwargs):
+        self.save_fit_features(X)
+        self.X_train = X
+        self.y_train = y
+        train_dmatrix = survival_X_y_to_dmatrix(X, y)
+
+        if self.sample_weights:
+            train_dmatrix.set_info(
+                feature_weights=self.sample_weights.loc[X.index].to_numpy()
+            )
+
+        evals = [(train_dmatrix, "train_xgboost")]
+
+        # if self.X_validate is not None:
+        #     evals.append(
+        #         (
+        #             xgb.DMatrix(
+        #                 self.X_validate,
+        #                 self.y_validate,
+        #                 enable_categorical=True,
+        #             ),
+        #             "validate",
+        #         )
+        #     )
+        self.booster = xgb.train(
+            self.booster_hyperparameters,
+            train_dmatrix,
+            num_boost_round=self.hyperparameters["num_local_rounds"],
+            evals=evals,
+        )
+
+    def predict(self, X: DataFrame):
+        test_dmatrix = survival_X_y_to_dmatrix(X)
+        y_pred = self.booster.predict(test_dmatrix)
+        return -Series(y_pred, index=X.index)
+
+    @property
+    def booster_hyperparameters(self):
+        return dissoc(self.hyperparameters, "num_rounds", "num_local_rounds")
+
+    def local_boost(self):
+        train_dmatrix = survival_X_y_to_dmatrix(self.X_train, self.y_train)
+
+        for i in range(self.hyperparameters["num_local_rounds"]):
+            self.booster.update(train_dmatrix, self.booster.num_boosted_rounds())
+
+        return self.booster[
+            self.booster.num_boosted_rounds()
+            - self.hyperparameters[
+                "num_local_rounds"
+            ] : self.booster.num_boosted_rounds()
+        ]
+
+
+def survival_X_y_to_dmatrix(X: DataFrame, y: Target = None):
+    dtrain = DMatrix(X, enable_categorical=True)
+    if y is not None:
+        y_lower_bound = y["tte"].copy()
+        y_upper_bound = y["tte"].copy()
+        y_upper_bound[y["label"] == 0] = +np.inf
+        dtrain.set_float_info("label_lower_bound", y_lower_bound.to_numpy())
+        dtrain.set_float_info("label_upper_bound", y_upper_bound.to_numpy())
+    return dtrain
+
+
 class FederatedXGBoostFlowerClient(flwr.client.Client):
-    model: FederatedXGBoost = None
+    model = None
     config: str = None
 
     def __init__(
@@ -812,6 +1187,7 @@ class FederatedXGBoostFlowerClient(flwr.client.Client):
         X_validate=None,
         y_validate=None,
         hyperparameters=None,
+        sample_weights=None,
     ):
         self.hyperparameters = hyperparameters
         self.client_id = client_id
@@ -819,6 +1195,7 @@ class FederatedXGBoostFlowerClient(flwr.client.Client):
         self.y_train = y_train
         self.X_validate = X_validate
         self.y_validate = y_validate
+        self.sample_weights = sample_weights
 
     def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:
         _ = (self, ins)
@@ -832,10 +1209,11 @@ class FederatedXGBoostFlowerClient(flwr.client.Client):
 
     def fit(self, ins: FitIns) -> FitRes:
         if not self.model:
-            self.model = FederatedXGBoost(
+            self.model = FederatedSurvivalXGBoost(
                 X_validate=self.X_validate,
                 y_validate=self.y_validate,
                 hyperparameters=self.hyperparameters,
+                sample_weights=self.sample_weights,
             )
             self.model.fit(self.X_train, self.y_train)
             self.config = self.model.booster.save_config()
@@ -862,28 +1240,20 @@ class FederatedXGBoostFlowerClient(flwr.client.Client):
             metrics={},
         )
 
-    def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
-        valid_dmatrix = xgb.DMatrix(
-            self.X_validate,
-            self.y_validate,
-            enable_categorical=True,
-        )
-
-        eval_results = self.model.booster.eval_set(
-            evals=[(valid_dmatrix, "valid")],
-            iteration=self.model.booster.num_boosted_rounds() - 1,
-        )
-        auc = round(float(eval_results.split("\t")[1].split(":")[1]), 4)
-
-        return EvaluateRes(
-            status=Status(
-                code=Code.OK,
-                message="OK",
-            ),
-            loss=0.0,
-            num_examples=len(self.X_validate),
-            metrics={"AUC": auc},
-        )
+    # def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
+    #
+    #    self.model.predict(self.X_validate)
+    #
+    #
+    #     return EvaluateRes(
+    #         status=Status(
+    #             code=Code.OK,
+    #             message="OK",
+    #         ),
+    #         loss=0.0,
+    #         num_examples=0,
+    #         metrics={"AUC": 0},
+    #     )
 
 
 class FederatedForest(BaseEstimator):
@@ -892,7 +1262,7 @@ class FederatedForest(BaseEstimator):
         group_by: DataFrameGroupBy,
         random_state: int,
         n_estimators_local=100,
-        n_estimators_federated=200,
+        n_estimators_federated=2000,
         target_type: TargetType = None,
     ):
         self.group_by = group_by
@@ -917,22 +1287,37 @@ class FederatedForest(BaseEstimator):
                 train_idx, y, ignore_not_present=True
             )
 
+            if len(X_train) == 0:
+                continue
+
+            # subset_size = len(X_train)
+            # weight_subset = int(
+            #     self.n_estimators_federated
+            #     * (len(y.data["label"]) / len(y.data["label"]))
+            # )
+            # weight_subset = int(
+            #     self.n_estimators_federated * (subset_size / total_data)
+            # )
+            # choose_n_estimators = max(1, weight_subset)
             subset_size = len(X_train)
-            weight_subset = int(
-                self.n_estimators_federated
-                * (len(y.data["label"]) / len(y.data["label"]))
-            )
+            weight_subset = int(self.n_estimators_federated * (len(y_train) / len(y)))
             weight_subset = int(
                 self.n_estimators_federated * (subset_size / total_data)
             )
+
             choose_n_estimators = max(1, weight_subset)
+            choose_n_estimators = 10
+
+            print(choose_n_estimators)
+
             local_forest = RandomForest(
                 n_estimators=choose_n_estimators,
                 n_jobs=-1,
-                max_depth=3,
+                max_depth=2,
                 random_state=self.random_state,
                 target_type=get_target_type(y),
             )
+
             local_forest.fit(X_train, y_train)
             n_outputs_ = local_forest._estimator.n_outputs_
             # local_tree_scores = [
@@ -957,10 +1342,11 @@ class FederatedForest(BaseEstimator):
         #     local_best_trees_list, key=lambda x: x[0], reverse=True
         # )[: self.n_estimators_federated]
 
-        self.global_forest = local_forest
+        self.global_forest = RandomSurvivalForest()
+        self.global_forest.estimators_ = local_best_trees_list
         self.global_forest.estimator.n_estimators = len(local_best_trees_list)
         self.global_forest.estimator.estimators_ = local_best_trees_list
-
+        self.global_forest.n_outputs_ = len(local_best_trees_list)
         brier_per_model_per_group = defaultdict(dict)
 
         # for key_model, model in local_forests.items():
@@ -993,29 +1379,27 @@ class FederatedForest(BaseEstimator):
         return self
 
     def predict(self, X: DataFrame):
-        print("PREDICT")
-
         if not self.global_forest:
             raise Exception("The model has not been fitted yet.")
-        y_pred = self.global_forest.predict_survival_function(X)
 
-        return y_pred
-        # survival_functions = [
-        #     tree.predict_survival_function(X)
-        #     for tree in self.global_forest.estimator.estimators_
-        # ]
+        survs = [
+            [
+                # -surv_func(x[1]["AGE"] + 1200)
+                -surv_func(1200)
+                for x, surv_func in zip(X.iterrows(), tree.predict_survival_function(X))
+            ]
+            for tree in self.global_forest.estimators_
+        ]
 
-        # survs = [
-        #     mean((-fn[i](1200) for fn in survival_functions)) for i in range(len(X))
-        # ]
-        #
-        # return Series(
-        #     survs,
-        #     index=X.index,
-        # )
+        survs = [mean(surv_individual) for surv_individual in transpose(survs)]
+
+        return Series(
+            survs,
+            index=X.index,
+        )
 
 
-class ExtraTrees(Model):
+class ExtraTrees(PredictionMethod):
     def suggest_optuna(
         self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
@@ -1054,7 +1438,7 @@ class ExtraTrees(Model):
         return DFExtraTreesClassifier(random_state=self.random_state)
 
 
-class RandomForest(Model):
+class RandomForest(PredictionMethod):
     def suggest_optuna(
         self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
@@ -1145,14 +1529,16 @@ class RandomForest(Model):
 
             return DFRandomSurvivalForest(
                 random_state=self.random_state,
-                n_estimators=100,
+                n_estimators=300,
                 n_jobs=-1,
+                verbose=5,
+                max_depth=3,
             )
         else:
             raise NotImplementedError
 
 
-class DeepSurv(Model):
+class DeepSurv(PredictionMethod):
     def __init__(
         self,
         random_state: int,
@@ -1271,7 +1657,7 @@ class DeepSurv(Model):
         return model
 
 
-class LinearModel(Model):
+class LinearModel(PredictionMethod):
     def suggest_optuna(
         self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
@@ -1316,7 +1702,7 @@ class LinearModel(Model):
         elif self.target_type == TargetType.TIME_TO_EVENT:
             from hcve_lib.wrapped_sksurv import DFCoxnetSurvivalAnalysis
 
-            return DFCoxnetSurvivalAnalysis()
+            return DFCoxnetSurvivalAnalysis(fit_baseline_model=True)
         else:
             raise NotImplementedError
 
@@ -1344,7 +1730,7 @@ class LinearModel(Model):
         return new_config
 
 
-class CoxNet(Model):
+class CoxNet(PredictionMethod):
     def get_estimator(self, X=None):
         if self.target_type == TargetType.REGRESSION:
             return DFElasticNet(random_state=self.random_state, max_iter=1000)
@@ -1361,21 +1747,7 @@ class CoxNet(Model):
         return trial, hyperparameters
 
 
-class RandomSurvivalForest(Model):
-    def get_estimator(self, X=None):
-        from hcve_lib.wrapped_sksurv import DFCoxnetSurvivalAnalysis
-
-        return DFCoxnetSurvivalAnalysis(fit_baseline_model=True, n_alphas=1)
-
-    def suggest_optuna(self, trial: Trial, prefix: str = "") -> Tuple[Trial, Dict]:
-        hyperparameters = {
-            "l1_ratio": 1 - trial.suggest_loguniform(f"{prefix}_l1_ratio", 0.1, 1),
-            "alphas": [trial.suggest_loguniform(f"{prefix}_alphas", 10**-2, 1)],
-        }
-        return trial, hyperparameters
-
-
-class PooledCohort(Model):
+class PooledCohort(PredictionMethod):
     def get_estimator(self, X=None):
         return PooledCohort_()
 
@@ -1409,6 +1781,7 @@ class PooledCohort_(BaseEstimator, ClassifierMixin):
                 qrs = 94.03636286848551
 
             trt_ht = row["TRT_AH"]
+
             if row["SMK"] == 0 or row["SMK"] == 2:
                 csmk = 0
             elif row["SMK"] == 1:
@@ -1422,8 +1795,16 @@ class PooledCohort_(BaseEstimator, ClassifierMixin):
                 print(row["AGE"])
 
             ln_age_sq = ln_age**2
-            ln_tchol = log(row["CHOL"])
-            ln_hchol = log(row["HDL"])
+            try:
+                ln_tchol = log(row["CHOL"])
+            except ValueError:
+                print(row["CHOL"])
+
+            try:
+                ln_hchol = log(row["HDL"])
+            except ValueError:
+                print(row["HDL"])
+
             ln_sbp = log(row["SBP"])
             hdm = row["DIABETES"]
             if hdm != 0 and hdm != 1:

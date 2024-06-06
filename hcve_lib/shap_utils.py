@@ -28,7 +28,7 @@ def get_shap_values(
     X: DataFrame,
     is_test: bool = True,
     logger=DummyLogger(),
-    n_jobs=-1,
+    n_jobs=1,
     reporter: ProgressReporter = None,
 ) -> List[ShapResult]:
     predictions = list(get_predictions_from_results(results))

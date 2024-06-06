@@ -46,7 +46,7 @@ from hcve_lib.custom_types import (
 from hcve_lib.metrics import get_standard_metrics
 from hcve_lib.metrics_types import Metric
 from hcve_lib.custom_types import Prediction
-from hcve_lib.functional import pass_args, pipe, star_args, try_except, t
+from hcve_lib.functional import pass_args, pipe, star_args, try_except
 from hcve_lib.stats import confidence_interval
 from hcve_lib.tracking import log_metrics
 from hcve_lib.utils import (
@@ -86,6 +86,7 @@ def compute_metrics_merged_splits(
         metrics = get_standard_metrics(y)
 
     metric_values = {}
+
     for index_result, result in enumerate(results):
         prediction = merge_standardize_prediction(result)
         metric_values[index_result] = compute_metrics_prediction(
@@ -125,7 +126,7 @@ def compute_metrics_per_prediction(
         )
 
     metrics_renamed = [
-        {f"{split}_{num}": pred for split, pred in result.items()}
+        {(split, num): pred for split, pred in result.items()}
         for num, result in enumerate(metrics_runs)
     ]
 
@@ -232,6 +233,7 @@ def compute_metric_statistics(
     values: Iterable[Optional[float]],
 ) -> Union[ValueWithStatistics, ExceptionValue]:
     values_ = [value for value in values if isinstance(value, (float, int))]
+    print(values_)
     try:
         return ValueWithStatistics(
             mean=mean(values_) if len(values_) > 0 else np.nan,
@@ -385,12 +387,6 @@ def compute_ci_for_metrics_collection(
         ClassificationMetricsWithStatistics,
         metrics_with_ci_dict,
     )
-
-
-def get_1_class_y_score(y_score: Union[DataFrame, Series]) -> Series:
-    if isinstance(y_score, Series):
-        return y_score
-    return y_score.iloc[:, 1]
 
 
 ConfusionMatrixWithStatistics = GenericConfusionMatrix[ValueWithStatistics]

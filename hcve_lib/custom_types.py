@@ -76,6 +76,9 @@ class TargetObject:
         else:
             return self._inner.name
 
+    def __len__(self):
+        return len(self.data)
+
     @property
     def data(self):
         return self._inner

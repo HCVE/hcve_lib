@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional, List, Tuple, Dict
 import warnings
 import numpy as np
+import toolz
+import xgboost
 from optuna import Trial
 from pandas import Series, DataFrame
 from scipy.sparse import csr_matrix
@@ -26,7 +28,8 @@ from sklearn.preprocessing import (
     MinMaxScaler,
 )
 from sksurv.preprocessing import OneHotEncoder
-from xgboost import XGBClassifier, XGBRegressor, XGBModel
+from toolz import dissoc
+from xgboost import XGBClassifier, XGBRegressor, XGBModel, DMatrix
 
 from hcve_lib.custom_types import Estimator, Target
 from hcve_lib.data import to_survival_y_records
@@ -228,9 +231,73 @@ class DFXGBase(Estimator, ABC):
         return self.instance.get_params(deep=deep)
 
 
+class DFSurvivalXGB(Estimator):
+    def __init__(self, *args, **kwargs):
+        self.booster = None
+        self.params = kwargs
+
+    def set_params(self, **params):
+        self.params = toolz.merge(self.params, params)
+        return self
+
+    def get_params(self, deep=True):
+        return toolz.merge(
+            {
+                "objective": "survival:cox",
+                # "eval_metric": "aft-nloglik",
+                "aft_loss_distribution": "normal",
+                "aft_loss_distribution_scale": 1.20,
+                "learning_rate": 0.05,
+                "max_depth": 2,
+                "n_estimators": 100,
+                "device": "cuda",
+            },
+            self.params,
+        )
+
+    def fit(self, X: DataFrame, y: Target = None, **fit_params):
+        dtrain = get_dmatrix_cox_survival(X, y)
+        # y_lower_bound = y["tte"].copy()
+        # y_upper_bound = y["tte"].copy()
+        # y_upper_bound[y["label"] == 0] = +np.inf
+        # dtrain.set_float_info("label_lower_bound", y_lower_bound.to_numpy())
+        # dtrain.set_float_info("label_upper_bound", y_upper_bound.to_numpy())
+        params = self.get_params()
+        self.booster = xgboost.train(
+            dissoc(params, "n_estimators"),
+            dtrain,
+            num_boost_round=params["n_estimators"],
+            evals=[(dtrain, "train")],
+        )
+        return self
+
+    def boost(self, X: DataFrame, y: Target, rounds: int = None):
+        if rounds is None:
+            rounds = self.get_params()["n_estimators"]
+
+        dtrain = get_dmatrix_cox_survival(X, y)
+
+        for _ in range(rounds):
+            self.booster.update(dtrain, self.booster.num_boosted_rounds())
+        return self
+
+    def predict(self, X):
+        y_pred = self.booster.predict(DMatrix(X, enable_categorical=True))
+        # return -y_pred
+        return y_pred
+
+
+def get_dmatrix_cox_survival(X, y):
+    y_cox = [
+        _tte if _label == 1 else -_tte for _tte, _label in zip(y["tte"], y["label"])
+    ]
+    dtrain = DMatrix(X, y_cox, enable_categorical=True)
+    return dtrain
+
+
 class DFXGBClassifier(DFXGBase):
     def get_instance(self, *args, **kwargs) -> XGBModel:
-        return XGBClassifier(*args, **kwargs)
+        return XGBClassifier(*args, tree_method="gpu_hist", **kwargs)
 
 
 class DFXGBRegressor(DFXGBase):

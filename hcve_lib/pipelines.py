@@ -1,38 +1,20 @@
 import json
-import logging
-import multiprocessing
 from abc import abstractmethod
 from collections import defaultdict
 from functools import partial
 from functools import reduce
-from logging import INFO
 from logging import Logger
 from math import log, exp
 from statistics import mean
 from time import sleep
-from typing import Any, Tuple, Dict, Union, Iterable, Hashable, Optional
+from typing import Any, Tuple, Dict, Union, Iterable, Optional
 from typing import List, Callable
 
-import flwr
 import numpy as np
 import pandas
 import ray
 import toolz
 import xgboost as xgb
-from flwr.common import (
-    Code,
-    FitIns,
-    FitRes,
-    GetParametersIns,
-    GetParametersRes,
-    Parameters,
-    Status,
-    EvaluateIns,
-    EvaluateRes,
-    logger,
-)
-
-from flwr.common.logger import log as flwr_log, FLOWER_LOGGER, console_handler
 from numpy import transpose
 from optuna import Trial
 from pandas import DataFrame
@@ -40,7 +22,7 @@ from pandas import Series
 from pandas.core.groupby import DataFrameGroupBy
 from sklearn.base import BaseEstimator
 from sklearn.base import TransformerMixin, ClassifierMixin
-from sklearn.ensemble import StackingClassifier, StackingRegressor, ExtraTreesClassifier
+from sklearn.ensemble import StackingClassifier, StackingRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 from sksurv.ensemble import RandomSurvivalForest
@@ -56,17 +38,14 @@ from hcve_lib.custom_types import (
     Result,
     TargetObject,
     TargetData,
-    Prediction,
 )
 from hcve_lib.custom_types import ExceptionValue
 from hcve_lib.functional import t
-from hcve_lib.splitting import get_train_test
 from hcve_lib.utils import (
     is_numerical,
     estimate_categorical_columns,
     remove_column_prefix,
     loc,
-    run_parallel,
     compute_classification_scores_statistics,
     average_classification_scores,
 )
@@ -78,7 +57,6 @@ from hcve_lib.wrapped_sklearn import (
     DFLogisticRegression,
     DFColumnTransformer,
     DFSimpleImputer,
-    DFOrdinalEncoder,
     DFStandardScaler,
     DFElasticNet,
     DFXGBClassifier,
@@ -738,68 +716,6 @@ def evaluate_metrics_aggregation(eval_metrics):
     return metrics_aggregated
 
 
-def start_xgb_server(num_client: int, hyperparameters: Dict = None):
-    from flwr.server.strategy import FedXgbBagging
-
-    FLOWER_LOGGER.setLevel(logging.ERROR)
-    console_handler.setFormatter(logging.Formatter("%(message)s"))
-
-    hyperparameters = toolz.merge(
-        {
-            "num_rounds": 10,
-        },
-        hyperparameters or {},
-    )
-
-    strategy = FedXgbBagging(
-        min_fit_clients=num_client,
-        min_available_clients=num_client,
-        min_evaluate_clients=num_client,
-        fraction_fit=1,
-        fraction_evaluate=1.0,
-        evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation,
-    )
-
-    return flwr.server.start_server(
-        server_address="0.0.0.0:8080",
-        strategy=strategy,
-        config=flwr.server.ServerConfig(num_rounds=hyperparameters["num_rounds"]),
-    )
-
-
-def start_xgb_client(
-    client_id: int,
-    X: DataFrame,
-    y,
-    X_validate: DataFrame = None,
-    y_validate: Target = None,
-    hyperparameters: Dict = None,
-    sample_weights: Series = None,
-):
-    print(f"Starting client {client_id}")
-
-    FLOWER_LOGGER.setLevel(INFO)
-    console_handler.setFormatter(logging.Formatter("%(message)s"))
-
-    client = FederatedXGBoostFlowerClient(
-        client_id,
-        X,
-        y,
-        X_validate=X_validate,
-        y_validate=y_validate,
-        hyperparameters=hyperparameters,
-        sample_weights=sample_weights,
-    )
-
-    flwr.client.start_client(
-        server_address="127.0.0.1:8080",
-        client=client,
-    )
-
-    return client.model
-    # return client
-
-
 class FederatedXGBoost(Estimator):
     def __init__(
         self,
@@ -1177,87 +1093,6 @@ def survival_X_y_to_dmatrix(X: DataFrame, y: Target = None):
         dtrain.set_float_info("label_lower_bound", y_lower_bound.to_numpy())
         dtrain.set_float_info("label_upper_bound", y_upper_bound.to_numpy())
     return dtrain
-
-
-class FederatedXGBoostFlowerClient(flwr.client.Client):
-    model = None
-    config: str = None
-
-    def __init__(
-        self,
-        client_id,
-        X_train,
-        y_train,
-        X_validate=None,
-        y_validate=None,
-        hyperparameters=None,
-        sample_weights=None,
-    ):
-        self.hyperparameters = hyperparameters
-        self.client_id = client_id
-        self.X_train = X_train
-        self.y_train = y_train
-        self.X_validate = X_validate
-        self.y_validate = y_validate
-        self.sample_weights = sample_weights
-
-    def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:
-        _ = (self, ins)
-        return GetParametersRes(
-            status=Status(
-                code=Code.OK,
-                message="OK",
-            ),
-            parameters=Parameters(tensor_type="", tensors=[]),
-        )
-
-    def fit(self, ins: FitIns) -> FitRes:
-        if not self.model:
-            self.model = FederatedSurvivalXGBoost(
-                X_validate=self.X_validate,
-                y_validate=self.y_validate,
-                hyperparameters=self.hyperparameters,
-                sample_weights=self.sample_weights,
-            )
-            self.model.fit(self.X_train, self.y_train)
-            self.config = self.model.booster.save_config()
-        else:
-            global_model = None
-            for item in ins.parameters.tensors:
-                global_model = bytearray(item)
-
-            # Load global model into booster
-            self.model.booster.load_model(global_model)
-            self.model.booster.load_config(self.config)
-            self.model.local_boost()
-
-        local_model = self.model.booster.save_raw("json")
-        local_model_bytes = bytes(local_model)
-
-        return FitRes(
-            status=Status(
-                code=Code.OK,
-                message="OK",
-            ),
-            parameters=Parameters(tensor_type="", tensors=[local_model_bytes]),
-            num_examples=len(self.X_train),
-            metrics={},
-        )
-
-    # def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
-    #
-    #    self.model.predict(self.X_validate)
-    #
-    #
-    #     return EvaluateRes(
-    #         status=Status(
-    #             code=Code.OK,
-    #             message="OK",
-    #         ),
-    #         loss=0.0,
-    #         num_examples=0,
-    #         metrics={"AUC": 0},
-    #     )
 
 
 class FederatedForest(BaseEstimator):

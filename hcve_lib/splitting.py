@@ -139,7 +139,7 @@ def get_lm(
     include_local_in_test: bool = True,
 ) -> TrainTestSplits:
     # if bootstrap:
-        # _X = X.sample(frac=0.8, replace=False, random_state=random_state)
+    # _X = X.sample(frac=0.8, replace=False, random_state=random_state)
     # else:
     _X = X
 
@@ -197,6 +197,24 @@ def get_loo_splits(
         map(mapl(partial(iloc_to_loc, X))),
         list_to_dict_index,
     )
+
+
+@accept_extra_parameters
+def get_full_train(
+    X: DataFrame,
+) -> TrainTestSplits:
+    train_indices = X.index.tolist()
+    test_indices = []
+
+    train_loc_indices = X.loc[train_indices].index.tolist()
+    test_loc_indices = X.loc[test_indices].index.tolist()
+
+    return {
+        "full_train": (
+            train_loc_indices,
+            test_loc_indices,
+        )
+    }
 
 
 @accept_extra_parameters

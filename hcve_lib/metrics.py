@@ -203,8 +203,7 @@ class WeightedCIndex(Maximize, Metric):
         #     print(f'{e=}')
         #     return [ExceptionValue(exception=e)]
 
-    def compute(self):
-        ...
+    def compute(self): ...
 
 
 def get_y_proba_for_time(
@@ -241,7 +240,7 @@ class ROC_AUC(Maximize, Metric):
 
     def compute(
         self, y_true: Target, y_pred: DataFrame
-    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
+    ) -> Union[List[Union[ExceptionValue, float]], Union[ExceptionValue, float]]:
         try:
             if len(y_true.unique()) <= 2:
                 return [roc_auc_score(y_true, y_pred[1])]
@@ -278,8 +277,9 @@ class FunctionMetric(Metric):
 
     def compute(
         self, y_true: Target, y_pred: DataFrame
-    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
+    ) -> Union[List[Union[ExceptionValue, float]], Union[ExceptionValue, float]]:
         return self.function(y_true, y_pred)
+
 
 class PR_AUC(Maximize, Metric):
     def get_names(
@@ -357,7 +357,7 @@ class CIndex(Maximize, Metric):
 
     def compute(
         self, y_true: Target, y_pred: DataFrame
-    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
+    ) -> Union[List[Union[ExceptionValue, float]], Union[ExceptionValue, float]]:
         try:
             value = concordance_index_censored(
                 y_true.data["label"].to_numpy().astype(numpy.bool_),
@@ -476,7 +476,7 @@ class Brier(Minimize, Metric):
 
     def compute(
         self, y_true: Target, y_pred: DataFrame
-    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
+    ) -> Union[List[Union[ExceptionValue, float]], Union[ExceptionValue, float]]:
         raise NotImplementedError
 
     def get_names(
@@ -760,9 +760,11 @@ def precision_recall_curve_with_confusion(
 
     probas_pred_ = Series(
         [
-            probas_pred.loc[index]
-            if isinstance(probas_pred.loc[index], float)
-            else probas_pred.loc[index].iloc[0]
+            (
+                probas_pred.loc[index]
+                if isinstance(probas_pred.loc[index], float)
+                else probas_pred.loc[index].iloc[0]
+            )
             for index in probas_pred.index.drop_duplicates()
         ],
         index=index_intersection.drop_duplicates(),
@@ -770,9 +772,11 @@ def precision_recall_curve_with_confusion(
 
     y_true_ = Series(
         [
-            y_true.loc[index]
-            if isinstance(y_true.loc[index], float)
-            else y_true.loc[index].iloc[0]
+            (
+                y_true.loc[index]
+                if isinstance(y_true.loc[index], float)
+                else y_true.loc[index].iloc[0]
+            )
             for index in probas_pred_.index.drop_duplicates()
         ],
         index=probas_pred_.index.drop_duplicates(),
@@ -781,9 +785,11 @@ def precision_recall_curve_with_confusion(
     if sample_weight is not None:
         sample_weight_ = Series(
             [
-                sample_weight.loc[index]
-                if isinstance(sample_weight.loc[index], float)
-                else sample_weight.loc[index].iloc[0]
+                (
+                    sample_weight.loc[index]
+                    if isinstance(sample_weight.loc[index], float)
+                    else sample_weight.loc[index].iloc[0]
+                )
                 for index in probas_pred_.index.drop_duplicates()
             ],
             index=probas_pred_.index.drop_duplicates(),
@@ -829,7 +835,7 @@ class WeightedMetric(Metric):
 
     def compute(
         self, y_true: Target, y_pred: DataFrame
-    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
+    ) -> Union[List[Union[ExceptionValue, float]], Union[ExceptionValue, float]]:
         y_pred_resampled = y_pred.sample(frac=1, replace=True, weights=self.weights)
         y_true_resampled = loc(y_pred_resampled.index, y_true)
         return self.metric.compute(y_true_resampled, y_pred_resampled)
@@ -875,7 +881,7 @@ class StratifiedMetric(Metric):
 
     def compute(
         self, y_true: Target, y_pred: DataFrame
-    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
+    ) -> Union[List[Union[ExceptionValue, float]], Union[ExceptionValue, float]]:
         raise NotImplementedError
 
     def get_values_(self, prediction, y):

@@ -34,16 +34,14 @@ class Metric(ABC):
     @abstractmethod
     def compute(
         self, y_true: Target, y_pred: DataFrame
-    ) -> List[Union[ExceptionValue, float]] | Union[ExceptionValue, float]:
-        ...
+    ) -> Union[List[Union[ExceptionValue, float]], Union[ExceptionValue, float]]: ...
 
     @abstractmethod
     def get_names(
         self,
         prediction: Prediction,
         y: Target,
-    ) -> List[str]:
-        ...
+    ) -> List[str]: ...
 
     def get_values(
         self,
@@ -54,5 +52,4 @@ class Metric(ABC):
         return self.compute(_y, prediction["y_pred"])
 
     @abstractmethod
-    def get_direction(self) -> OptimizationDirection:
-        ...
+    def get_direction(self) -> OptimizationDirection: ...

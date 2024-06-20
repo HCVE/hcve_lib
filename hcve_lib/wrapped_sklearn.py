@@ -46,7 +46,7 @@ class DFWrapped:
     def fit_transform(self, X, *args, **kwargs):
         X_out = super().fit_transform(X, *args, **kwargs)
         self.fit_feature_names = self.get_fit_features(X, X_out)
-        out = use_df_fn(X, X_out, columns=self.fit_feature_names)
+        out = use_df_fn(X, X_out, columns=self.fit_feature_names, reuse_dtypes=False)
         return out
 
     def fit_predict(self, X, y, *args, **kwargs):
@@ -57,7 +57,7 @@ class DFWrapped:
     def predict(self, X, *args, **kwargs) -> Series:
         self.save_fit_features(X)
         y_pred = super().predict(X, *args, **kwargs)  # type: ignore
-        return y_pred
+        return Series(y_pred, index=X.index)
 
     def predict_proba(self, X, *args, **kwargs):
         self.save_fit_features(X)
@@ -70,7 +70,7 @@ class DFWrapped:
     def transform(self, X, *args, **kwargs):
         X_out = super().transform(X, *args, **kwargs)
         self.fit_feature_names = self.get_fit_features(X, X_out)
-        out = use_df_fn(X, X_out, columns=self.fit_feature_names)
+        out = use_df_fn(X, X_out, columns=self.fit_feature_names, reuse_dtypes=False).copy()
         return out
 
     def save_fit_features(self, X):
@@ -95,7 +95,7 @@ class DFWrapped:
             return X_out.columns  # type: ignore
         except AttributeError:
             try:
-                return super().get_feature_names_out(X.columns)  # type: ignore
+                return super().get_feature_names_out()  # type: ignore
             except (AttributeError, ValueError) as e:
                 try:
                     return super().get_feature_names()  # type: ignore
@@ -159,50 +159,49 @@ def use_df_fn(
 
 
 class DFColumnTransformer(DFWrapped, ColumnTransformer):
-    def fit_transform(self, X, *args, **kwargs):
-        n_features = 0
-        for index, transformer in enumerate(self.transformers):
-            transformer_list = list(transformer)
-            new_features = [column for column in transformer[2] if column in X.columns]
-            n_features += len(new_features)
-            transformer_list[2] = new_features
-            self.transformers[index] = tuple(transformer_list)
-
-        return super().fit_transform(X, *args, **kwargs)
-
-    def transform(self, X, *args, **kwargs):
-        if not hasattr(self, "_name_to_fitted_passthrough"):
-            self._name_to_fitted_passthrough = {}
-
-        return super().transform(X, *args, **kwargs)
+    ...
+    # def fit_transform(self, X, *args, **kwargs):
+    #     n_features = 0
+    #     for index, transformer in enumerate(self.transformers):
+    #         transformer_list = list(transformer)
+    #         print(transformer_list)
+    #         new_features = [column for column in transformer[2] if column in X.columns]
+    #         n_features += len(new_features)
+    #         transformer_list[2] = new_features
+    #         self.transformers[index] = tuple(transformer_list)
+    #
+    #     return super().fit_transform(X, *args, **kwargs)
+    #
+    # def transform(self, X, *args, **kwargs):
+    #     if not hasattr(self, "_name_to_fitted_passthrough"):
+    #         self._name_to_fitted_passthrough = {}
+    #
+    #     return super().transform(X, *args, **kwargs)
 
 
 class DFSimpleImputer(DFWrapped, SimpleImputer):
-    ...
+    def get_fit_features(self, X: DataFrame, X_out: DataFrame = None):
+        return X.columns.tolist()
 
 
 class DFStandardScaler(DFWrapped, StandardScaler):
-    ...
+    def get_fit_features(self, X: DataFrame, X_out: DataFrame = None):
+        return X.columns.tolist()
 
 
-class DFMinMaxScaler(DFWrapped, MinMaxScaler):
-    ...
+class DFMinMaxScaler(DFWrapped, MinMaxScaler): ...
 
 
-class DFOrdinalEncoder(DFWrapped, OrdinalEncoder):
-    ...
+class DFOrdinalEncoder(DFWrapped, OrdinalEncoder): ...
 
 
-class DFOneHotEncoder(DFWrapped, OneHotEncoder):
-    ...
+class DFOneHotEncoder(DFWrapped, OneHotEncoder): ...
 
 
-class DFVarianceThreshold(DFWrapped, VarianceThreshold):
-    ...
+class DFVarianceThreshold(DFWrapped, VarianceThreshold): ...
 
 
-class DFKNNImputer(DFWrapped, KNNImputer):
-    ...
+class DFKNNImputer(DFWrapped, KNNImputer): ...
 
 
 class DFXGBase(Estimator, ABC):
@@ -413,16 +412,13 @@ class ToSurvivalRecord:
         super().fit(X, to_survival_y_records(y))
 
 
-class DFBinMapper(DFWrapped, _BinMapper):
-    ...
+class DFBinMapper(DFWrapped, _BinMapper): ...
 
 
-class DFFunctionTransformer(DFWrapped, FunctionTransformer):
-    ...
+class DFFunctionTransformer(DFWrapped, FunctionTransformer): ...
 
 
-class DFExtraTreesClassifier(DFWrapped, ExtraTreesClassifier):
-    ...
+class DFExtraTreesClassifier(DFWrapped, ExtraTreesClassifier): ...
 
 
 class DFRandomForestClassifier(DFWrapped, RandomForestClassifier):
@@ -435,9 +431,7 @@ class DFRandomForestRegressor(DFWrapped, RandomForestRegressor):
         return Series(super().feature_importances_, index=self.get_feature_names())
 
 
-class DFBinarizer(DFWrapped, Binarizer):
-    ...
+class DFBinarizer(DFWrapped, Binarizer): ...
 
 
-class DFBaggingClassifier(DFWrapped, BaggingClassifier):
-    ...
+class DFBaggingClassifier(DFWrapped, BaggingClassifier): ...

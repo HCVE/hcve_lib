@@ -27,6 +27,7 @@ from hcve_lib.splitting import (
     resample_prediction_test,
     get_learning_curve_splits,
     get_per_subset_split,
+    get_full_train,
 )
 from hcve_lib.utils import cross_validate_apply_mask
 
@@ -83,6 +84,48 @@ def test_get_1_to_1_splits():
         (3, 1): ([60], [10, 30]),
         (3, 2): ([60], [40, 50]),
     }
+
+
+def test_get_full_train():
+    # Create a sample dataframe
+    data = {"A": [1, 2, 3, 4, 5], "B": [5, 4, 3, 2, 1]}
+    df = pd.DataFrame(data)
+
+    # Call the function
+    splits = get_full_train(df)
+
+    # Check that the returned dictionary has the expected key
+    assert (
+        "full_train" in splits
+    ), "The returned dictionary should have the 'full_train' key."
+
+    # Extract the train and test indices
+    train_indices, test_indices = splits["full_train"]
+
+    # Check that the training set contains all the indices
+    assert len(train_indices) == len(
+        df
+    ), "The training set should contain all the indices."
+
+    # Check that the test set is empty
+    assert len(test_indices) == 0, "The test set should be empty."
+
+    # Check that the training indices are correct
+    assert (
+        train_indices == df.index.tolist()
+    ), "The training indices should match the dataframe indices."
+
+    # Verify the content of the train indices
+    expected_train_indices = df.index.tolist()
+    assert (
+        train_indices == expected_train_indices
+    ), f"Expected train indices: {expected_train_indices}, but got: {train_indices}"
+
+    # Verify the content of the test indices
+    expected_test_indices = []
+    assert (
+        test_indices == expected_test_indices
+    ), f"Expected test indices: {expected_test_indices}, but got: {test_indices}"
 
 
 def test_train_test_filter():

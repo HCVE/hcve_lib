@@ -28,7 +28,6 @@ Cython = "*"
 multimethod = "*"
 ansi2html = "*"
 imblearn = "*"
-rpy2 = "*"
 statsmodels = "*"
 plotly = "*"
 pyaml = "*"
@@ -38,6 +37,7 @@ markupsafe = "2.0.1"
 
 
 [tool.poetry.dev-dependencies]
+rpy2 = "*"
 pytest = "*"
 vistir = "==0.6.1"
 [build-system]

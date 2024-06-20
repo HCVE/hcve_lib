@@ -1081,9 +1081,12 @@ def update_from_diff(obj: Union[object, Dict], diff: Union[Dict, object]) -> Non
             setattr if not isinstance(obj, Dict) else lambda d, k, v: d.update(**{k: v})
         )
 
-        if value == DELETE:
-            del obj[key]
-            continue
+        try:
+            if value == DELETE:
+                del obj[key]
+                continue
+        except ValueError:
+            pass
 
         if hasattr_(obj, key):
             attr = get_attr_(obj, key)

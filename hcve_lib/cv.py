@@ -1082,19 +1082,21 @@ def cross_validate_predict(
             X,
             ignore_not_present=True,
         )
-        predict_method_callable = getattr(model, predict_method)
-
-        y_pred = DataFrame(
-            predict_method_callable(X_test),
-        )
-        y_pred.index = X_test.index
+        if len(X_test) == 0:
+            y_pred = None
+        else:
+            predict_method_callable = getattr(model, predict_method)
+            y_pred = DataFrame(
+                predict_method_callable(X_test),
+            )
+            y_pred.index = X_test.index
 
         prediction = Prediction(
             split=split,
             X_columns=X.columns.tolist(),
             y_column=y.name,
             y_pred=y_pred,
-            model=model.estimators[0] if return_models else None,
+            model=model if return_models else None,
         )
 
         if mlflow:

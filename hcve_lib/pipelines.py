@@ -33,7 +33,6 @@ from flwr.common import (
 )
 
 from flwr.common.logger import log as flwr_log, FLOWER_LOGGER, console_handler
-from flwr.server.strategy import FedXgbBagging
 from numpy import transpose
 from optuna import Trial
 from pandas import DataFrame
@@ -85,7 +84,7 @@ from hcve_lib.wrapped_sklearn import (
     DFXGBClassifier,
     DFWrapped,
     DFExtraTreesClassifier,
-    DFSurvivalXGB,
+    DFSurvivalXGB, DFOneHotEncoder,
 )
 from hcve_lib.wrapped_sksurv import DFSurvivalGradientBoosting
 
@@ -331,6 +330,9 @@ class PredictionMethod(Estimator):
         else:
             raise AttributeError(f"AttributeError: object has no attribute '{item}'")
 
+    def __getstate__(self):
+        return self.__dict__
+
     def __getitem__(self, item):
         return self._estimator[item]
 
@@ -553,7 +555,7 @@ class XGBSEKNN(XGBSEBase):
 
 class SurvivalGradientBoosting(PredictionMethod):
     def get_estimator_(self, X: DataFrame = None) -> Any:
-        return DFSurvivalGradientBoosting()
+        return DFSurvivalGradientBoosting(verbose=1)
 
 
 class XGBSEBCE(XGBSEBase):
@@ -737,6 +739,8 @@ def evaluate_metrics_aggregation(eval_metrics):
 
 
 def start_xgb_server(num_client: int, hyperparameters: Dict = None):
+    from flwr.server.strategy import FedXgbBagging
+
     FLOWER_LOGGER.setLevel(logging.ERROR)
     console_handler.setFormatter(logging.Formatter("%(message)s"))
 
@@ -895,9 +899,9 @@ class FederatedXGBoost(Estimator):
                 random_state=self.random_state,
                 target_type=self.target_type,
             ).suggest_optuna(trial, X, prefix)[1]
-            hyperparameters["clients"][cohort_name][
-                "local_iterations"
-            ] = trial.suggest_int(f"{prefix}_local_iterations_{cohort_name}", 1, 50)
+            hyperparameters["clients"][cohort_name]["local_iterations"] = (
+                trial.suggest_int(f"{prefix}_local_iterations_{cohort_name}", 1, 50)
+            )
 
         return trial, hyperparameters
 
@@ -1529,7 +1533,7 @@ class RandomForest(PredictionMethod):
 
             return DFRandomSurvivalForest(
                 random_state=self.random_state,
-                n_estimators=300,
+                n_estimators=10,
                 n_jobs=-1,
                 verbose=5,
                 max_depth=3,
@@ -2053,7 +2057,7 @@ def get_supervised_pipeline(
             (
                 "encode",
                 DFColumnTransformer(
-                    [("categorical", DFOrdinalEncoder(), categorical)],
+                    [("categorical", DFOneHotEncoder(), categorical)],
                     remainder="passthrough",
                 ),
             ),

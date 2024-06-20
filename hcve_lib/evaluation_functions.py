@@ -237,9 +237,11 @@ def compute_metric_statistics(
     try:
         return ValueWithStatistics(
             mean=mean(values_) if len(values_) > 0 else np.nan,
-            ci=confidence_interval(values_)[1]
-            if len(values_) > 1
-            else (np.nan, np.nan),
+            ci=(
+                confidence_interval(values_)[1]
+                if len(values_) > 1
+                else (np.nan, np.nan)
+            ),
             std=std(values_) if len(values_) > 1 else np.nan,
         )
     except TypeError as e:
@@ -308,7 +310,11 @@ def compute_metric_prediction_items(
 ) -> Tuple[List, List]:
     new_names = metric.get_names(prediction, y)
     if not skip_metrics or any(n not in skip_metrics for n in new_names):
-        return new_names, metric.get_values(prediction, y)
+        return new_names, (
+            metric.get_values(prediction, y)
+            if prediction["y_pred"] is not None
+            else None
+        )
 
 
 def compute_metric_prediction(
@@ -399,12 +405,16 @@ def get_metrics_from_confusion_matrix(confusion_matrix) -> ConfusionMetrics:
         npv = 0
 
     return ConfusionMetrics(
-        precision=(confusion_matrix.tp / (confusion_matrix.tp + confusion_matrix.fp))
-        if (confusion_matrix.tp + confusion_matrix.fp) > 0
-        else NaN,
-        recall=(confusion_matrix.tp / (confusion_matrix.tp + confusion_matrix.fn))
-        if (confusion_matrix.tp + confusion_matrix.fn) > 0
-        else NaN,
+        precision=(
+            (confusion_matrix.tp / (confusion_matrix.tp + confusion_matrix.fp))
+            if (confusion_matrix.tp + confusion_matrix.fp) > 0
+            else NaN
+        ),
+        recall=(
+            (confusion_matrix.tp / (confusion_matrix.tp + confusion_matrix.fn))
+            if (confusion_matrix.tp + confusion_matrix.fn) > 0
+            else NaN
+        ),
         fpr=confusion_matrix.fp / (confusion_matrix.fp + confusion_matrix.tn),
         tnr=confusion_matrix.tn / (confusion_matrix.fp + confusion_matrix.tn),
         fnr=confusion_matrix.fn / (confusion_matrix.fn + confusion_matrix.tp),
@@ -694,7 +704,11 @@ def merge_standardize_prediction(result: Result) -> Prediction:
     standardized_result = valmap(
         lambda prediction: {
             **prediction,
-            "y_pred": DFStandardScaler().fit_transform(prediction["y_pred"]),
+            "y_pred": (
+                DFStandardScaler().fit_transform(prediction["y_pred"])
+                if prediction["y_pred"] is not None
+                else None
+            ),
         },
         result,
     )
@@ -702,13 +716,18 @@ def merge_standardize_prediction(result: Result) -> Prediction:
 
 
 def merge_predictions(result: Result) -> Prediction:
-    y_pred = pandas.concat(
-        [prediction["y_pred"] for cohort, prediction in result.items()]
-    )
+    try:
+        y_pred = pandas.concat(
+            [prediction["y_pred"] for cohort, prediction in result.items()]
+        )
+        split = (list(y_pred.index), list(y_pred.index))
+    except ValueError:
+        y_pred = None
+        split = None
 
     return Prediction(
         y_pred=y_pred,
-        split=(list(y_pred.index), list(y_pred.index)),
+        split=split,
         # y_proba=pipe(
         #     {
         #         # TODO: throwing exceptions

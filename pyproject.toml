@@ -1,0 +1,46 @@
+[tool.poetry]
+name = "hcve-lib"
+version = "0.1.20"
+description = ""
+authors = ["sitnarf <sitnarf@gmail.com>"]
+readme = "README.md"
+packages = [{include = "hcve_lib"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pandas = "*"
+toolz = "*"
+scikit-learn = "*"
+optuna = "*"
+frozendict = "*"
+pytest = "*"
+pre-commit = "*"
+matplotlib = "*"
+xgboost = "*"
+numpy = "*"
+pyhumps = "*"
+matplotlib-label-lines = "*"
+pytest-mock = "*"
+Flask-SocketIO = "*"
+mlflow = "*"
+torchtuples = "*"
+Cython = "*"
+multimethod = "*"
+ansi2html = "*"
+imblearn = "*"
+statsmodels = "*"
+plotly = "*"
+pyaml = "*"
+notebook = "*"
+dill = "*"
+markupsafe = "2.0.1"
+
+
+[tool.poetry.dev-dependencies]
+rpy2 = "*"
+pytest = "*"
+vistir = "==0.6.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -30,7 +30,6 @@ def or_fn(*fns: Callable[..., bool]) -> Callable[..., bool]:
 
 
 def star_args(function: Callable[..., T1]) -> Callable[[Iterable], T1]:
-
     def unpacked(args):
         return function(*args)
 
@@ -102,9 +101,9 @@ def find(callback: Callable[[T1], bool], list_to_search: Iterable[T1]) -> T1:
 
 
 def find_index(
-    callback: Callable[[float], bool],
-    list_to_search: Union[List[float], str],
-    reverse=False,
+        callback: Callable[[float], bool],
+        list_to_search: Union[List[float], str],
+        reverse=False,
 ) -> int:
     if reverse:
         iterable = add_index_reversed(list_to_search)
@@ -128,7 +127,6 @@ def do_nothing():
 
 
 def pass_value() -> Callable[[T1], T1]:
-
     def pass_value_callback(value):
         return value
 
@@ -141,7 +139,6 @@ def in_ci(string: str, sequence: Union[List, str]) -> bool:
 
 
 def partial_method(method: Callable, *args, **kwargs) -> Callable:
-
     def partial_callback(self: object):
         method(self, *args, **kwargs)
 
@@ -193,8 +190,8 @@ def unzip(iterable: Iterable) -> Iterable:
 
 
 def try_except(
-    try_clause: Callable,
-    except_clauses: Union[Dict, Callable],
+        try_clause: Callable,
+        except_clauses: Union[Dict, Callable],
 ) -> Any:
     # noinspection PyBroadException
     try:
@@ -271,7 +268,6 @@ def compact(iterable: Iterable) -> Iterable:
 
 
 def tap(callback: Callable[[T1], None]) -> Callable[[T1], T1]:
-
     def tap_callback(arg: T1) -> T1:
         callback(arg)
         return arg
@@ -280,8 +276,8 @@ def tap(callback: Callable[[T1], None]) -> Callable[[T1], T1]:
 
 
 def map_columns(
-    callback: Callable[[str, Series], Series],
-    data: DataFrame,
+        callback: Callable[[str, Series], Series],
+        data: DataFrame,
 ) -> DataFrame:
     data_new = data.copy()
     for column_name in data.columns:
@@ -293,8 +289,8 @@ def map_columns(
 
 
 def map_columns_(
-    data: DataFrame,
-    callback: Callable[[str, Series], Series],
+        data: DataFrame,
+        callback: Callable[[str, Series], Series],
 ) -> DataFrame:
     return map_columns(callback, data)
 
@@ -375,20 +371,20 @@ def itemmap_recursive(obj, mapper, levels=None):
 
 @multimethod
 def itemmap_recursive_(
-    obj,
-    mapper,
-    level,
-    levels,
+        obj,
+        mapper,
+        level,
+        levels,
 ):
     return obj
 
 
 @itemmap_recursive_.register(List)
 def _(
-    obj: List,
-    mapper: Callable,
-    level: int,
-    levels: Optional[int] = None,
+        obj: List,
+        mapper: Callable,
+        level: int,
+        levels: Optional[int] = None,
 ) -> List:
     if levels and level == levels:
         return obj
@@ -398,10 +394,10 @@ def _(
 
 @itemmap_recursive_.register(Tuple)
 def _(
-    obj: Tuple,
-    mapper: Callable,
-    level: int,
-    levels: Optional[int] = None,
+        obj: Tuple,
+        mapper: Callable,
+        level: int,
+        levels: Optional[int] = None,
 ) -> Tuple:
     if levels and level == levels:
         return obj
@@ -411,38 +407,37 @@ def _(
 
 @itemmap_recursive_.register(Dict)
 def _(
-    obj: Dict,
-    mapper: Callable,
-    level: int,
-    levels: Optional[int] = None,
+        obj: Dict,
+        mapper: Callable,
+        level: int,
+        levels: Optional[int] = None,
 ) -> Dict:
     if levels and levels == level:
         return obj
 
     return itemmap_(
         obj,
-        lambda item: statements(
-            mapped := mapper(*item, level),
-            (
-                mapped[0],
-                itemmap_recursive_(mapped[1], mapper, level + 1, levels),
-            ),
-        ),
+        partial(itemmap_recursive_dict_map, mapper=mapper, level=level, levels=levels),
     )
 
 
+def itemmap_recursive_dict_map(item, mapper: Callable, level: int, levels: Optional[int]) -> Tuple:
+    mapped = mapper(*item, level)
+    return mapped[0], itemmap_recursive_(mapped[1], mapper, level + 1, levels),
+
+
 def _item_recursive_iterable(
-    obj: Iterable,
-    mapper: Callable,
-    level: int,
-    levels: Optional[int] = None,
+        obj: Iterable,
+        mapper: Callable,
+        level: int,
+        levels: Optional[int] = None,
 ) -> Iterable:
     if levels and level == levels:
         return obj
 
     return map_with_index(
         lambda index,
-        value: itemmap_recursive_(
+               value: itemmap_recursive_(
             mapper(index, value, level)[1],  # Ignores index (key) mapping
             mapper,
             level + 1,
@@ -453,9 +448,9 @@ def _item_recursive_iterable(
 
 
 def map_recursive(
-    obj: Any,
-    mapper: Callable[[Any, int], Any],
-    levels: Optional[int] = None,
+        obj: Any,
+        mapper: Callable[[Any, int], Any],
+        levels: Optional[int] = None,
 ) -> Any:
     return itemmap_recursive(
         obj,
@@ -465,15 +460,15 @@ def map_recursive(
 
 
 def map_deep(
-    obj: Any,
-    mapper: Callable[[Any, int], Any],
-    levels: Optional[int] = None,
+        obj: Any,
+        mapper: Callable[[Any, int], Any],
+        levels: Optional[int] = None,
 ) -> Any:
     return itemmap_recursive(
         obj,
         lambda key,
-        value,
-        level: (
+               value,
+               level: (
             key,
             mapper(value, level) if level + 1 == levels or not isinstance(value, Dict) else value,
         ),

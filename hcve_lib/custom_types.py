@@ -4,15 +4,27 @@ from collections import namedtuple
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
-from logging import Logger
-from typing import TypedDict, Optional, Tuple, Generic, TypeVar, Any, Union, List, Dict, Hashable, Callable, Type
+from typing import (
+    Optional,
+    Tuple,
+    Generic,
+    TypeVar,
+    Any,
+    Union,
+    List,
+    Dict,
+    Hashable,
+    Callable,
+    Type,
+)
+from typing_extensions import TypedDict
 
 import numpy as np
 from optuna import Trial
 from pandas import Series, DataFrame
 from sklearn.base import BaseEstimator
 
-SurvivalPairTarget = namedtuple('SurvivalPairTarget', ('tte', 'label'))
+SurvivalPairTarget = namedtuple("SurvivalPairTarget", ("tte", "label"))
 
 TargetData = Union[DataFrame, Series, np.recarray]
 
@@ -28,7 +40,6 @@ TrainTestSplitter = Callable[..., TrainTestSplits]
 
 
 class StrEnum(Enum):
-
     def _generate_next_value_(name, start, count, last_values):
         return name
 
@@ -65,6 +76,9 @@ class TargetObject:
         else:
             return self._inner.name
 
+    def __len__(self):
+        return len(self.data)
+
     @property
     def data(self):
         return self._inner
@@ -74,33 +88,33 @@ class TargetObject:
         return cloned
 
     def __getattr__(self, item):
-        print(self._inner)
-        print(item)
         if hasattr(self._inner, item):
             return getattr(self._inner, item)
         else:
-            raise AttributeError(f'AttributeError: object has no attribute \'{item}\'')
+            raise AttributeError(f"AttributeError: object has no attribute '{item}'")
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+    def __getstate__(self):
+        return self.__dict__
 
     def __getitem__(self, item):
         return self._inner[item]
 
 
-Target = TargetObject | Series
+Target = Union[TargetObject, Series, DataFrame]
 
 
 class IndexAccess(ABC):
+    @abstractmethod
+    def __getitem__(self, key): ...
 
     @abstractmethod
-    def __getitem__(self, key):
-        ...
-
-    @abstractmethod
-    def __setitem__(self, key, value):
-        ...
+    def __setitem__(self, key, value): ...
 
 
 class DictAccess:
-
     def __delitem__(self, key):
         self.__delattr__(key)
 
@@ -112,13 +126,17 @@ class DictAccess:
 
 
 class Printable:
-
     def __str__(self):
-        return '\n'.join([f'{key}: {value}' for key, value in self.__dict__.items() if not key.startswith('_')])
+        return "\n".join(
+            [
+                f"{key}: {value}"
+                for key, value in self.__dict__.items()
+                if not key.startswith("_")
+            ]
+        )
 
 
 class ClassMapping(Mapping):
-
     def __getitem__(self, item):
         try:
             return self.__dict__[item]
@@ -132,110 +150,49 @@ class ClassMapping(Mapping):
         return len(self.__dict__.keys())
 
 
-class DataStructure(DictAccess, ClassMapping, Printable):
-    ...
+class DataStructure(DictAccess, ClassMapping, Printable): ...
 
 
 class TargetTransformer(BaseEstimator):
+    @abstractmethod
+    def fit(self, y): ...
 
     @abstractmethod
-    def fit(self, y):
-        ...
+    def transform(self, y): ...
 
     @abstractmethod
-    def transform(self, y):
-        ...
-
-    @abstractmethod
-    def inverse_transform(self, y):
-        ...
+    def inverse_transform(self, y): ...
 
 
-class Estimator(BaseEstimator, DictAccess):
+class Estimator:
+    def fit(
+        self,
+        X: DataFrame,
+        y: Target,
+        X_validate: DataFrame = None,
+        y_validate: Target = None,
+    ): ...
 
-    def fit(self, X, y, *args, **kwargs):
-        ...
+    def predict(self, X: DataFrame): ...
 
-    def predict(self, X: DataFrame):
-        ...
+    def predict_proba(self, X: DataFrame): ...
 
-    def predict_proba(self, X: DataFrame):
-        ...
+    def predict_survival_at_time(self, X: DataFrame, time: int, *args, **kwargs): ...
 
-    def predict_survival_at_time(self, X: DataFrame, time: int, *args, **kwargs):
-        ...
-
-    def suggest_optuna(self, trial: Trial, prefix: str = '') -> Tuple[Trial, Dict]:
+    def suggest_optuna(
+        self, trial: Trial, X: DataFrame, prefix: str = ""
+    ) -> Tuple[Trial, Dict]:
         return trial, {}
 
     def transform(self, X: DataFrame):
         return X
 
     def get_feature_importance(self):
-        raise NotImplementedError
+        raise NotImplementedError(f"{self} do not implement feature importance")
 
-
-class Model(Estimator, ABC):
-    estimator: Estimator
-    params: Dict
-    target_type: TargetType
-
-    def __init__(
-        self,
-        random_state: int,
-        logger: Logger = None,
-        log_mlflow: bool = True,
-        target_type: TargetType = TargetType.NA
-    ):
-        self.random_state = random_state
-        self.logger = logger
-        self.log_mlflow = log_mlflow
-        self.target_type = target_type
-        self.estimator = self.get_estimator()
-        self.params = {}
-
-    def fit(self, X: DataFrame, y: TargetData, *args, **kwargs):
-        self.estimator = self.get_estimator()
-        self.estimator.set_params(**self.params)
-        self.estimator.fit(X, y, *args, **kwargs)
-        return self
-
-    def transform(self, X: DataFrame):
-        return X
-
-    def predict(self, X: DataFrame, *args, **kwargs):
-        if self.target_type == TargetType.CLASSIFICATION:
-            return self.estimator.predict_proba(X, *args, **kwargs)
-        elif self.target_type == TargetType.REGRESSION:
-            return self.estimator.predict(X, *args, **kwargs)
-        elif self.target_type == TargetType.TIME_TO_EVENT:
-            return self.estimator.predict_survival_at_time(X, *args, **kwargs)
-
-    @abstractmethod
-    def get_estimator(self) -> Estimator:
-        raise NotImplementedError
-
-    def get_feature_importance(self) -> Series:
-        raise NotImplementedError
-
-    def get_p_value_feature_importance(self, X: DataFrame, y: Target) -> Series:
-        raise NotImplementedError
-
-    def set_params(self, **kwargs):
-        self.params = kwargs
-        self.estimator.set_params(**kwargs)
-
-    def get_params(self, **kwargs):
-        return self.estimator.get_params(**kwargs)
-
-    def __getattr__(self, item):
-        if hasattr(self.estimator, item):
-            return getattr(self.estimator, item)
-        else:
-            raise AttributeError(f'AttributeError: object has no attribute \'{item}\'')
-
-    def __getitem__(self, item):
-        return self.estimator[item]
+    @classmethod
+    def get_name(cls):
+        return cls.__name__
 
 
 class Pipeline:
@@ -250,8 +207,7 @@ class Pipeline:
         self.steps = steps
         self.optimize = optimize
 
-    def fit(self):
-        ...
+    def fit(self): ...
 
 
 class ClassificationMetrics(TypedDict):
@@ -294,7 +250,7 @@ class ClassificationMetricsWithStatistics(TypedDict):
     balanced_accuracy: ValueWithStatistics
 
 
-T1 = TypeVar('T1')
+T1 = TypeVar("T1")
 
 
 @dataclass
@@ -339,12 +295,16 @@ class Prediction(TypedDict, total=False):
     y_pred: Any
     y_column: str
     X_columns: List[str]
-    model: 'Model'
+    model: "Model"
     split: TrainTestIndex
 
 
-class Method(ABC):
+Result = Dict[Hashable, Prediction]
 
+Results = List[Result]
+
+
+class Method(ABC):
     @staticmethod
     @abstractmethod
     def get_estimator(
@@ -352,13 +312,11 @@ class Method(ABC):
         random_state: int,
         configuration: Dict,
         verbose=0,
-    ):
-        ...
+    ): ...
 
     @staticmethod
     @abstractmethod
-    def optuna(trial: Trial) -> Tuple[Trial, Dict]:
-        ...
+    def optuna(trial: Trial) -> Tuple[Trial, Dict]: ...
 
     @staticmethod
     @abstractmethod
@@ -367,13 +325,9 @@ class Method(ABC):
         y: Target,
         split: TrainTestIndex,
         model: Estimator,
-        method: Type['Method'],
+        method: Type["Method"],
         random_state: int,
-    ) -> Prediction:
-        ...
-
-
-Result = Dict[Hashable, Prediction]
+    ) -> Prediction: ...
 
 
 class ExceptionValue:
@@ -389,5 +343,10 @@ class ExceptionValue:
         self.value = value
         self.exception = exception
 
+    def __getstate__(self):
+        return {
+            "value": self.value,
+        }
+
     def __repr__(self):
-        return f'Value:\n {self.value}\n\n Exception:\n{self.exception}\n\n {self.traceback}'
+        return f"Value:\n {self.value}\n\n Exception:\n{self.exception}\n\n {self.traceback}"

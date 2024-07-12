@@ -5,14 +5,13 @@ import mlflow
 import numpy as np
 import optuna
 import toolz
-from mlflow import set_tag
+from mlflow import set_tag, active_run
 from optuna import Study
 from optuna.trial import TrialState, FrozenTrial
-from hcve_lib.tracking import log_metrics_ci
+from hcve_lib.tracking import log_metrics
 
 
 class EarlyStoppingCallback(object):
-
     def __init__(
         self,
         early_stopping_rounds: int,
@@ -55,34 +54,35 @@ def optuna_report_mlflow(study, _):
         return study
 
     set_tag(
-        'trials',
+        "trials",
         len(study.trials),
     )
+
     set_tag(
-        'failed',
+        "failed",
         toolz.count(1 for trial in study.trials if trial.state.name == "FAIL"),
     )
 
     mlflow.log_figure(
-        optuna.visualization.plot_optimization_history(study),
-        'optimization_history.html',
+        optuna.visualization.plot_optimization_history(study, error_bar=True),
+        "optimization_history.html",
     )
 
     mlflow.log_figure(
         optuna.visualization.plot_parallel_coordinate(study),
-        'parallel_coordinate_hyperparams.html',
+        "parallel_coordinate_hyperparams.html",
     )
     try:
         if len(study.get_trials(states=[TrialState.COMPLETE])) > 1:
             mlflow.log_figure(
                 optuna.visualization.plot_param_importances(study),
-                'plot_hyperparam_importances.html',
+                "plot_hyperparam_importances.html",
             )
 
-        log_metrics_ci(
-            prefix='inner_',
-            metrics=study.best_trial.user_attrs['metrics'],
-        )
+        # log_metrics(
+        #     prefix='inner_',
+        #     metrics=study.best_trial.user_attrs['metrics'],
+        # )
     except RuntimeError:
         pass
 

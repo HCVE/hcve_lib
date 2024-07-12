@@ -1,11 +1,12 @@
 from enum import Enum
 from functools import partial as p, partial
-from typing import TypedDict, List, Iterator, Optional, Iterable, Tuple, Any, Dict, Callable, Union
+from typing import List, Iterator, Optional, Iterable, Tuple, Any, Dict, Callable, Union
+from typing_extensions import TypedDict
 
 import numpy as np
 from pandas import DataFrame, Series
 
-from hcve_lib.custom_types import SurvivalPairTarget, Target
+from hcve_lib.custom_types import SurvivalPairTarget, Target, TargetObject
 from hcve_lib.functional import pipe, map_columns_
 from hcve_lib.utils import key_value_swap
 
@@ -45,7 +46,6 @@ def find_item(
     identifier: str,
     metadata: Metadata,
 ) -> Optional[MetadataItem]:
-
     for item in flatten_metadata(metadata):
         if item.get('identifier') == identifier:
             return item
@@ -68,7 +68,8 @@ def format_features(
     data: DataFrame,
     metadata: Metadata,
     axis: int = 1,
-    formatter: Callable[..., str] = None,
+    # formatter: Callable[..., str] = None,
+    formatter: Callable = None,
 ) -> DataFrame:
     if formatter is None:
         formatter = format_identifier
@@ -93,7 +94,6 @@ def inverse_format_feature_value(
     value: Any,
     metadata_item: Optional[MetadataItem],
 ) -> Any:
-
     if metadata_item is None or 'mapping' not in metadata_item or metadata_item['mapping'] is None:
         return value
 
@@ -156,11 +156,6 @@ def get_identifiers(metadata: Iterable[MetadataItem]) -> Iterator[str]:
             yield item['identifier_tte']
 
 
-def sanitize_data_inplace(data: DataFrame) -> DataFrame:
-    data.columns = [column.upper() for column in data.columns]
-    data['VISIT'] = data['VISIT'].str.upper()
-
-
 def get_targets(metadata: Metadata) -> Iterator[MetadataItem]:
     return pipe(
         metadata,
@@ -202,11 +197,10 @@ def get_survival_y(
     target_feature: str,
     metadata: Metadata,
 ) -> Target:
-
     metadata_item: Optional[MetadataItem] = find_item(target_feature, metadata)
 
     if metadata_item:
-        return Target(
+        return TargetObject(
             name=target_feature,
             data=data[[
                 metadata_item['identifier'],
@@ -224,10 +218,11 @@ def get_survival_y(
 
 
 def to_survival_y_records(survival_y: Target) -> np.recarray:
-    return survival_y['data'].to_records(
+    return survival_y.to_records(
         index=False,
         column_dtypes={
-            'label': np.bool_, 'tte': np.int32
+            'label': np.bool_,
+            'tte': np.int32
         },
     )
 
@@ -244,11 +239,12 @@ def binarize_event(
     survival_y: DataFrame,
     drop_censored: bool = True,
 ) -> Series:
-    y_binary = Series(index=survival_y.index.copy())
+    y_binary = Series(index=survival_y.index.copy(), dtype='float64')
     y_binary[(survival_y['tte'] > tte)] = 0
     y_binary[(survival_y['tte'] <= tte) & (survival_y['label'] == 1)] = 1
+    y_binary.name = survival_y.name + ' ' + str(tte/365) + ' years'
     if drop_censored:
-        return y_binary.dropna().astype(int)
+        return y_binary.dropna().astype('category')
     else:
         return y_binary
 

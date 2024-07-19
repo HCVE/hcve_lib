@@ -2,6 +2,7 @@ from typing import Union
 
 from pandas.core.dtypes.inference import is_integer
 
+from hcve_lib.custom_types import ValueWithStatistics, ValueWithCI
 from hcve_lib.functional import map_deep
 from hcve_lib.utils import is_numeric
 import yaml
@@ -9,9 +10,9 @@ import yaml
 
 def format_number(i: Union[float, int]) -> str:
     if is_integer(i):
-        return f'{i:,}'
+        return f"{i:,}"
     else:
-        return f'{i:,.2f}'
+        return f"{i:,.3f}"
 
 
 def format_percents(
@@ -19,7 +20,7 @@ def format_percents(
     decimals: int = 1,
     sign: bool = True,
 ) -> str:
-    return str(round(fraction * 100, decimals)) + ('%' if sign else '')
+    return str(round(fraction * 100, decimals)) + ("%" if sign else "")
 
 
 def format_value(value):
@@ -27,6 +28,10 @@ def format_value(value):
         return float(value)
     else:
         return repr(value)
+
+
+def format_value_ci(value: ValueWithCI) -> str:
+    return f'{format_number(value["mean"])} ({format_number(value["ci"][0])}-{format_number(value["ci"][1])})'
 
 
 def format_recursive(structure):

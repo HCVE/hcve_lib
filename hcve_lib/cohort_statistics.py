@@ -38,12 +38,12 @@ def get_events_rows(
             description_column = chain(
                 description_column,
                 [
-                    F'<b>{target["meaning"]}</b>',
-                    offset('Events per 1000 py'),
-                    offset('Incidence'),
-                    offset('Events'),
-                    offset('Median follow-up (years)'),
-                    offset('Missing'),
+                    f'<b>{target["meaning"]}</b>',
+                    offset("Events per 1000 py"),
+                    offset("Incidence"),
+                    offset("Events"),
+                    offset("Median follow-up (years)"),
+                    offset("Missing"),
                 ],
             )
             events = get_events(data, target)
@@ -54,38 +54,43 @@ def get_events_rows(
                 column_for_group = chain(
                     column_for_group,
                     [
-                        '',
+                        "",
                         format_number(get_events_per_person_years(data, target)),
                         format_percents(get_incidence(data, target)),
                         str(events),
-                        f'{median_fu:.1f} ({median_fu-(fu_iqr/2):.1f}-{median_fu+(fu_iqr/2):.1f})',
+                        f"{median_fu:.1f} ({median_fu-(fu_iqr/2):.1f}-{median_fu+(fu_iqr/2):.1f})",
                         format_percents(get_missing_fraction(data, target)),
                     ],
                 )
             else:
                 column_for_group = chain(
                     column_for_group,
-                    [' '] * 4 + [
+                    [" "] * 4
+                    + [
                         format_percents(get_missing_fraction(data, target)),
                     ],
                 )
 
         if column_number == 0:
-            columns.append(pipe(
-                description_column,
+            columns.append(
+                pipe(
+                    description_column,
+                    make_value_cells,
+                    list,
+                )
+            )
+        columns.append(
+            pipe(
+                column_for_group,
                 make_value_cells,
                 list,
-            ))
-        columns.append(pipe(
-            column_for_group,
-            make_value_cells,
-            list,
-        ))
-    rows = [''.join(make_events_header(data_grouped))]
+            )
+        )
+    rows = ["".join(make_events_header(data_grouped))]
     rows = chain(rows, zip(*columns))
-    rows = map(''.join, rows)
+    rows = map("".join, rows)
     rows = list(rows)
-    return (f'<tr>{row}</tr>' for row in rows)
+    return (f"<tr>{row}</tr>" for row in rows)
 
 
 def get_events_per_person_years(
@@ -95,7 +100,7 @@ def get_events_per_person_years(
 ) -> float:
     events = get_events(data, feature)
     total_person_years = data[f'{feature["identifier_tte"]}'].sum() / 365
-    events_per_person_year = (events / total_person_years)
+    events_per_person_year = events / total_person_years
     return events_per_person_year * desired_person_years
 
 
@@ -110,25 +115,25 @@ def get_events(
     data: DataFrame,
     feature: MetadataItem,
 ) -> float:
-    return data[feature['identifier']].value_counts()[1]
+    return data[feature["identifier"]].value_counts()[1]
 
 
 def get_non_missing(
     data: DataFrame,
     feature: MetadataItem,
 ) -> float:
-    return data[feature['identifier']].value_counts().sum()
+    return data[feature["identifier"]].value_counts().sum()
 
 
 def get_missing(
     data: DataFrame,
     feature: MetadataItem,
 ) -> float:
-    return data[feature['identifier']].isna().sum()
+    return data[feature["identifier"]].isna().sum()
 
 
 def get_median_follow_up(data, feature):
-    return data[feature['identifier_tte']].median()
+    return data[feature["identifier_tte"]].median()
 
 
 def get_missing_fraction(
@@ -139,15 +144,15 @@ def get_missing_fraction(
 
 
 def make_events_header(X_grouped: DataFrameGroupBy) -> Iterable[str]:
-    yield '<th></th>'
+    yield "<th></th>"
     for group_name, X_group in X_grouped:
-        yield f'<th>{group_name} (n={len(X_group)})</th>'
+        yield f"<th>{group_name} (n={len(X_group)})</th>"
 
 
 def get_characteristics_table(
     metadata: Metadata,
     X: DataFrame,
-    X_grouped: DataFrameGroupBy,
+    X_grouped: DataFrameGroupBy = None,
 ) -> str:
     return make_table_from_rows(get_rows_characteristics(metadata, X, X_grouped))
 
@@ -162,44 +167,47 @@ def get_missing_table(
 
 def make_table_from_rows(rows: Iterable[str]):
     rows = os.linesep.join(rows)
-    return f'<table>' + \
-           f'{rows}' + \
-           f'</table>'
+    return f"<table>" + f"{rows}" + f"</table>"
 
 
 def make_header_characteristics(X_grouped: DataFrameGroupBy) -> Iterable[str]:
-    yield '<th></th>'
+    yield "<th></th>"
     for group_name, X_group in X_grouped:
-        yield f'<th>{group_name} (n={len(X_group)})</th>'
+        yield f"<th>{group_name} (n={len(X_group)})</th>"
 
 
 def make_header_missing(X_grouped: DataFrameGroupBy) -> Iterable[str]:
-    yield '<th></th>'
+    yield "<th></th>"
     for group_name, X_group in X_grouped:
-        yield f'<th>{group_name} (n={len(X_group)})</th>'
+        yield f"<th>{group_name} (n={len(X_group)})</th>"
 
 
 def get_rows_characteristics(
     metadata: Metadata,
     X: DataFrame,
-    X_grouped: DataFrameGroupBy,
+    X_grouped: DataFrameGroupBy = None,
 ) -> Iterable[str]:
     names = make_description_cells(get_description_column(metadata, X))
     value_columns = []
+    if X_grouped is None:
+        X_grouped = [("All", X)]
+
     for name, X_cohort in X_grouped:
-        value_columns.append(pipe(
-            get_value_column(metadata, X_cohort),
-            make_value_cells,
-            list,
-        ))
+        value_columns.append(
+            pipe(
+                get_value_column(metadata, X_cohort),
+                make_value_cells,
+                list,
+            )
+        )
 
     value_rows = zip(names, *value_columns)
-    rows = [''.join(make_header_characteristics(X_grouped))]
+    rows = ["".join(make_header_characteristics(X_grouped))]
     rows = chain(rows, value_rows)
-    rows = map(''.join, rows)
+    rows = map("".join, rows)
     rows = list(rows)
 
-    return (f'<tr>{row}</tr>' for row in rows)
+    return (f"<tr>{row}</tr>" for row in rows)
 
 
 def get_rows_missing(
@@ -210,20 +218,21 @@ def get_rows_missing(
     names = make_description_cells(get_description_column(metadata, X))
     value_columns = []
     for name, X_cohort in X_grouped:
-
-        value_columns.append(pipe(
-            get_missing_column(metadata, X_cohort),
-            make_value_cells,
-            list,
-        ))
+        value_columns.append(
+            pipe(
+                get_missing_column(metadata, X_cohort),
+                make_value_cells,
+                list,
+            )
+        )
     value_rows = zip(names, *value_columns)
 
-    rows = [''.join(make_header_missing(X_grouped))]
+    rows = ["".join(make_header_missing(X_grouped))]
     rows = chain(rows, value_rows)
-    rows = map(''.join, rows)
+    rows = map("".join, rows)
     rows = list(rows)
 
-    return (f'<tr>{row}</tr>' for row in rows)
+    return (f"<tr>{row}</tr>" for row in rows)
 
 
 def iterate_over_items(
@@ -232,11 +241,13 @@ def iterate_over_items(
     level: int = 0,
 ) -> Iterable[Tuple[MetadataItem, int]]:
     for item in items:
-        if (item['identifier'] not in X.columns and 'children' not in item) or item.get('type') == 'outcome':
+        if (item["identifier"] not in X.columns and "children" not in item) or item.get(
+            "type"
+        ) == "outcome":
             continue
         yield item, level
-        if 'children' in item:
-            yield from iterate_over_items(item['children'], X, level + 1)
+        if "children" in item:
+            yield from iterate_over_items(item["children"], X, level + 1)
 
 
 def get_description_column(
@@ -246,27 +257,29 @@ def get_description_column(
     categorical_features, continuous_features = categorize_features(X)
 
     for item, level in iterate_over_items(items, X):
+        mapping = item.get("mapping")
         if level == 0:
-            yield level, 'category', item.get("meaning", item["identifier"])
+            yield level, "category", item.get("meaning", item["identifier"])
         elif level >= 1:
             label = item.get("meaning", item["identifier"])
-            if 'unit' in item:
+            if "unit" in item:
                 label += f', {item["unit"]}'
-            if (item['identifier'] in categorical_features) \
-                    and (mapping := item.get('mapping')):
-                if not (set(mapping.values()) == {'Yes', 'No'}):
-                    label += ', ' + (' / '.join(map(str, mapping.values())))
+            if (item["identifier"] in categorical_features) and mapping:
+                if not (set(mapping.values()) == {"Yes", "No"}):
+                    label += ", " + (" / ".join(map(str, mapping.values())))
                 label += ", n (%)"
-            yield level, 'item', label
+            yield level, "item", label
 
 
-def make_description_cells(descriptions: Iterable[Tuple[int, str, str]]) -> Iterable[str]:
+def make_description_cells(
+    descriptions: Iterable[Tuple[int, str, str]]
+) -> Iterable[str]:
     for level, item_type, text in descriptions:
         if level == 0:
-            text_formatted = f'<b>{text}</b>'
+            text_formatted = f"<b>{text}</b>"
         else:
             text_formatted = text
-        yield f'<td>{offset(text_formatted, level)}</td>'
+        yield f"<td>{offset(text_formatted, level)}</td>"
 
 
 def offset(what: str, level: int = 2) -> str:
@@ -281,10 +294,10 @@ def get_value_column(
     categorical_features, continuous_features = categorize_features(X)
     for item, level in iterate_over_items(metadata, X):
         if level == 0:
-            yield ''
+            yield ""
         elif level >= 1:
-            if item['identifier'] in continuous_features:
-                yield get_continuous_statistic(X[item['identifier']])
+            if item["identifier"] in continuous_features:
+                yield get_continuous_statistic(X[item["identifier"]])
             else:
                 yield get_categorical_statistic(X, item, logger)
 
@@ -295,13 +308,13 @@ def get_missing_column(
 ) -> Iterable[str]:
     for item, level in iterate_over_items(metadata, X):
         if level == 0:
-            yield ''
+            yield ""
         elif level >= 1:
-            missing_fraction = (len(X[X[item['identifier']].isna()]) / len(X)) * 100
+            missing_fraction = (len(X[X[item["identifier"]].isna()]) / len(X)) * 100
             if missing_fraction == 0:
-                yield ''
+                yield ""
             else:
-                yield f'{missing_fraction:.1f}'
+                yield f"{missing_fraction:.1f}"
 
 
 def get_categorical_statistic(
@@ -309,50 +322,55 @@ def get_categorical_statistic(
     item: MetadataItem,
     logger: Optional[Logger],
 ) -> str:
-    value_counts_data = X[item['identifier']].value_counts()
-    item_mapping = item.get('mapping')
+    value_counts_data = X[item["identifier"]].value_counts()
+    item_mapping = item.get("mapping")
     if not item_mapping:
-        raise Exception('Missing mapping of categorical feature in metadata')
+        item_mapping = {key: key for key in value_counts_data.keys()}
 
     try:
-        value_counts = {item_mapping[key]: value_counts_data[key] for key in item_mapping.keys()}
+        value_counts = {
+            item_mapping[key]: value_counts_data[key] for key in item_mapping.keys()
+        }
     except IndexError as e:
         if logger:
-            logger.error(item['identifier'], e)
+            logger.error(item["identifier"], e)
         raise e
 
-    yes_no_feature = item_mapping and set(item_mapping.values()) == {'Yes', 'No'}
+    yes_no_feature = item_mapping and set(item_mapping.values()) == {"Yes", "No"}
 
     if not yes_no_feature:
         value_filtered = value_counts
     else:
-        value_filtered = keyfilter(lambda key: key == 'Yes', value_counts)
+        value_filtered = keyfilter(lambda key: key == "Yes", value_counts)
 
-    len_X_non_missing = len(X[item['identifier']].dropna())
+    len_X_non_missing = len(X[item["identifier"]].dropna())
     value_fraction = valmap_(
         value_filtered,
-        lambda value_count: (value_count / len_X_non_missing) * 100 if len_X_non_missing != 0 else np.nan,
+        lambda value_count: (value_count / len_X_non_missing) * 100
+        if len_X_non_missing != 0
+        else np.nan,
     )
 
     output = starmap_(
         zip(value_fraction.values(), value_filtered.values()),
-        lambda fraction,
-        count: '—' if isna(fraction) else (f'{format_number(count)}' + f' ({fraction:.0f})'),
+        lambda fraction, count: "—"
+        if isna(fraction)
+        else (f"{format_number(count)}" + f" ({fraction:.0f})"),
     )
 
-    return ' / '.join(output)
+    return " / ".join(output)
 
 
 def get_continuous_statistic(feature_values: Series) -> str:
     mean_value = float(feature_values.mean())
-    spread_statistic = f' ± {round_significant(std(feature_values))}'
+    spread_statistic = f" ± {round_significant(std(feature_values))}"
     if isna(mean_value):
-        return '—'
+        return "—"
     else:
         mean_value_rounded = round_significant(mean_value)
-        return str(f'{mean_value_rounded}') + spread_statistic
+        return str(f"{mean_value_rounded}") + spread_statistic
 
 
 def make_value_cells(column: Iterable[str]) -> Iterable[str]:
     for value in column:
-        yield f'<td>{value}</td>'
+        yield f"<td>{value}</td>"

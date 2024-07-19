@@ -451,6 +451,21 @@ def transpose_dict(
 T1 = TypeVar("T1")
 
 
+def transpose_list_of_dicts(list_of_dicts):
+    if not list_of_dicts:
+        return {}
+
+    # Initialize the result dictionary with empty lists for each key
+    transposed_dict = {key: [] for key in list_of_dicts[0]}
+
+    # Populate the lists with values from each dictionary
+    for d in list_of_dicts:
+        for key, value in d.items():
+            transposed_dict[key].append(value)
+
+    return transposed_dict
+
+
 def transpose_list(l: List[List[T1]]) -> List[List[T1]]:
     return list(map(list, itertools.zip_longest(*l, fillvalue=None)))
 

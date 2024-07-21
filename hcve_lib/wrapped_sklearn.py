@@ -41,9 +41,6 @@ class DFWrapped:
     fit_feature_names: List[str]
 
     def fit(self, X: DataFrame, y: Target = None, *args, **kwargs):
-        print("FITTING")
-        print(self)
-        print(self.get_params())
         self.save_fit_features(X)
 
         if not isinstance(X, numpy.ndarray):
@@ -60,9 +57,6 @@ class DFWrapped:
         return out
 
     def fit_predict(self, X, y, *args, **kwargs):
-        print("FITTING")
-        print(self)
-        print(self.get_params())
         X_out = super().fit_predict(X, y, *args, **kwargs)
         self.fit_feature_names = self.get_fit_features(X, X_out)
         return use_df_fn(X, X_out, columns=self.fit_feature_names)
@@ -139,12 +133,12 @@ def series_count_inf(series: Series) -> int:
 
 
 def use_df_fn(
-    input_data_frame: DataFrame,
-    output_data: Any,
-    reuse_columns=True,
-    reuse_index=True,
-    reuse_dtypes=True,
-    columns: Optional[List] = None,
+        input_data_frame: DataFrame,
+        output_data: Any,
+        reuse_columns=True,
+        reuse_index=True,
+        reuse_dtypes=True,
+        columns: Optional[List] = None,
 ) -> DataFrame:
     df_arguments = {}
 
@@ -162,7 +156,7 @@ def use_df_fn(
 
     dtypes = dict(
         zip(
-            df_arguments["columns"],
+            input_data_frame.columns,
             input_data_frame.dtypes,
         )
     )
@@ -179,19 +173,30 @@ def use_df_fn(
 
 
 class DFColumnTransformer(DFWrapped, ColumnTransformer):
-    ...
-    # def fit_transform(self, X, *args, **kwargs):
-    #     n_features = 0
-    #     for index, transformer in enumerate(self.transformers):
-    #         transformer_list = list(transformer)
-    #         print(transformer_list)
-    #         new_features = [column for column in transformer[2] if column in X.columns]
-    #         n_features += len(new_features)
-    #         transformer_list[2] = new_features
-    #         self.transformers[index] = tuple(transformer_list)
-    #
-    #     return super().fit_transform(X, *args, **kwargs)
-    #
+
+    def __init__(self, transformers, *, remainder='drop', sparse_threshold=0.3,
+                 n_jobs=None, transformer_weights=None, verbose=False, verbose_feature_names_out=True):
+        super().__init__(transformers, remainder=remainder, sparse_threshold=sparse_threshold,
+                         n_jobs=n_jobs, transformer_weights=transformer_weights, verbose=verbose,
+                         verbose_feature_names_out=verbose_feature_names_out)
+
+    def fit_transform(self, X, y=None):
+        self._update_transformers(X)
+        return super().fit_transform(X, y)
+
+    def _update_transformers(self, X):
+        if isinstance(X, DataFrame):
+            existing_columns = X.columns
+            updated_transformers = []
+            for name, trans, cols in self.transformers:
+                if isinstance(cols, list):
+                    cols = [col for col in cols if col in existing_columns]
+                elif isinstance(cols, str):
+                    if cols not in existing_columns:
+                        cols = []
+                updated_transformers.append((name, trans, cols))
+            self.transformers = updated_transformers
+
     # def transform(self, X, *args, **kwargs):
     #     if not hasattr(self, "_name_to_fitted_passthrough"):
     #         self._name_to_fitted_passthrough = {}
@@ -332,13 +337,13 @@ class DFPipeline(Pipeline, Estimator):
     y_name: Optional[str]
 
     def __init__(
-        self,
-        steps,
-        *,
-        memory=None,
-        verbose=False,
-        transform_y: Estimator = None,
-        skip_optimization: bool = False,
+            self,
+            steps,
+            *,
+            memory=None,
+            verbose=False,
+            transform_y: Estimator = None,
+            skip_optimization: bool = False,
     ):
         super().__init__(steps, memory=memory, verbose=verbose)
         self.skip_optimization = skip_optimization
@@ -382,7 +387,7 @@ class DFPipeline(Pipeline, Estimator):
         return Xt
 
     def suggest_optuna_(
-        self, trial: Trial, X: DataFrame, prefix: str = ""
+            self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         if not self.skip_optimization:
             return self.suggest_optuna(trial, X, prefix)
@@ -390,15 +395,14 @@ class DFPipeline(Pipeline, Estimator):
             return trial, {}
 
     def suggest_optuna(
-        self, trial: Trial, X: DataFrame, prefix: str = ""
+            self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         prefix_ = (prefix + "_") if prefix else ""
         hyperparamaters = {
             name: step.suggest_optuna_(trial, X, prefix_)[1]
             for (name, step) in self.steps
-            if hasattr(step, "suggest_optuna")
+            if hasattr(step, "suggest_optuna_")
         }
-        print("PIPELINE hyperparamaters", hyperparamaters)
 
         return trial, hyperparamaters
 

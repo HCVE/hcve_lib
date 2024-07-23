@@ -1912,20 +1912,20 @@ class LinearModel(PredictionMethod):
     ) -> Tuple[Trial, Dict]:
         if self.target_type == TargetType.REGRESSION:
             hyperparameters = {
-                "alpha": trial.suggest_float(f"{prefix}_alpha", 0.1, 100.0, log=True),
-                "l1_ratio": trial.suggest_float(f"{prefix}_l1_ratio", 0, 1),
+                "alpha": trial.suggest_float(f"{prefix}alpha", 0.1, 100.0, log=True),
+                "l1_ratio": trial.suggest_float(f"{prefix}l1_ratio", 0, 1),
             }
         elif self.target_type == TargetType.CLASSIFICATION:
             hyperparameters = {
                 "penalty": trial.suggest_categorical(
-                    f"{prefix}_penalty", ["l1", "l2", "elasticnet"]
+                    f"{prefix}penalty", ["l1", "l2", "elasticnet"]
                 ),
-                "C": trial.suggest_float(f"{prefix}_C", 0.01, 10**3, log=True),
+                "C": trial.suggest_float(f"{prefix}C", 0.01, 10**3, log=True),
             }
 
             if hyperparameters["penalty"] == "elasticnet":
                 hyperparameters["l1_ratio"] = trial.suggest_float(
-                    f"{prefix}_l1_ratio", 0, 1
+                    f"{prefix}l1_ratio", 0, 1
                 )
 
             if hyperparameters["penalty"] in ("elasticnet", "l1"):
@@ -1933,9 +1933,9 @@ class LinearModel(PredictionMethod):
         elif self.target_type == TargetType.TIME_TO_EVENT:
             hyperparameters = {
                 "l1_ratio": 1
-                - trial.suggest_float(f"{prefix}_l1_ratio", 0.1, 1, log=True),
+                - trial.suggest_float(f"{prefix}l1_ratio", 0.1, 1, log=True),
                 "alphas": [
-                    trial.suggest_float(f"{prefix}_alphas", 10**-2, 1, log=True)
+                    trial.suggest_float(f"{prefix}alphas", 10**-2, 1, log=True)
                 ],
             }
         else:
@@ -1951,7 +1951,7 @@ class LinearModel(PredictionMethod):
         elif self.target_type == TargetType.TIME_TO_EVENT:
             from hcve_lib.wrapped_sksurv import DFCoxnetSurvivalAnalysis
 
-            return DFCoxnetSurvivalAnalysis(fit_baseline_model=True)
+            return DFCoxnetSurvivalAnalysis(fit_baseline_model=True, n_alphas=1, alphas=[0.5])
         else:
             raise NotImplementedError
 

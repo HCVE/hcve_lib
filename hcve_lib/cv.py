@@ -1,8 +1,7 @@
-from copy import copy
-
 import gc
 import logging
 from contextlib import AbstractContextManager
+from copy import copy
 from dataclasses import dataclass
 from functools import partial
 from logging import Logger
@@ -37,7 +36,6 @@ from hcve_lib.custom_types import (
     Result,
     TrainTestSplitter,
 )
-from hcve_lib.pipelines import PredictionMethod
 from hcve_lib.evaluation_functions import (
     compute_metrics_result,
     log_repeat_metrics,
@@ -48,10 +46,11 @@ from hcve_lib.functional import pipe, always
 from hcve_lib.metrics import ROC_AUC, get_standard_metrics
 from hcve_lib.metrics_types import Metric
 from hcve_lib.optimization import optuna_report_mlflow, EarlyStoppingCallback
+from hcve_lib.pipelines import PredictionMethod
 from hcve_lib.progress_reporter import ProgressReporter
 from hcve_lib.splitting import (
-    get_train_test,
     get_k_fold,
+    get_k_fold_stratified,
 )
 from hcve_lib.tracking import (
     log_early_stopping,
@@ -312,7 +311,7 @@ def objective_predictive_performance(
         get_pipeline,
         X,
         y,
-        get_splits=get_k_fold,
+        get_splits=get_splits,
         random_state=random_state,
         predict_method=predict_method,
         hyperparameters=hyperparameters,
@@ -430,7 +429,7 @@ class OptimizationParams:
     n_jobs: int = -1
     n_trials: int = 10
     early_stopping_rounds: Optional[int] = 30
-    get_splits: TrainTestSplitter = get_train_test
+    get_splits: TrainTestSplitter = get_k_fold_stratified
     objective: Callable = objective_predictive_performance
     direction: str = "maximize"
     sampler: Type[BaseSampler] = TPESampler

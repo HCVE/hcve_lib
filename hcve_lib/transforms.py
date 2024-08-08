@@ -1,6 +1,10 @@
 from sklearn.base import BaseEstimator, TransformerMixin
 import miceforest as mf
 
+from optuna import Trial
+from pandas import DataFrame
+from sklearn.base import TransformerMixin, BaseEstimator
+
 
 # noinspection PyUnusedLocal
 class MiceForest(BaseEstimator, TransformerMixin):
@@ -28,11 +32,6 @@ class MiceForest(BaseEstimator, TransformerMixin):
 
     def transform(self, X, y=None):
         return self.kds.impute_new_data(X).complete_data(0)
-
-
-from optuna import Trial
-from pandas import DataFrame
-from sklearn.base import TransformerMixin, BaseEstimator
 
 
 class DropMissingColumns(TransformerMixin, BaseEstimator):

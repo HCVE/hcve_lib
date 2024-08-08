@@ -111,7 +111,7 @@ def get_splits_per_group(
     group_by_feature: str = "STUDY",
 ):
     if get_splits is None:
-        get_splits = partial(get_kfold_stratified_splits, random_state=random_state)
+        get_splits = partial(get_k_fold_stratified, random_state=random_state)
 
     groups = X.groupby(data[group_by_feature])
 
@@ -263,7 +263,7 @@ def get_per_subset_split(
 
 
 @accept_extra_parameters
-def get_kfold_stratified_splits(
+def get_k_fold_stratified(
     X: DataFrame,
     y: Target,
     random_state: int,
@@ -395,9 +395,9 @@ def get_splitter(splitter_name: str) -> Callable:
     elif splitter_name == "cohort_10_fold":
         return get_splits_per_group
     elif splitter_name == "10_fold":
-        return partial(get_kfold_stratified_splits, n_splits=10)
+        return partial(get_k_fold_stratified, n_splits=10)
     elif splitter_name == "5_fold":
-        return partial(get_kfold_stratified_splits, n_splits=5)
+        return partial(get_k_fold_stratified, n_splits=5)
     else:
         raise Exception("Splitting not know")
 

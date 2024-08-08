@@ -61,6 +61,8 @@ from hcve_lib.utils import (
     compute_classification_scores_statistics,
     average_classification_scores,
     flatten_dict,
+    camelize_and_capitalize,
+    diff_dict_values,
 )
 from imblearn.under_sampling import RandomUnderSampler
 from numpy.testing import assert_array_equal
@@ -82,9 +84,9 @@ def test_decamelize_arguments():
         {"oneVariable": 1},
         [{"secondVariable": 2}],
     ) == (
-               {"one_variable": 1},
-               [{"second_variable": 2}],
-           )
+        {"one_variable": 1},
+        [{"second_variable": 2}],
+    )
 
 
 def test_camelize_return():
@@ -96,9 +98,9 @@ def test_camelize_return():
         {"one_variable": 1},
         [{"second_variable": 2}],
     ) == (
-               {"oneVariable": 1},
-               [{"secondVariable": 2}],
-           )
+        {"oneVariable": 1},
+        [{"secondVariable": 2}],
+    )
 
 
 def test_map_columns():
@@ -124,11 +126,11 @@ def test_cumulative_count():
             )
         )
     ) == [
-               (0, 0.25),
-               (3, 0.5),
-               (5, 0.75),
-               (8, 1.0),
-           ]
+        (0, 0.25),
+        (3, 0.5),
+        (5, 0.75),
+        (8, 1.0),
+    ]
 
     assert list(
         cumulative_count(
@@ -142,10 +144,10 @@ def test_cumulative_count():
             )
         )
     ) == [
-               (3, 0.25),
-               (5, 0.5),
-               (8, 0.75),
-           ]
+        (3, 0.25),
+        (5, 0.5),
+        (8, 0.75),
+    ]
 
 
 def test_inverse_cumulative_count():
@@ -161,11 +163,11 @@ def test_inverse_cumulative_count():
             )
         )
     ) == [
-               (0, 1.0),
-               (3, 0.75),
-               (5, 0.5),
-               (8, 0.25),
-           ]
+        (0, 1.0),
+        (3, 0.75),
+        (5, 0.5),
+        (8, 0.25),
+    ]
 
 
 def test_key_value_swap():
@@ -264,22 +266,22 @@ def test_transpose_dict():
             2: {"a": "z", "b": 3},
         }
     ) == {
-               "a": {0: "x", 1: "y", 2: "z"},
-               "b": {0: 1, 1: 2, 2: 3},
-           }
+        "a": {0: "x", 1: "y", 2: "z"},
+        "b": {0: 1, 1: 2, 2: 3},
+    }
 
 
 def test_transpose_list_of_dicts():
     # Test case 1: Typical case
     data = [
-        {'name': 'Alice', 'age': 25, 'city': 'New York'},
-        {'name': 'Bob', 'age': 30, 'city': 'Los Angeles'},
-        {'name': 'Charlie', 'age': 35, 'city': 'Chicago'}
+        {"name": "Alice", "age": 25, "city": "New York"},
+        {"name": "Bob", "age": 30, "city": "Los Angeles"},
+        {"name": "Charlie", "age": 35, "city": "Chicago"},
     ]
     expected = {
-        'name': ['Alice', 'Bob', 'Charlie'],
-        'age': [25, 30, 35],
-        'city': ['New York', 'Los Angeles', 'Chicago']
+        "name": ["Alice", "Bob", "Charlie"],
+        "age": [25, 30, 35],
+        "city": ["New York", "Los Angeles", "Chicago"],
     }
     assert transpose_list_of_dicts(data) == expected
 
@@ -464,11 +466,11 @@ def test_map_recursive():
         },
         lambda num, _: num + 1 if isinstance(num, int) else num,
     ) == {
-               "a": {
-                   "b": [3, 4],
-                   "c": 5,
-               }
-           }
+        "a": {
+            "b": [3, 4],
+            "c": 5,
+        }
+    }
 
 
 def test_get_keys():
@@ -500,15 +502,15 @@ def test_itemmap_recursive():
         },
         lambda k, v, l: (k + "b", v + 1 if isinstance(v, int) else v),
     ) == {
-               "xb": {"yb": 2},
-           }
+        "xb": {"yb": 2},
+    }
 
     assert itemmap_recursive(
         {"x": [1, 2, 3]},
         lambda k, v, l: (str(k) + "b", v + l if isinstance(v, int) else v),
     ) == {
-               "xb": [2, 3, 4],
-           }
+        "xb": [2, 3, 4],
+    }
 
 
 def test_sort_columns_by_order():
@@ -698,9 +700,9 @@ def test_deep_merge_with_non_overlapping_keys():
 
 def test_convert_to_snake_case_keys():
     assert {
-               "my_case": 5,
-               "some_case_no": {"OhNo": 6, "oh_no": 7},
-           } == test_convert_to_snake_case_keys(
+        "my_case": 5,
+        "some_case_no": {"OhNo": 6, "oh_no": 7},
+    } == test_convert_to_snake_case_keys(
         {"myCase": 5, "someCaseNo": {"OhNo": 6, "ohNo": 7}}
     )
 
@@ -711,9 +713,9 @@ def test_convert_to_snake_case():
 
 def test_convert_to_camel_case_keys():
     assert {
-               "myCase": 5,
-               "someCaseNo": {"OhNo": 6, "ohNo": 7},
-           } == convert_to_camel_case_keys(
+        "myCase": 5,
+        "someCaseNo": {"OhNo": 6, "ohNo": 7},
+    } == convert_to_camel_case_keys(
         {"my_case": 5, "some_case_no": {"OhNo": 6, "oh_no": 7}}
     )
 
@@ -972,5 +974,31 @@ def test_camelize_and_capitalize():
     assert camelize_and_capitalize("my_function_name") == "MyFunctionName"
     assert camelize_and_capitalize("example_test_case") == "ExampleTestCase"
     assert camelize_and_capitalize("singleword") == "Singleword"
-    assert camelize_and_capitalize("multiple_words_separated_by_underscore") == "MultipleWordsSeparatedByUnderscore"
+    assert (
+        camelize_and_capitalize("multiple_words_separated_by_underscore")
+        == "MultipleWordsSeparatedByUnderscore"
+    )
     assert camelize_and_capitalize("") == ""
+
+
+def test_diff_dict_values():
+    dict1 = {"a": 1, "b": 2, "c": 3}
+    dict2 = {"a": 1, "b": 3, "d": 5}
+
+    expected = {"b": 3, "c": None, "d": 5}
+    result = diff_dict_values(dict1, dict2)
+    assert result == expected, f"Expected {expected}, but got {result}"
+
+    dict3 = {"x": 10, "y": 20}
+    dict4 = {"x": 10, "y": 30, "z": 40}
+
+    expected = {"y": 30, "z": 40}
+    result = diff_dict_values(dict3, dict4)
+    assert result == expected, f"Expected {expected}, but got {result}"
+
+    dict5 = {"a": 1, "b": 2}
+    dict6 = {"a": 1, "b": 2}
+
+    expected = {}
+    result = diff_dict_values(dict5, dict6)
+    assert result == expected, f"Expected {expected}, but got {result}"

@@ -62,6 +62,7 @@ from hcve_lib.custom_types import (
     Estimator,
 )
 from hcve_lib.functional import pipe, unzip, flatten
+from IPython.core import ultratb
 
 empty_dict: Dict = frozendict()
 
@@ -324,10 +325,10 @@ def index_data(indexes: Iterable[int], data: IndexData) -> IndexData:
 
 
 def loc(
-        index: Union[Index, List[int], ndarray],
-        data: IndexData,
-        ignore_not_present: bool = False,
-        logger: Logger = None,
+    index: Union[Index, List[int], ndarray],
+    data: IndexData,
+    ignore_not_present: bool = False,
+    logger: Logger = None,
 ) -> IndexData:
     if isinstance(data, (DataFrame, Series)):
         if ignore_not_present:
@@ -357,14 +358,14 @@ ListToDictValue = TypeVar("ListToDictValue")
 
 
 def list_to_dict_by_keys(
-        input_list: Iterable[ListToDictValue],
-        keys: Iterable[ListToDictKey],
+    input_list: Iterable[ListToDictValue],
+    keys: Iterable[ListToDictKey],
 ) -> Dict[ListToDictKey, ListToDictValue]:
     return {key: value for key, value in zip(keys, input_list)}
 
 
 def list_to_dict_index(
-        input_list: Sequence[ListToDictValue],
+    input_list: Sequence[ListToDictValue],
 ) -> Dict[Hashable, ListToDictValue]:
     return {index: value for index, value in enumerate(input_list)}
 
@@ -373,15 +374,15 @@ SubtractListT = TypeVar("SubtractListT")
 
 
 def subtract_lists(
-        list1: List[SubtractListT],
-        list2: List[SubtractListT],
+    list1: List[SubtractListT],
+    list2: List[SubtractListT],
 ) -> List[SubtractListT]:
     return [value for value in list1 if value not in list2]
 
 
 def map_groups_iloc(
-        groups: DataFrameGroupBy,
-        flatten_data: DataFrame,
+    groups: DataFrameGroupBy,
+    flatten_data: DataFrame,
 ) -> Iterable[Tuple[Any, List[int]]]:
     current_index = 0
     for key, group in groups:
@@ -414,7 +415,7 @@ def remove_column_prefix(X: DataFrame) -> DataFrame:
 
 def remove_prefix(prefix: str, input_str: str) -> str:
     if input_str.startswith(prefix):
-        return input_str[len(prefix):]
+        return input_str[len(prefix) :]
     else:
         return input_str[:]
 
@@ -431,7 +432,7 @@ TransposeDictInput = Dict[TransposeDictT1, Dict[TransposeDictT2, TransposeDictVa
 
 
 def transpose_dict(
-        dictionary: TransposeDictInput,
+    dictionary: TransposeDictInput,
 ) -> Dict[TransposeDictT2, Dict[TransposeDictT1, TransposeDictValue]]:
     outer_keys = dictionary.keys()
 
@@ -483,11 +484,11 @@ def partial(func, *args, **kwargs):
 
 
 def split_data(
-        X: DataFrame,
-        y: Target,
-        prediction: Prediction,
-        remove_extended: bool = False,
-        logger: Logger = None,
+    X: DataFrame,
+    y: Target,
+    prediction: Prediction,
+    remove_extended: bool = False,
+    logger: Logger = None,
 ):
     X_train, X_test = get_X_split(X, prediction, logger)
 
@@ -503,9 +504,9 @@ def split_data(
 
 
 def get_X_split(
-        X: DataFrame,
-        prediction: Prediction,
-        logger: Logger = None,
+    X: DataFrame,
+    prediction: Prediction,
+    logger: Logger = None,
 ):
     split_train, split_test = filter_split_in_index(prediction["split"], X.index)
 
@@ -538,9 +539,9 @@ def get_X_split(
 
 
 def get_y_split(
-        y: Target,
-        prediction: Prediction,
-        logger: Logger = None,
+    y: Target,
+    prediction: Prediction,
+    logger: Logger = None,
 ):
     split_train, split_test = filter_split_in_index(
         prediction["split"],
@@ -574,7 +575,7 @@ def get_y_split(
 
 
 def get_X_y_split(
-        X: DataFrame, y: Target, prediction: Prediction, logger: Logger = None
+    X: DataFrame, y: Target, prediction: Prediction, logger: Logger = None
 ) -> Tuple[DataFrame, DataFrame, Target, Target]:
     return get_X_split(X, prediction, logger) + get_y_split(y, prediction, logger)
 
@@ -612,8 +613,8 @@ def get_tte(target: Union[DataFrame, Dict]) -> np.ndarray:
 
 
 def cross_validate_apply_mask(
-        mask: Dict[str, bool],
-        data: DataFrame,
+    mask: Dict[str, bool],
+    data: DataFrame,
 ) -> DataFrame:
     new_data = data.copy()
     if set(mask.keys()) != set(data.columns):
@@ -709,15 +710,15 @@ GetKeysSubsetT = TypeVar(
 
 
 def get_keys(
-        keys: Iterable[Hashable],
-        dictionary: GetKeysSubsetT,
+    keys: Iterable[Hashable],
+    dictionary: GetKeysSubsetT,
 ) -> GetKeysSubsetT:
     return {key: dictionary[key] for key in keys}  # type: ignore
 
 
 def sort_columns_by_order(
-        data_frame: DataFrame,
-        order: List[str],
+    data_frame: DataFrame,
+    order: List[str],
 ) -> DataFrame:
     columns_not_present = [column for column in order if column not in data_frame]
 
@@ -728,8 +729,8 @@ def sort_columns_by_order(
 
 
 def sort_index_by_order(
-        data_frame: DataFrame,
-        order: List[str],
+    data_frame: DataFrame,
+    order: List[str],
 ) -> DataFrame:
     index_not_present = [index for index in order if index not in data_frame.index]
 
@@ -878,7 +879,7 @@ def estimate_categorical_columns(data: DataFrame, limit: int = 10) -> List:
 
 
 def estimate_categorical_and_continuous_columns(
-        data: DataFrame, limit: int = 10
+    data: DataFrame, limit: int = 10
 ) -> Tuple:
     categorical = estimate_categorical_columns(data, limit)
     continuous = list(set(data.columns) - set(categorical))
@@ -967,7 +968,7 @@ def get_jobs(n_jobs, maximum=None):
 
 
 def get_pipeline_name(
-        estimator: Any,
+    estimator: Any,
 ):
     try:
         return estimator.get_name()
@@ -1028,10 +1029,10 @@ def deep_merge(obj1: Union[Dict, Any], obj2: Union[Dict, Any]) -> Union[Dict, An
     obj1_new = obj1_dict.copy()
     for key in obj2_dict.keys():
         if (
-                isinstance(obj1_new.get(key), dict) and isinstance(obj2_dict.get(key), dict)
+            isinstance(obj1_new.get(key), dict) and isinstance(obj2_dict.get(key), dict)
         ) or (
-                hasattr(obj1_new.get(key), "__dict__")
-                and hasattr(obj2_dict.get(key), "__dict__")
+            hasattr(obj1_new.get(key), "__dict__")
+            and hasattr(obj2_dict.get(key), "__dict__")
         ):
             obj1_new[key] = deep_merge(obj1_new[key], obj2_dict[key])
         else:
@@ -1196,11 +1197,11 @@ def kendall_tau(rank1: List[Number], rank2: List[Number]) -> float:
     for i in range(n):
         for j in range(i + 1, n):
             if (rank1[i] < rank1[j] and rank2[i] < rank2[j]) or (
-                    rank1[i] > rank1[j] and rank2[i] > rank2[j]
+                rank1[i] > rank1[j] and rank2[i] > rank2[j]
             ):
                 concordant_pairs += 1
             elif (rank1[i] < rank1[j] and rank2[i] > rank2[j]) or (
-                    rank1[i] > rank1[j] and rank2[i] < rank2[j]
+                rank1[i] > rank1[j] and rank2[i] < rank2[j]
             ):
                 discordant_pairs += 1
 
@@ -1408,14 +1409,47 @@ def split_dict_by_keys(d, keys):
     return subset, remaining
 
 
-def dump_results(pipeline_name, metrics, results, get_splits, dump_tag=None):
+def dump_data(
+    name,
+    data,
+    metrics=None,
+    get_splits=None,
+    n_repeats=None,
+    n_features=None,
+    dump_tag=None,
+    path="./output",
+):
     if dump_tag is None:
         dump_tag = []
 
-    first_metric_key, first_metric_value = get_first_item(metrics)
-    dump_name = f"output/{pipeline_name}{(' ' + ' '.join(dump_tag)) if len(dump_tag) > 0 else ''} {get_splits.__name__} {get_date_time()} {first_metric_key}={first_metric_value['mean']:.2f}.pkl"
+    if metrics is not None:
+        first_metric_key, first_metric_value = get_first_item(metrics)
+        metric_mean = first_metric_value["mean"]
+        metrics_str = f" {first_metric_key}={metric_mean:.2f}"
+    else:
+        metrics_str = ""
+
+    if get_splits is not None:
+        get_splits_str = f" {get_splits.__name__}"
+    else:
+        get_splits_str = ""
+
+    if n_repeats is not None:
+        n_repeats_str = f" repeats={n_repeats}"
+    else:
+        n_repeats_str = ""
+
+    if n_features is not None:
+        n_features_str = f" features={n_features}"
+    else:
+        n_features_str = ""
+
+    dump_tag_str = (" " + " ".join(dump_tag)) if len(dump_tag) > 0 else ""
+
+    dump_name = f"{path}/{name}{get_splits_str} {get_date_time()}{metrics_str}{n_repeats_str}{n_features_str}{dump_tag_str}.pkl"
+
     with open(dump_name, "wb") as f:
-        pickle.dump(results, f)
+        pickle.dump(data, f)
 
 
 def get_date_time():
@@ -1427,7 +1461,7 @@ def count_lines(input_string: str) -> int:
 
 
 def compute_classification_scores_statistics(
-        predictions: Dict[Hashable, DataFrame]
+    predictions: Dict[Hashable, DataFrame]
 ) -> Dict[Hashable, Dict[str, float]]:
     statistics = {}
     for key, prediction in predictions.items():
@@ -1491,3 +1525,35 @@ def camelize_and_capitalize(s):
 
 def make_id() -> str:
     return str(uuid.uuid4())
+
+
+def adjust_jupyter_stacktrace():
+    ultratb.VerboseTB._tb_highlight = "bg:#000000"
+
+
+def diff_dict_values(dict1, dict2):
+    diff = {}
+    all_keys = dict1.keys() | dict2.keys()  # Union of keys from both dictionaries
+
+    for key in all_keys:
+        if key in dict1 and key not in dict2:
+            diff[key] = None  # Key was deleted in dict2
+        elif key in dict2 and key not in dict1:
+            diff[key] = dict2[key]  # New key in dict2
+        elif dict1[key] is None:
+            diff[key] = dict2
+        elif dict2[key] is None:
+            diff[key] = None
+        elif isinstance(dict1[key], pd.DataFrame) and isinstance(
+            dict2[key], pd.DataFrame
+        ):
+            if not dict1[key].equals(dict2[key]):
+                diff[key] = dict2
+        elif isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
+            nested_diff = diff_dict_values(dict1[key], dict2[key])
+            if nested_diff:
+                diff[key] = nested_diff
+        elif dict1[key] != dict2[key]:
+            diff[key] = dict2[key]  # Value changed in dict2
+
+    return diff

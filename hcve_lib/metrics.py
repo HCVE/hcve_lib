@@ -96,8 +96,8 @@ class BootstrappedMetric(Metric):
 
         while iteration_success < self.iterations and iteration_tryout < max_iterations:
             sample_index = resample(
-                prediction["y_score"].index,
-                n_samples=round(len(prediction["y_score"])),
+                prediction["y_pred"].index,
+                n_samples=round(len(prediction["y_pred"])),
                 random_state=self.random_state + iteration_tryout,
             )
 
@@ -166,7 +166,7 @@ class WeightedCIndex(Maximize, Metric):
         prediction: Prediction,
         y: Target,
     ) -> List[str]:
-        return ["c_index"]
+        return ["weighted_c_index"]
 
     def get_values(
         self,
@@ -176,12 +176,13 @@ class WeightedCIndex(Maximize, Metric):
         from rpy2 import robjects
         from rpy2.interactive.packages import importr
 
-        # try:
         y_ = self.get_y(y, prediction)
         y_score = prediction["y_pred"]
+
+        if isinstance(y_score, DataFrame):
+            y_score = y_score[0]
+
         y_ = loc(y_score.index, y)
-        # TODO: HACK
-        # y_score = y_score[y_score.index.isin(y_.data.index)]
 
         if self.weight is not None:
             weight = self.weight.loc[y_.data.index]
@@ -193,10 +194,75 @@ class WeightedCIndex(Maximize, Metric):
         index = intsurv.cIndex(
             robjects.FloatVector(y_.data["tte"]),
             robjects.FloatVector(y_.data["label"]),
-            robjects.FloatVector(y_score[0]),
+            robjects.FloatVector(y_score),
             *([robjects.FloatVector(weight)] if weight is not None else []),
         )
         return [index[0]]
+        # except ValueError as e:
+        #     print(f'{e=}')
+        #     return [ExceptionValue(exception=e)]
+
+    def compute(self): ...
+
+
+@dataclass
+class WeightedCIndex2(Maximize, Metric):
+    def __init__(
+        self,
+        weight=None,
+    ):
+        self.weight = weight
+
+    def get_names(
+        self,
+        prediction: Prediction,
+        y: Target,
+    ) -> List[str]:
+        return ["c_index"]
+
+    def get_values(
+        self,
+        prediction: Prediction,
+        y: Target,
+    ) -> List[Union[ExceptionValue, float]]:
+        y_ = self.get_y(y, prediction)
+        y_score = prediction["y_pred"]
+        y_ = loc(y_score.index, y)
+        if self.weight is not None:
+            weights = self.weight.loc[y_.data.index]
+        else:
+            weights = None
+
+        weights = weights.to_numpy()
+        concordant_sum = 0.0
+        permissible_pairs_sum = 0.0
+        event_times = y_.data["tte"].to_numpy()
+        event_observed = y_.data["label"].to_numpy()
+        predicted_scores = -y_score[0].to_numpy()
+        n = len(y_)
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                if event_times[i] != event_times[j]:  # permissible pair
+                    weight = weights[i] * weights[j]
+                    if event_times[i] < event_times[j] and event_observed[i] == 1:
+                        permissible_pairs_sum += weight
+                        if predicted_scores[i] < predicted_scores[j]:
+                            concordant_sum += weight
+                        elif predicted_scores[i] == predicted_scores[j]:
+                            concordant_sum += 0.5 * weight
+                    elif event_times[j] < event_times[i] and event_observed[j] == 1:
+                        permissible_pairs_sum += weight
+                        if predicted_scores[j] < predicted_scores[i]:
+                            concordant_sum += weight
+                        elif predicted_scores[j] == predicted_scores[i]:
+                            concordant_sum += 0.5 * weight
+
+        if permissible_pairs_sum == 0:
+            return 0.5  # If no permissible pairs, return 0.5
+
+        return [concordant_sum / permissible_pairs_sum]
+
         # except ValueError as e:
         #     print(f'{e=}')
         #     return [ExceptionValue(exception=e)]

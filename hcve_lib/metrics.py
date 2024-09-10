@@ -631,48 +631,6 @@ def get_simple_brier_for_time(
     except Exception as e:
         return ExceptionValue(None, e)
 
-    # class IntegratedBrier(Minimize, Metric):
-    #     X: DataFrame
-    #     time: Optional[int]
-    #
-    #     def __init__(
-    #         self,
-    #         X: DataFrame,
-    #         time: Optional[int] = None,
-    #         *args,
-    #         **kwargs,
-    #     ):
-    #         super().__init__(*args, **kwargs)
-    #         self.X = X
-    #         self.time = time
-    #
-    #     def get_values(
-    #         self,
-    #         prediction: Prediction,
-    #         y: Target,
-    #     ) -> List[Union[ExceptionValue, float]]:
-    #         y_train, y_test = self.get_y(y, prediction, both=True)
-    #         y_train_ = target_to_survival_y_records(y_train)
-    #         y_test_ = target_to_survival_y_records(y_test)
-    #         values = []
-    #
-    #         for time in self.get_times(prediction):
-    #             try:
-    #                 values.append(
-    #                     integrated_brier_score(
-    #                         y_train_.data,
-    #                         y_test_.data,
-    #                         get_y_proba_for_time(
-    #                             prediction,
-    #                             self.X,
-    #                             y,
-    #                             time,
-    #                         ).loc[y_test.data.index],
-    #                         time,
-    #                     )[1][0])
-    #             except Exception as e:
-    #                 values.append(ExceptionValue(e))
-
     def get_names(
         self,
         prediction: Prediction,

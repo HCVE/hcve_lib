@@ -23,7 +23,7 @@ import numpy
 import numpy as np
 import pandas
 import toolz
-from numpy import NaN, std
+from numpy import std
 from pandas import DataFrame, Series
 from pandas.core.groupby import DataFrameGroupBy
 from sklearn.metrics import roc_auc_score
@@ -414,12 +414,12 @@ def get_metrics_from_confusion_matrix(confusion_matrix) -> ConfusionMetrics:
         precision=(
             (confusion_matrix.tp / (confusion_matrix.tp + confusion_matrix.fp))
             if (confusion_matrix.tp + confusion_matrix.fp) > 0
-            else NaN
+            else float('nan')
         ),
         recall=(
             (confusion_matrix.tp / (confusion_matrix.tp + confusion_matrix.fn))
             if (confusion_matrix.tp + confusion_matrix.fn) > 0
-            else NaN
+            else float('nan')
         ),
         fpr=confusion_matrix.fp / (confusion_matrix.fp + confusion_matrix.tn),
         tnr=confusion_matrix.tn / (confusion_matrix.fp + confusion_matrix.tn),

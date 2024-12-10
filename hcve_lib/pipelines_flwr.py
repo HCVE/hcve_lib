@@ -4,7 +4,15 @@ from typing import Dict
 
 import flwr
 import toolz
-from flwr.common import GetParametersIns, GetParametersRes, Status, Code, Parameters, FitIns, FitRes
+from flwr.common import (
+    GetParametersIns,
+    GetParametersRes,
+    Status,
+    Code,
+    Parameters,
+    FitIns,
+    FitRes,
+)
 from flwr.common.logger import FLOWER_LOGGER, console_handler
 from pandas import DataFrame, Series
 
@@ -34,10 +42,10 @@ def start_xgb_server(num_client: int, hyperparameters: Dict = None):
         evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation,
     )
 
-    return flwr.server.start_server(
+    return flwr.resai_server.start_server(
         server_address="0.0.0.0:8080",
         strategy=strategy,
-        config=flwr.server.ServerConfig(num_rounds=hyperparameters["num_rounds"]),
+        config=flwr.resai_server.ServerConfig(num_rounds=hyperparameters["num_rounds"]),
     )
 
 

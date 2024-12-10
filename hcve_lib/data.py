@@ -10,33 +10,33 @@ from hcve_lib.custom_types import SurvivalPairTarget, Target, TargetObject
 from hcve_lib.functional import pipe, map_columns_
 from hcve_lib.utils import key_value_swap
 
-Metadata = List['MetadataItem']  # type: ignore
+Metadata = List["MetadataItem"]  # type: ignore
 
 
 class MetadataItem(TypedDict):
     identifier: str
     identifier_tte: Optional[str]
     meaning: str
-    children: Optional['Metadata']  # type: ignore
-    type: Optional['MetadataItemType']
+    children: Optional["Metadata"]  # type: ignore
+    type: Optional["MetadataItemType"]
     mapping: Optional[Dict]
     unit: Optional[str]
 
 
 class MetadataItemType(Enum):
-    SURVIVAL_TARGET = 'survival_target'
-    BINARY_TARGET = 'binary_target'
+    SURVIVAL_TARGET = "survival_target"
+    BINARY_TARGET = "binary_target"
 
 
 def flatten_metadata(metadata: Metadata) -> Iterator[MetadataItem]:
     for item in metadata:
         yield item
         if has_children(item):
-            yield from flatten_metadata(item['children'])  # type: ignore
+            yield from flatten_metadata(item["children"])  # type: ignore
 
 
 def has_children(item: MetadataItem) -> bool:
-    if 'children' not in item or item['children'] is None:
+    if "children" not in item or item["children"] is None:
         return False
     else:
         return True
@@ -47,7 +47,7 @@ def find_item(
     metadata: Metadata,
 ) -> Optional[MetadataItem]:
     for item in flatten_metadata(metadata):
-        if item.get('identifier') == identifier:
+        if item.get("identifier") == identifier:
             return item
     return None
 
@@ -83,7 +83,7 @@ def format_feature_value(value: Any, metadata_item: Optional[MetadataItem]) -> A
     if not metadata_item:
         return value
 
-    mapping = metadata_item.get('mapping')
+    mapping = metadata_item.get("mapping")
     if mapping:
         return mapping.get(value, value)
     else:
@@ -94,10 +94,14 @@ def inverse_format_feature_value(
     value: Any,
     metadata_item: Optional[MetadataItem],
 ) -> Any:
-    if metadata_item is None or 'mapping' not in metadata_item or metadata_item['mapping'] is None:
+    if (
+        metadata_item is None
+        or "mapping" not in metadata_item
+        or metadata_item["mapping"] is None
+    ):
         return value
 
-    mapping = key_value_swap(metadata_item['mapping'])
+    mapping = key_value_swap(metadata_item["mapping"])
 
     if mapping:
         return mapping.get(value, value)
@@ -121,7 +125,7 @@ def format_identifier_long(
     identifier: str,
     metadata: Metadata,
 ) -> str:
-    return f'[{identifier}] {format_identifier(identifier, metadata)}'
+    return f"[{identifier}] {format_identifier(identifier, metadata)}"
 
 
 def format_identifier_raw(
@@ -130,7 +134,7 @@ def format_identifier_raw(
 ):
     item = find_item(identifier, metadata)
     if item:
-        return item.get('meaning')
+        return item.get("name")
     else:
         return None
 
@@ -140,7 +144,7 @@ def format_identifier_short(
     metadata: Metadata,
 ) -> str:
     item = find_item(identifier, metadata)
-    return item.get('short_label', item.get('meaning', identifier))
+    return item.get("short_label", item.get("meaning", identifier))
 
 
 def get_feature_subset(df: DataFrame, feature_names: List[str]) -> DataFrame:
@@ -149,11 +153,11 @@ def get_feature_subset(df: DataFrame, feature_names: List[str]) -> DataFrame:
 
 def get_identifiers(metadata: Iterable[MetadataItem]) -> Iterator[str]:
     for item in metadata:
-        if 'identifier' in item:
-            yield item['identifier']
+        if "identifier" in item:
+            yield item["identifier"]
 
-        if 'identifier_tte' in item and item['identifier_tte']:
-            yield item['identifier_tte']
+        if "identifier_tte" in item and item["identifier_tte"]:
+            yield item["identifier_tte"]
 
 
 def get_targets(metadata: Metadata) -> Iterator[MetadataItem]:
@@ -166,7 +170,7 @@ def get_targets(metadata: Metadata) -> Iterator[MetadataItem]:
 
 
 def is_target(item: MetadataItem) -> bool:
-    return item.get('type') in (
+    return item.get("type") in (
         MetadataItemType.SURVIVAL_TARGET.value,
         MetadataItemType.BINARY_TARGET.value,
     )
@@ -189,7 +193,7 @@ def get_variable_identifier(metadata: Metadata) -> Iterator[str]:
 
 
 def is_variable(item: MetadataItem) -> bool:
-    return item.get('children') is None
+    return item.get("children") is None
 
 
 def get_survival_y(
@@ -202,13 +206,17 @@ def get_survival_y(
     if metadata_item:
         return TargetObject(
             name=target_feature,
-            data=data[[
-                metadata_item['identifier'],
-                metadata_item['identifier_tte'],
-            ]].copy().rename(
+            data=data[
+                [
+                    metadata_item["identifier"],
+                    metadata_item["identifier_tte"],
+                ]
+            ]
+            .copy()
+            .rename(
                 {
-                    metadata_item['identifier']: 'label',
-                    metadata_item['identifier_tte']: 'tte',
+                    metadata_item["identifier"]: "label",
+                    metadata_item["identifier_tte"]: "tte",
                 },
                 axis=1,
             ),
@@ -220,17 +228,14 @@ def get_survival_y(
 def to_survival_y_records(survival_y: Target) -> np.recarray:
     return survival_y.to_records(
         index=False,
-        column_dtypes={
-            'label': np.bool_,
-            'tte': np.int32
-        },
+        column_dtypes={"label": np.bool_, "tte": np.int32},
     )
 
 
 def to_survival_y_pair(survival_y: DataFrame) -> SurvivalPairTarget:
     return SurvivalPairTarget(
-        survival_y['tte'].to_numpy(),
-        survival_y['label'].to_numpy(),
+        survival_y["tte"].to_numpy(),
+        survival_y["label"].to_numpy(),
     )
 
 
@@ -239,12 +244,12 @@ def binarize_event(
     survival_y: DataFrame,
     drop_censored: bool = True,
 ) -> Series:
-    y_binary = Series(index=survival_y.index.copy(), dtype='float64')
-    y_binary[(survival_y['tte'] > tte)] = 0
-    y_binary[(survival_y['tte'] <= tte) & (survival_y['label'] == 1)] = 1
-    y_binary.name = survival_y.name + ' ' + str(tte/365) + ' years'
+    y_binary = Series(index=survival_y.index.copy(), dtype="float64")
+    y_binary[(survival_y["tte"] > tte)] = 0
+    y_binary[(survival_y["tte"] <= tte) & (survival_y["label"] == 1)] = 1
+    y_binary.name = survival_y.name + " " + str(tte / 365) + " years"
     if drop_censored:
-        return y_binary.dropna().astype('category')
+        return y_binary.dropna().astype("category")
     else:
         return y_binary
 
@@ -254,9 +259,9 @@ def get_X(
     metadata: Metadata,
 ) -> DataFrame:
     features = [
-        item.get('identifier')
+        item.get("identifier")
         for item in flatten_metadata(metadata)
-        if not is_target(item) and item.get('identifier') in data.columns
+        if not is_target(item) and item.get("identifier") in data.columns
     ]
 
     return data[features]
@@ -277,11 +282,11 @@ def format_series(name: str, series: Series, metadata: Metadata) -> Series:
         name,
         metadata,
     )
-    if not item or 'mapping' not in item:
+    if not item or "mapping" not in item:
         return series
 
     mapping_with_defaults = (
-        get_default_mapping(series) | item['mapping']  # type: ignore
+        get_default_mapping(series) | item["mapping"]  # type: ignore
     )
 
     return series.map(mapping_with_defaults)
@@ -293,7 +298,7 @@ def get_available_identifiers_per_category(
 ) -> Iterator[Tuple[MetadataItem, List[str]]]:
     for num, item in enumerate(metadata):
         identifiers = pipe(
-            item['children'],
+            item["children"],
             get_identifiers,
             partial(filter, lambda feature_name: feature_name in data.columns),
             list,
@@ -304,12 +309,18 @@ def get_available_identifiers_per_category(
 
 def categorize_features(X: DataFrame) -> Tuple[List[str], List[str]]:
     categorical_features = [
-        column_name for column_name in X.columns
-        if X[column_name].dtype.name == 'object' or X[column_name].dtype.name == 'category'
+        column_name
+        for column_name in X.columns
+        if X[column_name].dtype.name == "object"
+        or X[column_name].dtype.name == "category"
     ]
-    continuous_features = [column_name for column_name in X.columns if column_name not in categorical_features]
+    continuous_features = [
+        column_name
+        for column_name in X.columns
+        if column_name not in categorical_features
+    ]
     return categorical_features, continuous_features
 
 
 def get_age_range(X: DataFrame, age_range: Union[List, Tuple]) -> DataFrame:
-    return X[(X['AGE'] >= age_range[0]) & (X['AGE'] <= age_range[1])]
+    return X[(X["AGE"] >= age_range[0]) & (X["AGE"] <= age_range[1])]

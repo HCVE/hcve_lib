@@ -870,19 +870,36 @@ def get_categorical_columns(data: DataFrame) -> List:
     return [column for column, dtype in data.dtypes.items() if dtype == "category"]
 
 
-def estimate_categorical_columns(data: DataFrame, limit: int = 10) -> List:
-    categorical = []
+def estimate_continuous_columns(data: DataFrame, limit: int = 2) -> List:
+    continuous = []
     for name, column in data.items():
-        if len(column.unique()) <= limit:
-            categorical.append(name)
-    return categorical
+        if len(column.unique()) > limit:
+            try:
+                column.astype("float")
+            except ValueError:
+                pass
+            else:
+                continuous.append(name)
+    return continuous
+
+
+def get_numerical_columns(data: DataFrame, limit: int = 2) -> List:
+    numerical = []
+    for name, column in data.items():
+        try:
+            column.astype("float")
+        except ValueError:
+            pass
+        else:
+            numerical.append(name)
+    return numerical
 
 
 def estimate_categorical_and_continuous_columns(
     data: DataFrame, limit: int = 10
 ) -> Tuple:
-    categorical = estimate_categorical_columns(data, limit)
-    continuous = list(set(data.columns) - set(categorical))
+    continuous = estimate_continuous_columns(data, limit)
+    categorical = list(set(data.columns) - set(continuous))
     return categorical, continuous
 
 
@@ -1020,23 +1037,23 @@ def deep_merge(obj1: Union[Dict, Any], obj2: Union[Dict, Any]) -> Union[Dict, An
     if not isinstance(obj1, (dict, object)) or not isinstance(obj2, (dict, object)):
         return obj2
 
-    # If obj1 is a class instance, let's use its dictionary for merging but remember the original
-    obj1_dict = obj1.__dict__ if hasattr(obj1, "__dict__") else obj1
+    if isinstance(obj2, DataFrame):
+        return obj2
 
-    # If obj2 is a class instance, just use its dictionary for merging
-    obj2_dict = obj2.__dict__ if hasattr(obj2, "__dict__") else obj2
+    _obj1 = obj1.__dict__ if hasattr(obj1, "__dict__") else obj1
+    _obj2 = obj2.__dict__ if hasattr(obj2, "__dict__") else obj2
 
-    obj1_new = obj1_dict.copy()
-    for key in obj2_dict.keys():
+    obj1_new = _obj1.copy()
+    for key in _obj2.keys():
         if (
-            isinstance(obj1_new.get(key), dict) and isinstance(obj2_dict.get(key), dict)
+            isinstance(obj1_new.get(key), dict) and isinstance(_obj2.get(key), dict)
         ) or (
             hasattr(obj1_new.get(key), "__dict__")
-            and hasattr(obj2_dict.get(key), "__dict__")
+            and hasattr(_obj2.get(key), "__dict__")
         ):
-            obj1_new[key] = deep_merge(obj1_new[key], obj2_dict[key])
+            obj1_new[key] = deep_merge(obj1_new[key], _obj2[key])
         else:
-            obj1_new[key] = obj2_dict[key]
+            obj1_new[key] = _obj2[key]
 
     # If obj1 was a class instance, update its attributes directly
     if hasattr(obj1, "__dict__"):
@@ -1450,6 +1467,8 @@ def dump_data(
 
     with open(dump_name, "wb") as f:
         pickle.dump(data, f)
+
+    return dump_name
 
 
 def get_date_time():

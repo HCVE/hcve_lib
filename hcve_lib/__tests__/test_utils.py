@@ -673,6 +673,13 @@ def test_deep_merge_with_dicts():
     assert merged == {"a": 1, "b": {"c": 2, "d": 3}, "e": 4}
 
 
+def test_deep_merge_with_dfs():
+    dict1 = {"a": 1, "b": {"c": DataFrame({"x": [1]})}}
+    dict2 = {"a": 1, "b": {"c": DataFrame({"x": [2]})}}
+    merged = deep_merge(dict1, dict2)
+    assert merged["b"]["c"].equals(DataFrame({"x": [2]}))
+
+
 def test_deep_merge_instance_and_dict():
     a = A()
     dict_to_merge = {"y": {"b": 40, "c": 50}, "z": 70}

@@ -3,22 +3,10 @@ from pandas import DataFrame, Series
 from pandas.testing import assert_frame_equal
 from pandas.testing import assert_series_equal
 
-from hcve_lib.data import get_identifiers, sanitize_data_inplace, get_survival_y, \
+from hcve_lib.data import get_identifiers, get_survival_y, \
     binarize_event, get_X, MetadataItemType, remove_nan_target, is_target, format_feature_value, \
     format_features_and_values, get_variables, get_available_identifiers_per_category, inverse_format_feature_value, \
     get_targets, get_age_range
-
-
-def test_sanitize_data_inplace():
-    df = DataFrame({'abc': [1, 2, 3], 'VISIT': ['a', 'b', 'c']})
-    sanitize_data_inplace(df)
-    assert_frame_equal(
-        df,
-        DataFrame({
-            'ABC': [1, 2, 3],
-            'VISIT': ['A', 'B', 'C'],
-        }),
-    )
 
 
 def test_get_features_from_metadata():

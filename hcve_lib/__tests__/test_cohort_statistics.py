@@ -36,8 +36,8 @@ metadata = [{
 
 data = DataFrame({
     'a': [10, 10, 10, 20],
-    'b': [1., 2., 3., np.NAN],
-    'c': [1, 2, np.NAN, np.NAN]
+    'b': [1., 2., 3., float('nan')],
+    'c': [1, 2, float('nan'), float('nan')]
 })
 
 

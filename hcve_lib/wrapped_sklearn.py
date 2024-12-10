@@ -133,12 +133,12 @@ def series_count_inf(series: Series) -> int:
 
 
 def use_df_fn(
-        input_data_frame: DataFrame,
-        output_data: Any,
-        reuse_columns=True,
-        reuse_index=True,
-        reuse_dtypes=True,
-        columns: Optional[List] = None,
+    input_data_frame: DataFrame,
+    output_data: Any,
+    reuse_columns=True,
+    reuse_index=True,
+    reuse_dtypes=True,
+    columns: Optional[List] = None,
 ) -> DataFrame:
     df_arguments = {}
 
@@ -174,11 +174,26 @@ def use_df_fn(
 
 class DFColumnTransformer(DFWrapped, ColumnTransformer):
 
-    def __init__(self, transformers, *, remainder='drop', sparse_threshold=0.3,
-                 n_jobs=None, transformer_weights=None, verbose=False, verbose_feature_names_out=True):
-        super().__init__(transformers, remainder=remainder, sparse_threshold=sparse_threshold,
-                         n_jobs=n_jobs, transformer_weights=transformer_weights, verbose=verbose,
-                         verbose_feature_names_out=verbose_feature_names_out)
+    def __init__(
+        self,
+        transformers,
+        *,
+        remainder="drop",
+        sparse_threshold=0.3,
+        n_jobs=None,
+        transformer_weights=None,
+        verbose=False,
+        verbose_feature_names_out=True,
+    ):
+        super().__init__(
+            transformers,
+            remainder=remainder,
+            sparse_threshold=sparse_threshold,
+            n_jobs=n_jobs,
+            transformer_weights=transformer_weights,
+            verbose=verbose,
+            verbose_feature_names_out=verbose_feature_names_out,
+        )
 
     def fit_transform(self, X, y=None):
         self._update_transformers(X)
@@ -217,7 +232,9 @@ class DFStandardScaler(DFWrapped, StandardScaler):
 class DFMinMaxScaler(DFWrapped, MinMaxScaler): ...
 
 
-class DFOrdinalEncoder(DFWrapped, OrdinalEncoder): ...
+class DFOrdinalEncoder(DFWrapped, OrdinalEncoder):
+    def get_fit_features(self, X: DataFrame, X_out: DataFrame = None):
+        return X.columns
 
 
 class DFOneHotEncoder(DFWrapped, OneHotEncoder): ...
@@ -321,7 +338,7 @@ def get_dmatrix_cox_survival(X, y):
 
 class DFXGBClassifier(DFXGBase):
     def get_instance(self, *args, **kwargs) -> XGBModel:
-        return XGBClassifier(*args, tree_method="gpu_hist", **kwargs)
+        return XGBClassifier(*args, device="cpu", **kwargs)
 
 
 class DFXGBRegressor(DFXGBase):
@@ -337,13 +354,13 @@ class DFPipeline(Pipeline, Estimator):
     y_name: Optional[str]
 
     def __init__(
-            self,
-            steps,
-            *,
-            memory=None,
-            verbose=False,
-            transform_y: Estimator = None,
-            skip_optimization: bool = False,
+        self,
+        steps,
+        *,
+        memory=None,
+        verbose=False,
+        transform_y: Estimator = None,
+        skip_optimization: bool = False,
     ):
         super().__init__(steps, memory=memory, verbose=verbose)
         self.skip_optimization = skip_optimization
@@ -387,7 +404,7 @@ class DFPipeline(Pipeline, Estimator):
         return Xt
 
     def suggest_optuna_(
-            self, trial: Trial, X: DataFrame, prefix: str = ""
+        self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         if not self.skip_optimization:
             return self.suggest_optuna(trial, X, prefix)
@@ -395,7 +412,7 @@ class DFPipeline(Pipeline, Estimator):
             return trial, {}
 
     def suggest_optuna(
-            self, trial: Trial, X: DataFrame, prefix: str = ""
+        self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         prefix_ = (prefix + "_") if prefix else ""
         hyperparamaters = {

@@ -1,4 +1,4 @@
-class ServiceLocator:
+class DependencyInjectionService:
     _services = {}
     current_context = {}
 
@@ -28,12 +28,12 @@ class _ServiceInjector:
 
     def __enter__(self):
         # Store the services in the current context
-        ServiceLocator.current_context.update(self.services)
+        DependencyInjectionService.current_context.update(self.services)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Remove the services from the current context
         for name in self.services:
-            ServiceLocator.current_context.pop(name, None)
+            DependencyInjectionService.current_context.pop(name, None)
 
 
-locator = ServiceLocator()
+di = DependencyInjectionService()

@@ -43,7 +43,7 @@ from hcve_lib.custom_types import ExceptionValue
 from hcve_lib.functional import t
 from hcve_lib.utils import (
     is_numerical,
-    estimate_categorical_columns,
+    estimate_continuous_columns,
     remove_column_prefix,
     loc,
     compute_classification_scores_statistics,
@@ -497,7 +497,6 @@ class GaussianMixture(PredictionMethod):
         return DFGaussianMixture(
             n_components=2, covariance_type="full", random_state=self.random_state
         )
-
 
 
 class SurvivalStacking(PredictionMethod):
@@ -2283,7 +2282,7 @@ def get_results_p_value_feature_importance(
 
 def get_imputation(X: DataFrame, estimator) -> List[Tuple[str, Any]]:
 
-    categorical = estimate_categorical_columns(X)
+    categorical = estimate_continuous_columns(X)
     continuous = list(set(X.columns) - set(categorical))
 
     return _get_imputation(categorical, continuous)
@@ -2332,7 +2331,7 @@ def get_supervised_pipeline(
     get_estimator: Callable[..., Estimator],
 ) -> DFPipeline:
 
-    categorical = estimate_categorical_columns(X)
+    categorical = estimate_continuous_columns(X)
     continuous = list(set(X.columns) - set(categorical))
 
     return DFPipeline(
@@ -2357,7 +2356,7 @@ def get_imputation_pipeline(
     get_estimator: Callable[..., Estimator],
 ) -> DFPipeline:
 
-    categorical = estimate_categorical_columns(X)
+    categorical = estimate_continuous_columns(X)
     continuous = list(set(X.columns) - set(categorical))
 
     return DFPipeline(
@@ -2379,7 +2378,7 @@ def get_simple_supervised_pipeline(
     random_state: int,
     get_estimator: Callable[..., Estimator],
 ) -> DFPipeline:
-    categorical = estimate_categorical_columns(X)
+    categorical = estimate_continuous_columns(X)
     continuous = list(set(X.columns) - set(categorical))
 
     return DFPipeline(

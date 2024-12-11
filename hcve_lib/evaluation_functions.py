@@ -14,8 +14,6 @@ from typing import (
     TypeVar,
     Type,
     Any,
-    Callable,
-    List,
 )
 from typing import Union, List, Tuple, Callable
 
@@ -45,14 +43,13 @@ from hcve_lib.custom_types import (
     Estimator,
     Method,
     Results,
-    Prediction,
     T1,
 )
+from hcve_lib.custom_types import Prediction
 from hcve_lib.data import to_survival_y_records
+from hcve_lib.functional import pass_args, pipe, star_args, try_except
 from hcve_lib.metrics import get_standard_metrics
 from hcve_lib.metrics_types import Metric
-from hcve_lib.custom_types import Prediction
-from hcve_lib.functional import pass_args, pipe, star_args, try_except
 from hcve_lib.stats import confidence_interval
 from hcve_lib.tracking import log_metrics
 from hcve_lib.utils import (
@@ -64,7 +61,6 @@ from hcve_lib.utils import (
     get_first_entry,
     get_X_y_split,
 )
-
 from hcve_lib.wrapped_sklearn import DFStandardScaler
 
 HashableT = TypeVar("HashableT", bound=Hashable)
@@ -80,7 +76,7 @@ def compute_metrics(
         metrics = get_standard_metrics(y)
 
     metrics_merged = compute_metrics_per_prediction(results, y, metrics, skip_metrics)
-    return average_metric_values(metrics_merged)
+    return compute_metrics_statistics(metrics_merged)
 
 
 def compute_metrics_merged_splits(
@@ -100,7 +96,7 @@ def compute_metrics_merged_splits(
             prediction, y, metrics, skip_metrics
         )
 
-    return average_metric_values(metric_values)
+    return compute_metrics_statistics(metric_values)
 
 
 def compute_metric(
@@ -111,7 +107,7 @@ def compute_metric(
     if metric is None:
         metric = get_standard_metrics(y)[0]
     metrics_merged = compute_metrics_per_prediction(results, y, [metric])
-    return get_first_entry(average_metric_values(metrics_merged))
+    return get_first_entry(compute_metrics_statistics(metrics_merged))
 
 
 def compute_metrics_per_prediction(
@@ -170,7 +166,7 @@ def compute_metrics_per_prediction_merge_repeats(
     return metrics_merged
 
 
-def average_metric_values(
+def compute_metrics_statistics(
     values: Dict[Any, Dict[Any, float]]
 ) -> Dict[Any, ValueWithStatistics]:
     return pipe(
@@ -414,12 +410,12 @@ def get_metrics_from_confusion_matrix(confusion_matrix) -> ConfusionMetrics:
         precision=(
             (confusion_matrix.tp / (confusion_matrix.tp + confusion_matrix.fp))
             if (confusion_matrix.tp + confusion_matrix.fp) > 0
-            else float('nan')
+            else float("nan")
         ),
         recall=(
             (confusion_matrix.tp / (confusion_matrix.tp + confusion_matrix.fn))
             if (confusion_matrix.tp + confusion_matrix.fn) > 0
-            else float('nan')
+            else float("nan")
         ),
         fpr=confusion_matrix.fp / (confusion_matrix.fp + confusion_matrix.tn),
         tnr=confusion_matrix.tn / (confusion_matrix.fp + confusion_matrix.tn),

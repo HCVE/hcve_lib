@@ -338,7 +338,7 @@ def get_dmatrix_cox_survival(X, y):
 
 class DFXGBClassifier(DFXGBase):
     def get_instance(self, *args, **kwargs) -> XGBModel:
-        return XGBClassifier(*args, device="cpu", **kwargs)
+        return XGBClassifier(*args, device="cpu", n_jobs=-1, **kwargs)
 
 
 class DFXGBRegressor(DFXGBase):

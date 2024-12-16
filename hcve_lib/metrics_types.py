@@ -31,10 +31,10 @@ class Metric(ABC):
         y_train, y_test = get_y_split(y, prediction)
         return y_test if self.is_test else y_train
 
-    # @abstractmethod
-    # def compute(
-    #     self, y_true: Target, y_pred: DataFrame
-    # ) -> Union[List[Union[ExceptionValue, float]], Union[ExceptionValue, float]]: ...
+    @abstractmethod
+    def compute(
+        self, y_true: Target, y_pred: DataFrame
+    ) -> Union[List[Union[ExceptionValue, float]], Union[ExceptionValue, float]]: pass
 
     @abstractmethod
     def get_names(
@@ -49,8 +49,7 @@ class Metric(ABC):
         y: Target,
     ) -> List[Union[ExceptionValue, float]]:
         _y = self.get_y(y, prediction)
-        y_pred = loc(_y.index, prediction["y_pred"])
-        return self.compute(_y, y_pred)
+        return self.compute(_y, prediction["y_pred"])
 
     @abstractmethod
     def get_direction(self) -> OptimizationDirection: ...

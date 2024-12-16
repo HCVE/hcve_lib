@@ -37,7 +37,7 @@ def test_cross_validate():
             breakpoint()
 
     def get_splits(X, y, random_state):
-        return {"split": (["a", "b"], ["c"])}
+        return {"split": (["a", "b", "a"], ["c"])}
 
     X = DataFrame({"x": [1, 2, 3]}, index=["a", "b", "c"])
     y = Series([10, 20, 30], name="y", index=["a", "b", "c"])
@@ -106,7 +106,7 @@ def test_cross_validate_optimize():
     y = Series([10, 20, 30], name="y", index=["a", "b", "c"])
 
     def get_splits(X, y, random_state):
-        return {"split": (["a", "b"], ["c"])}
+        return {"split": (["a", "b", "a"], ["c"])}
 
     pipeline = DFPipeline(
         [

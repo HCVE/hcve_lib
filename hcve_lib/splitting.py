@@ -46,9 +46,9 @@ def get_lco(X: DataFrame, data: DataFrame, column: str = "STUDY") -> TrainTestSp
 
 @accept_extra_parameters
 def get_lo_splits(
-        X: DataFrame,
-        data: DataFrame,
-        group_by_column: str,
+    X: DataFrame,
+    data: DataFrame,
+    group_by_column: str,
 ) -> TrainTestSplits:
     data_subset = data.loc[X.index]
     all_indexes = data_subset.index
@@ -67,9 +67,9 @@ def get_lo_splits(
 
 @accept_extra_parameters
 def get_1_to_1_splits(
-        X: DataFrame,
-        data: DataFrame,
-        group_by_column: str,
+    X: DataFrame,
+    data: DataFrame,
+    group_by_column: str,
 ) -> TrainTestSplits:
     data_subset = data.loc[X.index]
     groups = data_subset.groupby(group_by_column)
@@ -85,8 +85,8 @@ def get_1_to_1_splits(
 
 @accept_extra_parameters
 def get_group_splits(
-        X: DataFrame,
-        group_by: Any,
+    X: DataFrame,
+    group_by: Any,
 ) -> TrainTestSplits:
     all_indexes = X.index
     return pipe(
@@ -103,12 +103,12 @@ def get_group_splits(
 
 @accept_extra_parameters
 def get_splits_per_group(
-        X: DataFrame,
-        y: Target,
-        data: DataFrame,
-        random_state: int,
-        get_splits: Callable = None,
-        group_by_feature: str = "STUDY",
+    X: DataFrame,
+    y: Target,
+    data: DataFrame,
+    random_state: int,
+    get_splits: Callable = None,
+    group_by_feature: str = "STUDY",
 ):
     if get_splits is None:
         get_splits = partial(get_k_fold_stratified, random_state=random_state)
@@ -120,8 +120,8 @@ def get_splits_per_group(
             [
                 ((name, name_inner), split)
                 for name_inner, split in get_splits(
-                X=group_df, y=loc(group_df.index, y)
-            ).items()
+                    X=group_df, y=loc(group_df.index, y)
+                ).items()
             ]
             for name, group_df in groups
         ),
@@ -132,11 +132,11 @@ def get_splits_per_group(
 
 @accept_extra_parameters
 def get_lm(
-        X: DataFrame,
-        data: DataFrame,
-        random_state: int,
-        bootstrap: bool = True,
-        include_local_in_test: bool = True,
+    X: DataFrame,
+    data: DataFrame,
+    random_state: int,
+    bootstrap: bool = True,
+    include_local_in_test: bool = True,
 ) -> TrainTestSplits:
     # if bootstrap:
     # _X = X.sample(frac=0.8, replace=False, random_state=random_state)
@@ -189,7 +189,7 @@ def get_healthabc_ascot_split(data: DataFrame) -> TrainTestSplits:
 
 @accept_extra_parameters
 def get_loo_splits(
-        X: DataFrame,
+    X: DataFrame,
 ) -> TrainTestSplits:
     return pipe(
         LeaveOneOut().split(X),
@@ -201,7 +201,7 @@ def get_loo_splits(
 
 @accept_extra_parameters
 def get_full_train(
-        X: DataFrame,
+    X: DataFrame,
 ) -> TrainTestSplits:
     train_indices = X.index.tolist()
     test_indices = []
@@ -219,11 +219,11 @@ def get_full_train(
 
 @accept_extra_parameters
 def get_k_fold(
-        X: DataFrame,
-        random_state: int,
-        n_splits: int = 5,
-        *args,
-        **kwargs,
+    X: DataFrame,
+    random_state: int,
+    n_splits: int = 5,
+    *args,
+    **kwargs,
 ) -> TrainTestSplits:
     splits = pipe(
         KFold(
@@ -240,11 +240,11 @@ def get_k_fold(
 
 @accept_extra_parameters
 def get_per_subset_split(
-        X: DataFrame,
-        y: Target,
-        group_by: GroupBy,
-        get_splits: TrainTestSplitter,
-        random_state: int,
+    X: DataFrame,
+    y: Target,
+    group_by: GroupBy,
+    get_splits: TrainTestSplitter,
+    random_state: int,
 ) -> TrainTestSplits:
     splits_subsets: Dict[Any, Dict[Hashable, Tuple[list, list]]] = {}
 
@@ -264,10 +264,10 @@ def get_per_subset_split(
 
 @accept_extra_parameters
 def get_k_fold_stratified(
-        X: DataFrame,
-        y: Target,
-        random_state: int,
-        n_splits: int = 5,
+    X: DataFrame,
+    y: Target,
+    random_state: int,
+    n_splits: int = 5,
 ) -> TrainTestSplits:
     try:
         y_ = y["label"]
@@ -289,15 +289,15 @@ def get_k_fold_stratified(
 
 @accept_extra_parameters
 def get_train_test(
-        X: DataFrame,
-        y: Target,
-        random_state: int,
-        test_size=0.1,
-        train_size=None,
-        shuffle=True,
-        stratify=None,
-        *args,
-        **kwargs,
+    X: DataFrame,
+    y: Target,
+    random_state: int,
+    test_size=0.1,
+    train_size=None,
+    shuffle=True,
+    stratify=None,
+    *args,
+    **kwargs,
 ) -> TrainTestSplits:
     data_train, data_test = train_test_split(
         X,
@@ -334,12 +334,12 @@ def accept_extra_parameters(func):
 
 @accept_extra_parameters
 def get_bootstrap(
-        X: DataFrame,
-        y: Target,
-        random_state: int,
-        *args,
-        **kwargs,
-) -> Dict[Hashable, Tuple[Index, Index]]:
+    X: DataFrame,
+    y: Target,
+    random_state: int,
+    *args,
+    **kwargs,
+) -> TrainTestSplits:
     """
     Generate a bootstrap sample from the input data.
 
@@ -377,15 +377,15 @@ def get_bootstrap(
 
 @accept_extra_parameters
 def get_learning_curve_splits(
-        X: DataFrame,
-        y: Target,
-        random_state: int,
-        test_size=0.1,
-        shuffle=True,
-        n_step: int = 100,
-        min_samples: int = 500,
-        *args,
-        **kwargs,
+    X: DataFrame,
+    y: Target,
+    random_state: int,
+    test_size=0.1,
+    shuffle=True,
+    n_step: int = 100,
+    min_samples: int = 500,
+    *args,
+    **kwargs,
 ) -> TrainTestSplits:
     test_size_n = int(test_size * len(X))
     data_train, data_test = train_test_split(
@@ -405,9 +405,9 @@ def get_learning_curve_splits(
 
 @accept_extra_parameters
 def train_test_filter(
-        data: DataFrame,
-        train_filter: Callable,
-        test_filter: Callable = None,
+    data: DataFrame,
+    train_filter: Callable,
+    test_filter: Callable = None,
 ) -> TrainTestSplits:
     train_mask = train_filter(data)
     train_data = data[train_mask]
@@ -434,13 +434,13 @@ def iloc_to_loc(data: DataFrame, ilocs: Sequence[int]):
 
 
 def filter_missing_features(
-        x_train: Series,
-        x_test: Series,
-        threshold: float = 1,
+    x_train: Series,
+    x_test: Series,
+    threshold: float = 1,
 ) -> bool:
     return (
-            get_fraction_missing(x_train) >= threshold
-            or get_fraction_missing(x_test) >= threshold
+        get_fraction_missing(x_train) >= threshold
+        or get_fraction_missing(x_test) >= threshold
     )
 
 
@@ -468,16 +468,16 @@ def train_test_fold(data, fold: Prediction, metadata) -> Tuple[DataFrame, Target
 
 
 def get_group_indexes(
-        data: DataFrame,
-        feature_name: str,
+    data: DataFrame,
+    feature_name: str,
 ) -> Dict[str, Index]:
     groups = data.groupby(feature_name)
     return {name: group.index for name, group in groups}
 
 
 def resample_prediction_test(
-        index: Index,
-        prediction: Prediction,
+    index: Index,
+    prediction: Prediction,
 ) -> Prediction:
     y_pred = loc(index, prediction["y_pred"].copy(), ignore_not_present=True)
     return merge(

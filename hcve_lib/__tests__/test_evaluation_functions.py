@@ -1,7 +1,10 @@
+from typing import List, Union
+from unittest import mock
+
 from pandas import Series, DataFrame
 from statsmodels.compat.pandas import assert_series_equal
 
-from hcve_lib.custom_types import Prediction
+from hcve_lib.custom_types import Prediction, Results, Target, ExceptionValue
 from hcve_lib.evaluation_functions import (
     compute_metric_groups,
     get_2_level_groups,
@@ -13,7 +16,71 @@ from hcve_lib.evaluation_functions import (
     get_inverse_weight,
     compute_metrics,
 )
-from hcve_lib.utils import get_class_ratios, get_fractions
+from hcve_lib.metrics import Maximize
+from hcve_lib.metrics_types import Metric
+from hcve_lib.utils import get_fractions
+
+
+def test_compute_metrics():
+
+    X = DataFrame(
+        {
+            "feature1": [0.1, 0.2, 0.3, 0.4],
+            "feature2": [1.1, 1.2, 1.3, 1.4],
+            "feature3": [2.1, 2.2, 2.3, 2.4],
+        },
+        index=["idx1", "idx2", "test_idx_1", "test_idx_2"],
+    )
+
+    y = Series(
+        [0, 1, 0, 0],
+        index=["idx1", "idx2", "test_idx_1", "test_idx_2"],
+        name="target",
+    )
+
+    result: Results = [
+        {
+            "split_1": {
+                "y_pred": Series(
+                    [1, 1, 0, 0],
+                    index=["test_idx_1", "test_idx_1", "test_idx_2", "test_idx_2"],
+                ),
+                "y_column": "target",
+                "X_columns": ["feature1", "feature2", "feature3"],
+                "model": "MockModel",
+                "split": (
+                    ["idx1", "idx1" "idx2"],
+                    ["test_idx_1", "test_idx_1", "test_idx_2", "test_idx_2"],
+                ),
+            }
+        },
+    ]
+
+    class MockMetric(Maximize, Metric):
+        def __init__(self):
+            super().__init__()
+
+        def get_names(
+            self,
+            prediction: Prediction,
+            y: Target,
+        ) -> List[str]:
+            return ["metric"]
+
+        def compute(
+            self, y_true: Target, y_pred: Target
+        ) -> List[Union[ExceptionValue, float]]:
+            return [(y_true - y_pred).mean()]
+
+    metric = MockMetric()
+
+    metrics = compute_metrics(
+        results=result,
+        y=y,
+        metrics=[metric],
+    )
+
+    assert metrics["metric"]["mean"] == -0.5
 
 
 def test_compute_metric_groups():
@@ -180,23 +247,3 @@ def test_get_inverse_weight():
     ).tolist() == [0.1, 0.9]
 
     print(get_inverse_weight(data2, proportions={"x": 0.1, "y": 0.9}))
-
-
-#
-# def test_get_inverse_weight():
-#     # Equal weights
-#     data = Series(["x", "x", "y", "z"])
-#     assert (get_inverse_weight(data) * get_fractions(data)).tolist() == [
-#         1 / 3,
-#         1 / 3,
-#         1 / 3,
-#     ]
-#
-#     # Specific weights
-#     data2 = Series(["x", "x", "y"])
-#     assert (
-#         get_inverse_weight(data2, proportions={"x": 0.1, "y": 0.9})
-#         * get_fractions(data2)
-#     ).tolist() == [0.1, 0.9]
-#
-#     print(get_inverse_weight(data2, proportions={"x": 0.1, "y": 0.9}))

@@ -64,12 +64,9 @@ def test_get_boostrap_basic_functionality(sample_data):
 
     train_idx, test_idx = result["bootstrap"]
 
-    # Check sizes and types
-    assert len(train_idx) == len(sample_data)  # Bootstrap sample same size as original
-    assert isinstance(train_idx, list)
-    assert isinstance(test_idx, list)
+    assert train_idx == [6, 3, 7, 4, 6, 9, 2, 6, 7, 4]
+    assert test_idx == [0, 1, 5, 8]
 
-    # Check no overlap between train and test
     assert len(set(train_idx).intersection(set(test_idx))) == 0
 
 

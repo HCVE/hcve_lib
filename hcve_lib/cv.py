@@ -250,46 +250,6 @@ def get_data_for_cv_repeats(
     return data
 
 
-# def objective_predictive_performance(
-#     trial: Trial,
-#     get_pipeline: Callable,
-#     random_state: int,
-#     X: DataFrame,
-#     y: Union[Target, Series],
-#     get_splits: TrainTestSplitter,
-#     hyperparameters: Dict,
-#     logger: logging.Logger = None,
-#     objective_metric: Metric = None,
-#     predict_method: str = 'predict_proba',
-# ):
-#     if objective_metric is None:
-#         objective_metric = get_standard_metrics(y)[0]
-#
-#     start_time = process_time()
-#
-#     results = cross_validate(
-#         get_pipeline,
-#         X,
-#         y,
-#         get_splits=get_train_test,
-#         random_state=random_state,
-#         predict_method=predict_method,
-#         hyperparameters=hyperparameters,
-#         logger=logger,
-#         n_jobs=1,
-#         n_repeats=50,
-#     )
-#
-#     metrics = compute_metrics(results, y, [objective_metric])
-#     trial.set_user_attr('metrics', metrics)
-#     trial.set_user_attr('hyperparameters', hyperparameters)
-#
-#     duration = process_time() - start_time
-#     trial.set_user_attr('duration', duration)
-#
-#     return [get_first_entry(metrics)['mean']]
-
-
 def objective_predictive_performance(
     trial: Trial,
     get_pipeline: Callable,

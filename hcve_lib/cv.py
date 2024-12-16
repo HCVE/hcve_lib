@@ -96,7 +96,7 @@ def cross_validate(
     random_state: int,
     get_repeat_context: GetRepeatContext = None,
     on_repeat_result: List[OnRepeatResults] = None,
-    n_jobs: Optional[int] = None,
+    n_jobs: Optional[int] = 1,
     mlflow: Union[bool, str] = False,
     optimize: bool = False,
     tags: Dict = None,
@@ -511,7 +511,7 @@ class Optimize:
 
     def objective(self, trial: Trial, X: DataFrame, y: Target) -> float:
         pipeline = self.get_pipeline(X, y, self.random_state)
-        trial, hyperparameters = pipeline.suggest_optuna_(trial, X)
+        trial, hyperparameters = pipeline.suggest_optuna(trial, X)
 
         return self.objective_evaluate(
             trial=trial,

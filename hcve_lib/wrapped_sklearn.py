@@ -403,7 +403,7 @@ class DFPipeline(Pipeline, Estimator):
             Xt = transform.transform(Xt)
         return Xt
 
-    def suggest_optuna_(
+    def suggest_optuna(
         self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         if not self.skip_optimization:
@@ -416,9 +416,9 @@ class DFPipeline(Pipeline, Estimator):
     ) -> Tuple[Trial, Dict]:
         prefix_ = (prefix + "_") if prefix else ""
         hyperparamaters = {
-            name: step.suggest_optuna_(trial, X, prefix_)[1]
+            name: step.suggest_optuna(trial, X, prefix_)[1]
             for (name, step) in self.steps
-            if hasattr(step, "suggest_optuna_")
+            if hasattr(step, "suggest_optuna")
         }
 
         return trial, hyperparamaters

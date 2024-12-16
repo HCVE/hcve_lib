@@ -227,7 +227,6 @@ class PredictionMethod(Estimator):
         log_mlflow: bool = True,
         target_type: TargetType = TargetType.NA,
         verbose: int = None,
-        skip_optimization: bool = False,
         **kwargs,
     ):
         self.random_state = random_state
@@ -237,7 +236,6 @@ class PredictionMethod(Estimator):
         self.verbose = verbose
         self.kwargs = kwargs
         self._estimator = self.get_estimator_(X)
-        self.skip_optimization = skip_optimization
         self.params = {}
 
     def fit(self, X: DataFrame, y: Any, *args, **kwargs):
@@ -292,15 +290,6 @@ class PredictionMethod(Estimator):
         self, trial: Trial, X: DataFrame, prefix: str = ""
     ) -> Tuple[Trial, Dict]:
         return trial, {}
-
-    def suggest_optuna_(
-        self, trial: Trial, X: DataFrame, prefix: str = ""
-    ) -> Tuple[Trial, Dict]:
-
-        if not self.skip_optimization:
-            return self.suggest_optuna(trial, X, prefix)
-        else:
-            return trial, {}
 
     def get_feature_importance(self) -> Series:
         if not self._estimator:
@@ -595,7 +584,7 @@ class SurvivalStacking(PredictionMethod):
     def suggest_optuna(
         self, trial: Trial, X: DataFrame, *args, **kwargs
     ) -> Tuple[Trial, Dict]:
-        _, hyperparameters_meta = self.get_meta_learner(X).suggest_optuna_(
+        _, hyperparameters_meta = self.get_meta_learner(X).suggest_optuna(
             trial, X, "meta_learning"
         )
 
@@ -605,9 +594,7 @@ class SurvivalStacking(PredictionMethod):
         }
 
         for name, model in self.get_base_learners(X):
-            _, hyperparameters["base_estimators"][name] = model.suggest_optuna_(
-                trial, X
-            )
+            _, hyperparameters["base_estimators"][name] = model.suggest_optuna(trial, X)
         print("HYPERPARAMETERS", hyperparameters)
         return trial, hyperparameters
 

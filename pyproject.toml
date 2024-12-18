@@ -45,9 +45,10 @@ shap = "^0.46.0"
 vistir = "==0.6.1"
 
 [tool.poetry.group.dev.dependencies]
-black = "^24.10.0"
 rpy2 = "^3.5.17"
 pytest = "^8.3.4"
+mypy = "^1.13.0"
+ruff = "^0.8.3"
 
 [build-system]
 requires = ["poetry-core"]

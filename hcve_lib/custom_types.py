@@ -40,6 +40,7 @@ TrainTestSplitter = Callable[..., TrainTestSplits]
 
 
 class StrEnum(Enum):
+    # noinspection PyMethodParameters
     def _generate_next_value_(name, start, count, last_values):
         return name
 
@@ -292,10 +293,10 @@ class ConfusionMetrics(DataStructure):
 
 
 class Prediction(TypedDict, total=False):
-    y_pred: Any
+    y_pred: Target
     y_column: str
     X_columns: List[str]
-    model: "Model"
+    model: Any
     split: TrainTestIndex
 
 
@@ -337,7 +338,7 @@ class ExceptionValue:
     def __init__(
         self,
         value: Any = None,
-        exception: Exception = None,
+        exception: Optional[Exception] = None,
     ):
         self.traceback = traceback.format_exc()
         self.value = value

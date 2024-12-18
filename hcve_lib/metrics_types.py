@@ -34,7 +34,8 @@ class Metric(ABC):
     @abstractmethod
     def compute(
         self, y_true: Target, y_pred: DataFrame
-    ) -> Union[List[Union[ExceptionValue, float]], Union[ExceptionValue, float]]: pass
+    ) -> Union[List[Union[ExceptionValue, float]], Union[ExceptionValue, float]]:
+        pass
 
     @abstractmethod
     def get_names(

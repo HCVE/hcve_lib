@@ -337,6 +337,7 @@ def get_bootstrap(
     X: DataFrame,
     y: Target,
     random_state: int,
+    n_samples=None,
     *args,
     **kwargs,
 ) -> TrainTestSplits:
@@ -357,8 +358,10 @@ def get_bootstrap(
     Dict[Hashable, Tuple[Index, Index]]
         Dictionary containing the train (bootstrap) and test (out-of-bag) indices
     """
+    if n_samples is None:
+        n_samples = len(X)
+        
     rng = np.random.RandomState(random_state)
-    n_samples = len(X)
 
     # Generate bootstrap sample indices (sampling with replacement)
     bootstrap_indices = rng.randint(0, n_samples, size=n_samples)

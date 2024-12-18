@@ -1,37 +1,36 @@
-import uuid
-
 import argparse
 import asyncio
-import pickle
-from datetime import datetime
-
-from toolz import keyfilter
 import enum
 import itertools
 import multiprocessing
 import os
+import pickle
 import random
+import re
 import shelve
+import uuid
 from contextlib import contextmanager
 from copy import copy
-from functools import singledispatch, partial as partial_, update_wrapper
+from datetime import datetime
+from functools import partial as partial_
+from functools import singledispatch, update_wrapper
 from logging import Logger
 from multiprocessing.pool import Pool
-from numbers import Real, Number
+from numbers import Number, Real
 from pathlib import Path
 from pprint import pprint
 from typing import (
-    Dict,
-    Callable,
-    Iterator,
-    Tuple,
     Any,
+    Callable,
+    Dict,
+    Hashable,
     Iterable,
-    TypeVar,
+    Iterator,
     List,
     Optional,
     Sequence,
-    Hashable,
+    Tuple,
+    TypeVar,
     Union,
 )
 
@@ -39,30 +38,29 @@ import numpy
 import numpy as np
 import pandas
 import pandas as pd
-
+from IPython.core import ultratb
 from filelock import FileLock, UnixFileLock
 from flask_socketio import SocketIO
 from frozendict import frozendict
-from humps import decamelize, camelize
+from humps import camelize, decamelize
 
 # from imblearn.over_sampling.base import BaseOverSampler
 from matplotlib import pyplot
-from numpy import ndarray, recarray, isnan
-from pandas import Series, DataFrame, Index
+from numpy import isnan, ndarray, recarray
+from pandas import DataFrame, Index, Series
 from pandas.core.groupby import DataFrameGroupBy
 from scipy.stats import t
-from toolz import valmap
+from toolz import keyfilter, valmap
 
 from hcve_lib.custom_types import (
-    SurvivalPairTarget,
+    Estimator,
     Prediction,
+    Result,
+    SurvivalPairTarget,
     Target,
     TrainTestIndex,
-    Result,
-    Estimator,
 )
-from hcve_lib.functional import pipe, unzip, flatten
-from IPython.core import ultratb
+from hcve_lib.functional import flatten, pipe, unzip
 
 empty_dict: Dict = frozendict()
 
@@ -817,7 +815,7 @@ def get_first_item(something: Dict) -> Tuple:
     return key, something[key]
 
 
-def run_parallel(function: Callable, data: Dict, n_jobs: int = None) -> Dict:
+def run_parallel(function: Callable, data: Dict, n_jobs: Optional[int] = None) -> Dict:
     if n_jobs is None:
         n_jobs = min(len(data), multiprocessing.cpu_count())
 
@@ -1062,9 +1060,6 @@ def deep_merge(obj1: Union[Dict, Any], obj2: Union[Dict, Any]) -> Union[Dict, An
         return obj1
     else:
         return obj1_new
-
-
-import re
 
 
 def convert_to_snake_case_keys(data: Union[Dict, List]) -> Union[Dict, List]:
@@ -1480,7 +1475,7 @@ def count_lines(input_string: str) -> int:
 
 
 def compute_classification_scores_statistics(
-    predictions: Dict[Hashable, DataFrame]
+    predictions: Dict[Hashable, DataFrame],
 ) -> Dict[Hashable, Dict[str, float]]:
     statistics = {}
     for key, prediction in predictions.items():

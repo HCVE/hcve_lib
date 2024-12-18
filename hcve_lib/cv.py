@@ -35,6 +35,7 @@ from hcve_lib.custom_types import (
     TrainTestSplits,
     Result,
     TrainTestSplitter,
+    Results,
 )
 from hcve_lib.evaluation_functions import (
     compute_metrics_result,
@@ -104,7 +105,7 @@ def cross_validate(
     on_progress: Callable[[float], None] = None,
     *args,
     **kwargs,
-) -> List[Result]:
+) -> Results:
     if on_repeat_result is None:
         on_repeat_result = []
     elif isinstance(mlflow, str):

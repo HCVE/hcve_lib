@@ -1,13 +1,33 @@
-from typing import Dict, Protocol
+from statistics import mean
+from typing import Dict, Protocol, Optional, List
 
 from pandas import DataFrame
 
-from hcve_lib.custom_types import Results, Target
-from hcve_lib.utils import loc
+from hcve_lib.custom_types import Results, Target, Metrics, TrainTestSplits
+from hcve_lib.evaluation_functions import compute_metrics
+from hcve_lib.metrics_types import Metric
+from hcve_lib.splitting import get_bootstrap
+from hcve_lib.utils import partial
+
+
+class GetSplitTrainSize(Protocol):
+    def __call__(
+        self, X: DataFrame, y: Target, random_state: int, train_size: int
+    ) -> TrainTestSplits: ...
+
+
+class GetSplits(Protocol):
+    def __call__(self, X: DataFrame, y: Target) -> TrainTestSplits: ...
 
 
 class CrossValidateCallback(Protocol):
-    def __call__(self, X: DataFrame, y: Target) -> Results: ...
+    def __call__(
+        self,
+        X: DataFrame,
+        y: Target,
+        random_state: int,
+        get_splits: GetSplits,
+    ) -> Results: ...
 
 
 def get_learning_curve_data(
@@ -15,10 +35,14 @@ def get_learning_curve_data(
     y: Target,
     cross_validate_callback: CrossValidateCallback,
     random_state: int,
+    get_splits: Optional[GetSplitTrainSize] = None,
     start_samples: float | int = 0.1,
     end_samples: float | int = 1.0,
     n_points: int = 10,
 ) -> Dict[int, Results]:
+    if get_splits is None:
+        get_splits = get_bootstrap
+
     if start_samples < 0:
         raise ValueError("start_samples has to be greate or equal to  0")
 
@@ -49,11 +73,43 @@ def get_learning_curve_data(
     results_all = {}
 
     for sample_size in sample_sizes:
-        X_sample = X.sample(n=sample_size, random_state=random_state, replace=False)
-        y_sample = loc(X_sample.index, y)
-        results_all[sample_size] = cross_validate_callback(X=X_sample, y=y_sample)
+        get_splits_with_sizes: GetSplits = partial(
+            get_splits,
+            train_size=sample_size,
+            random_state=random_state * sample_size,
+        )
+
+        results = cross_validate_callback(
+            X=X,
+            y=y,
+            random_state=random_state * sample_size,
+            get_splits=get_splits_with_sizes,
+        )
+
+        training_size = round(get_mean_train_size(results))
+        results_all[training_size] = results
 
     return results_all
 
 
+def compute_learning_curve_metrics(
+    data: Dict[int, Results],
+    y: Target,
+    metrics: Optional[List[Metric]] = None,
+) -> Dict[int, Metrics]:
+    metrics_all: Dict[int, Metrics] = {}
 
+    for sample_size, results in data.items():
+        metrics_all[sample_size] = compute_metrics(
+            results=results, y=y, metrics=metrics
+        )
+
+    return metrics_all
+
+
+def get_mean_train_size(results: Results) -> float:
+    train_sizes = []
+    for result in results:
+        for prediction in result.values():
+            train_sizes.append(len(prediction["split"][0]))
+    return mean(train_sizes)

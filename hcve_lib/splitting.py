@@ -1,41 +1,37 @@
 import itertools
 from collections import defaultdict
-from functools import partial, reduce
-from typing import Callable, Sequence, List, Tuple, Dict, Any, Hashable, cast
+from functools import partial
+from functools import wraps
+from typing import Callable, Sequence, List, Tuple, Dict, Any, Hashable
+from typing import Union
 
+import numpy as np
 from pandas import DataFrame, Series
-from pandas.core.groupby import DataFrameGroupBy, GroupBy
+from pandas import Index
+from pandas.core.groupby import GroupBy
 from sklearn.model_selection import (
     KFold,
     StratifiedKFold,
     train_test_split,
     LeaveOneOut,
 )
-from toolz import identity, merge, valmap
+from toolz import merge
 from toolz.curried import valfilter, map
 
 from hcve_lib.custom_types import (
     Target,
     TrainTestSplits,
     Prediction,
-    ExceptionValue,
     TrainTestSplitter,
-    Index,
 )
 from hcve_lib.data import get_survival_y
-from hcve_lib.functional import pipe, mapl, accept_extra_parameters, flatten, valmap_
+from hcve_lib.functional import pipe, mapl, accept_extra_parameters, flatten
 from hcve_lib.utils import (
     subtract_lists,
-    map_groups_iloc,
     list_to_dict_index,
     get_fraction_missing,
-    partial,
     loc,
-    empty_dict,
-    generate_steps,
     transpose_dict,
-    merge_two_level_dict,
-    flatten_dict,
 )
 
 
@@ -314,12 +310,6 @@ def get_train_test(
     return {"train_test": (data_train_index, data_test_index)}
 
 
-from typing import Dict, Tuple, Hashable
-import numpy as np
-from pandas import DataFrame, Index
-from typing import Union, Optional
-from functools import wraps
-
 Target = Union[DataFrame, np.ndarray, None]
 
 
@@ -337,7 +327,7 @@ def get_bootstrap(
     X: DataFrame,
     y: Target,
     random_state: int,
-    n_samples=None,
+    train_size=None,
     *args,
     **kwargs,
 ) -> TrainTestSplits:
@@ -358,13 +348,13 @@ def get_bootstrap(
     Dict[Hashable, Tuple[Index, Index]]
         Dictionary containing the train (bootstrap) and test (out-of-bag) indices
     """
-    if n_samples is None:
-        n_samples = len(X)
-        
+    if train_size is None:
+        train_size = len(X)
+
     rng = np.random.RandomState(random_state)
 
     # Generate bootstrap sample indices (sampling with replacement)
-    bootstrap_indices = rng.randint(0, n_samples, size=n_samples)
+    bootstrap_indices = rng.randint(0, train_size, size=train_size)
 
     # Get unique indices for the bootstrap sample (train set)
     train_indices = X.index[bootstrap_indices].tolist()

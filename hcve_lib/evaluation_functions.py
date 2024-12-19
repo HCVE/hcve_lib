@@ -20,11 +20,15 @@ from typing import Union, List, Tuple, Callable
 import numpy
 import numpy as np
 import pandas
+import pandas as pd
 import toolz
 from numpy import std
 from pandas import DataFrame, Series
 from pandas.core.groupby import DataFrameGroupBy
+from plotly import graph_objects as go
+from scipy.stats import stats
 from sklearn.metrics import roc_auc_score
+from sksurv.metrics import cumulative_dynamic_auc, brier_score
 from toolz import pluck, merge, itemmap, valmap, merge_with
 
 from hcve_lib.custom_types import (
@@ -69,8 +73,8 @@ HashableT = TypeVar("HashableT", bound=Hashable)
 def compute_metrics(
     results: List[Result],
     y: Target,
-    metrics: List[Metric] = None,
-    skip_metrics: List[str] = None,
+    metrics: Optional[List[Metric]] = None,
+    skip_metrics: Optional[List[str]] = None,
 ) -> Dict[HashableT, ValueWithStatistics]:
     if metrics is None:
         metrics = get_standard_metrics(y)
@@ -82,8 +86,8 @@ def compute_metrics(
 def compute_metrics_merged_splits(
     results: List[Result],
     y: Target,
-    metrics: List[Metric] = None,
-    skip_metrics: List[str] = None,
+    metrics: Optional[List[Metric]] = None,
+    skip_metrics: Optional[List[str]] = None,
 ) -> Dict[HashableT, ValueWithStatistics]:
     if metrics is None:
         metrics = get_standard_metrics(y)
@@ -100,12 +104,13 @@ def compute_metrics_merged_splits(
 
 
 def compute_metric(
-    results: List[Result],
+    results: Results,
     y: Target,
     metric: Metric = None,
 ) -> Dict[HashableT, ValueWithStatistics]:
     if metric is None:
         metric = get_standard_metrics(y)[0]
+
     metrics_merged = compute_metrics_per_prediction(results, y, [metric])
     return get_first_entry(compute_metrics_statistics(metrics_merged))
 
@@ -167,7 +172,7 @@ def compute_metrics_per_prediction_merge_repeats(
 
 
 def compute_metrics_statistics(
-    values: Dict[Any, Dict[Any, float]]
+    values: Dict[Any, Dict[Any, float]],
 ) -> Dict[Any, ValueWithStatistics]:
     return pipe(
         values,
@@ -969,7 +974,6 @@ def compute_ibs_per_split_with_ci(X, y, results):
 
 
 def plot_ci_dataframe(df, fig=None, name=""):
-
     if fig is None:
         fig = go.Figure()
 

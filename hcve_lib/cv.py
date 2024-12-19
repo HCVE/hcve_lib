@@ -8,7 +8,7 @@ from logging import Logger
 from multiprocessing import cpu_count
 from statistics import mean
 from time import process_time
-from typing import Iterable, Hashable, Mapping, Sequence, TypeVar, Union, Type
+from typing import Iterable, Hashable, Mapping, Sequence, TypeVar, Union, Type, Protocol
 from typing import List, Dict, Optional, Callable, cast
 from typing import Tuple
 
@@ -200,6 +200,10 @@ def cross_validate_single_repeat_(
     return result
 
 
+class GetPipeline(Protocol):
+    def __call__(self, X: DataFrame, y: Target, random_state: int) -> Results: ...
+
+
 def get_data_for_cv_repeats(
     get_pipeline: Callable,
     X: DataFrame,
@@ -207,12 +211,12 @@ def get_data_for_cv_repeats(
     get_splits: TrainTestSplitter,
     n_repeats: int,
     random_state: int,
-    get_repeat_context: GetRepeatContext = None,
-    on_repeat_result: List[OnRepeatResults] = None,
+    get_repeat_context: Optional[GetRepeatContext] = None,
+    on_repeat_result: Optional[List[OnRepeatResults]] = None,
     n_jobs_rest: Optional[int] = None,
     mlflow: Union[bool, str] = False,
     optimize: bool = False,
-    reporter: ProgressReporter = None,
+    reporter: Optional[ProgressReporter] = None,
     *args,
     **kwargs,
 ) -> Dict:
@@ -831,7 +835,7 @@ class OptimizeEstimator(Optimize, Estimator):
 
 
 def get_removed_features_from_mask(
-    column_masks: Dict[Hashable, Dict[Hashable, bool]]
+    column_masks: Dict[Hashable, Dict[Hashable, bool]],
 ) -> Dict[Hashable, List[str]]:
     return pipe(
         column_masks,
@@ -875,13 +879,16 @@ def get_column_mask_filter(
         if len(X_test) == 0 or len(X_train) == 0:
             yield fold_name, {}
         else:
-            yield fold_name, {
-                column_name: _train_test_filter(
-                    X_train[column_name],
-                    X_test[column_name],
-                )
-                for column_name in X
-            }
+            yield (
+                fold_name,
+                {
+                    column_name: _train_test_filter(
+                        X_train[column_name],
+                        X_test[column_name],
+                    )
+                    for column_name in X
+                },
+            )
 
 
 def get_nested_optimization(

@@ -1,21 +1,18 @@
 from itertools import islice
-from typing import List, Optional
+from typing import List, Optional, Any
 
 from pandas import DataFrame
 from plotly.graph_objs import Figure
 from sklearn.inspection import permutation_importance
-from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.metrics import average_precision_score
 
 from hcve_lib.custom_types import Prediction, Target, Result
 from hcve_lib.data import Metadata, format_features
-from hcve_lib.functional import t
 from hcve_lib.utils import get_first_entry, get_models_from_repeats
-from typing import List
-from pandas import DataFrame, Series
+from pandas import Series
 from plotly import express as px
 from sklearn.metrics import r2_score
 
-from hcve_lib.custom_types import Result
 from hcve_lib.utils import get_X_split, get_y_split, is_numerical
 
 
@@ -215,6 +212,13 @@ def get_model_importance(results: List[Result]) -> DataFrame:
     )
     forest_importance_avg = forest_importances.mean(axis=1).sort_values(ascending=False)
     return forest_importances.loc[forest_importance_avg.index]
+
+
+def get_feature_importance(model: Any) -> DataFrame:
+    if "get_feature_importance" in model:
+        return model.get_feature_importance()
+    elif "coef_" in model:
+        return model.coef_
 
 
 def plot_model_importance_results(results: List[Result], limit=None) -> Figure:

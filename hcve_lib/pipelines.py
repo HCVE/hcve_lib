@@ -4,7 +4,7 @@ from collections import defaultdict
 from functools import partial
 from functools import reduce
 from logging import Logger
-from math import log, exp, inf
+from math import log, exp
 from statistics import mean
 from time import sleep
 from typing import Any, Tuple, Dict, Union, Iterable, Optional
@@ -40,7 +40,6 @@ from hcve_lib.custom_types import (
     TargetData,
 )
 from hcve_lib.custom_types import ExceptionValue
-from hcve_lib.functional import t
 from hcve_lib.utils import (
     is_numerical,
     estimate_continuous_columns,
@@ -72,7 +71,6 @@ from hcve_lib.wrapped_sksurv import (
     DFSurvivalStacking,
     DFSurvivalTree,
     DFRandomSurvivalForest,
-    DFCoxnetSurvivalAnalysis,
 )
 
 
@@ -924,8 +922,9 @@ class FederatedXGBoost(Estimator):
         self.local_models = {}
 
         for group_key, train_idx in self.group_by.groups.items():
-            X_train, y_train = loc(train_idx, X, ignore_not_present=True), loc(
-                train_idx, y, ignore_not_present=True
+            X_train, y_train = (
+                loc(train_idx, X, ignore_not_present=True),
+                loc(train_idx, y, ignore_not_present=True),
             )
             if len(X_train) == 0:
                 continue
@@ -1298,8 +1297,9 @@ class FederatedForest(BaseEstimator):
         local_forests = {}
 
         for group_key, train_idx in self.group_by.groups.items():
-            X_train, y_train = loc(train_idx, X, ignore_not_present=True), loc(
-                train_idx, y, ignore_not_present=True
+            X_train, y_train = (
+                loc(train_idx, X, ignore_not_present=True),
+                loc(train_idx, y, ignore_not_present=True),
             )
 
             if len(X_train) == 0:
@@ -1632,8 +1632,6 @@ class SurvivalRandomForest(PredictionMethod):
         return new_config
 
     def get_estimator(self, X=None):
-        from hcve_lib.wrapped_sksurv import DFRandomSurvivalForest
-
         return DFRandomSurvivalForest(
             random_state=self.random_state,
             n_estimators=500,
@@ -2268,7 +2266,6 @@ def get_results_p_value_feature_importance(
 
 
 def get_imputation(X: DataFrame, estimator) -> List[Tuple[str, Any]]:
-
     categorical = estimate_continuous_columns(X)
     continuous = list(set(X.columns) - set(categorical))
 
@@ -2317,7 +2314,6 @@ def get_supervised_pipeline(
     random_state: int,
     get_estimator: Callable[..., Estimator],
 ) -> DFPipeline:
-
     categorical = estimate_continuous_columns(X)
     continuous = list(set(X.columns) - set(categorical))
 
@@ -2342,7 +2338,6 @@ def get_imputation_pipeline(
     random_state: int,
     get_estimator: Callable[..., Estimator],
 ) -> DFPipeline:
-
     categorical = estimate_continuous_columns(X)
     continuous = list(set(X.columns) - set(categorical))
 

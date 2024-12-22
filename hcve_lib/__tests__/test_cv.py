@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 from optuna import Trial
 from pandas import DataFrame, Series
-from statsmodels.compat.pandas import assert_frame_equal, assert_series_equal
+from statsmodels.compat.pandas import assert_frame_equal
 
 from hcve_lib.custom_types import (
     Target,
@@ -24,9 +24,7 @@ from hcve_lib.wrapped_sklearn import DFPipeline
 
 
 def test_cross_validate():
-
     class MockEstimator(Estimator):
-
         def __init__(self, hyperparameter1=None):
             self.hyperparameter1 = hyperparameter1
 
@@ -47,17 +45,15 @@ def test_cross_validate():
         X,
         y,
         get_splits,
-        n_repeats=1,
         random_state=123,
+        n_repeats=1,
     )
     assert_frame_equal(DataFrame({"x": [3]}, index=["c"]), result[0]["split"]["y_pred"])
 
 
 # test whether the model was set with hyperparameters and trained on correct subsets
 def test_cross_validate_optimize():
-
     class MockTransform(Estimator):
-
         def fit_transform(self, X: DataFrame, y: Target):
             return X
 
@@ -65,7 +61,6 @@ def test_cross_validate_optimize():
             return X
 
     class MockEstimator(Estimator):
-
         def __init__(self, hyperparameter1=None):
             self.hyperparameter1 = hyperparameter1
 
@@ -75,7 +70,7 @@ def test_cross_validate_optimize():
         def suggest_optuna(
             self, trial: Trial, X: DataFrame, prefix: str = ""
         ) -> Tuple[Trial, Dict]:
-            return Mock(), {f"hyperparameter1": 10}
+            return Mock(), {"hyperparameter1": 10}
 
         def set_params(self, **params):
             breakpoint()
@@ -84,7 +79,6 @@ def test_cross_validate_optimize():
     step2 = MockEstimator()
 
     class MockMetric(Metric):
-
         def get_names(
             self,
             prediction: Prediction,
@@ -123,6 +117,8 @@ def test_cross_validate_optimize():
                 y,
                 get_splits=get_splits,
                 random_state=1,
+                n_repeats=1,
+                n_jobs=1,
                 optimize=True,
                 optimize_params=OptimizationParams(
                     n_trials=1,
@@ -131,8 +127,6 @@ def test_cross_validate_optimize():
                     ),
                     get_splits=lambda *args, **kwargs: {"split1": (["a"], ["b"])},
                 ),
-                n_jobs=1,
-                n_repeats=1,
             )
 
             # right hyperparameters set

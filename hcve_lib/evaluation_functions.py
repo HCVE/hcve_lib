@@ -48,6 +48,7 @@ from hcve_lib.custom_types import (
     Method,
     Results,
     T1,
+    Metrics,
 )
 from hcve_lib.custom_types import Prediction
 from hcve_lib.data import to_survival_y_records
@@ -75,7 +76,7 @@ def compute_metrics(
     y: Target,
     metrics: Optional[List[Metric]] = None,
     skip_metrics: Optional[List[str]] = None,
-) -> Dict[HashableT, ValueWithStatistics]:
+) -> Metrics:
     if metrics is None:
         metrics = get_standard_metrics(y)
 

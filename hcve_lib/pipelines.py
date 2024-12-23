@@ -2325,7 +2325,7 @@ def get_supervised_pipeline(
             (
                 "estimator",
                 get_estimator(
-                    target_type=get_target_type(y), random_state=random_state
+                    X=X, target_type=get_target_type(y), random_state=random_state
                 ),
             ),
         ]

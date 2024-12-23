@@ -70,7 +70,7 @@ def get_importance_feature_selection_curve(
                     evaluate_n_features,
                     X=X,
                     y=y,
-                    get_results=cross_validate_callback,
+                    cross_validate_callback=cross_validate_callback,
                     fi=fi,
                 ),
                 n_feature_range,

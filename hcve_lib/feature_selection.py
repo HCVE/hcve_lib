@@ -115,7 +115,7 @@ def evaluate_n_features(
 def plot_feature_selection_curve(
     feature_selection_curve, metric_name: Optional[str] = None
 ):
-    metrics = transpose_dict(feature_selection_curve)["metrics"]
+    metrics: Metrics = transpose_dict(feature_selection_curve)["metrics"]
     features = transpose_dict(feature_selection_curve)["features"]
     per_metric = transpose_dict(metrics)
 

@@ -1,6 +1,17 @@
 from enum import Enum
 from functools import partial as p, partial
-from typing import List, Iterator, Optional, Iterable, Tuple, Any, Dict, Callable, Union
+from typing import (
+    List,
+    Iterator,
+    Optional,
+    Iterable,
+    Tuple,
+    Any,
+    Dict,
+    Callable,
+    Union,
+    Mapping,
+)
 from typing_extensions import TypedDict
 
 import numpy as np
@@ -13,14 +24,15 @@ from hcve_lib.utils import key_value_swap
 Metadata = List["MetadataItem"]  # type: ignore
 
 
-class MetadataItem(TypedDict):
+class MetadataItem(TypedDict, total=False):
     identifier: str
-    identifier_tte: Optional[str]
-    meaning: str
-    children: Optional["Metadata"]  # type: ignore
-    type: Optional["MetadataItemType"]
-    mapping: Optional[Dict]
-    unit: Optional[str]
+    identifier_tte: str
+    name: str
+    name_short: str
+    children: "Metadata"
+    type: "MetadataItemType"
+    value_name_map: Dict
+    unit: str
 
 
 class MetadataItemType(Enum):
@@ -68,8 +80,7 @@ def format_features(
     data: DataFrame,
     metadata: Metadata,
     axis: int = 1,
-    # formatter: Callable[..., str] = None,
-    formatter: Callable = None,
+    formatter: Optional[Callable] = None,
 ) -> DataFrame:
     if formatter is None:
         formatter = format_identifier
@@ -83,8 +94,8 @@ def format_feature_value(value: Any, metadata_item: Optional[MetadataItem]) -> A
     if not metadata_item:
         return value
 
-    mapping = metadata_item.get("mapping")
-    if mapping:
+    mapping = metadata_item.get("value_name_map")
+    if isinstance(mapping, Mapping):
         return mapping.get(value, value)
     else:
         return value
@@ -96,12 +107,12 @@ def inverse_format_feature_value(
 ) -> Any:
     if (
         metadata_item is None
-        or "mapping" not in metadata_item
-        or metadata_item["mapping"] is None
+        or "value_name_map" not in metadata_item
+        or metadata_item["value_name_map"] is None
     ):
         return value
 
-    mapping = key_value_swap(metadata_item["mapping"])
+    mapping = key_value_swap(metadata_item["value_name_map"])
 
     if mapping:
         return mapping.get(value, value)
@@ -117,8 +128,8 @@ def format_identifier(
     identifier: str,
     metadata: Metadata,
 ) -> str:
-    meaning = format_identifier_raw(identifier, metadata)
-    return meaning if meaning is not None else identifier
+    name = format_identifier_raw(identifier, metadata)
+    return name if name is not None else identifier
 
 
 def format_identifier_long(
@@ -142,9 +153,12 @@ def format_identifier_raw(
 def format_identifier_short(
     identifier: str,
     metadata: Metadata,
-) -> str:
+) -> Optional[str]:
     item = find_item(identifier, metadata)
-    return item.get("short_label", item.get("meaning", identifier))
+    if isinstance(item, Mapping):
+        return item.get("name_short", item.get("name", identifier))
+    else:
+        return None
 
 
 def get_feature_subset(df: DataFrame, feature_names: List[str]) -> DataFrame:
@@ -282,11 +296,11 @@ def format_series(name: str, series: Series, metadata: Metadata) -> Series:
         name,
         metadata,
     )
-    if not item or "mapping" not in item:
+    if not item or "value_name_map" not in item:
         return series
 
     mapping_with_defaults = (
-        get_default_mapping(series) | item["mapping"]  # type: ignore
+        get_default_mapping(series) | item["value_name_map"]  # type: ignore
     )
 
     return series.map(mapping_with_defaults)

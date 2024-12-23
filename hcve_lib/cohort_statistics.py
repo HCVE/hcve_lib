@@ -38,7 +38,7 @@ def get_events_rows(
             description_column = chain(
                 description_column,
                 [
-                    f'<b>{target["meaning"]}</b>',
+                    f'<b>{target["name"]}</b>',
                     offset("Events per 1000 py"),
                     offset("Incidence"),
                     offset("Events"),
@@ -259,9 +259,9 @@ def get_description_column(
     for item, level in iterate_over_items(items, X):
         mapping = item.get("mapping")
         if level == 0:
-            yield level, "category", item.get("meaning", item["identifier"])
+            yield level, "category", item.get("name", item["identifier"])
         elif level >= 1:
-            label = item.get("meaning", item["identifier"])
+            label = item.get("name", item["identifier"])
             if "unit" in item:
                 label += f', {item["unit"]}'
             if (item["identifier"] in categorical_features) and mapping:

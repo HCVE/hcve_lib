@@ -19,7 +19,7 @@ def test_integration_get_importance_feature_selection_curve():
         y,
         partial(
             cross_validate,
-            get_pipeline=partial(get_supervised_pipeline, LinearModel),
+            get_pipeline=partial(get_supervised_pipeline, get_estimator=LinearModel),
             get_splits=get_train_test,
             random_state=423,
             return_models=True,

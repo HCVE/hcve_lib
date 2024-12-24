@@ -1,8 +1,7 @@
-from typing import Optional, Dict, Protocol
+from typing import Optional, Dict, Protocol, List
 
 import plotly.graph_objs as go
 from pandas import DataFrame
-
 from hcve_lib.custom_types import Metrics, Target, Results
 from hcve_lib.evaluation_functions import compute_metrics
 from hcve_lib.feature_importance import get_model_importance
@@ -10,8 +9,10 @@ from hcve_lib.utils import partial
 from hcve_lib.utils import transpose_dict
 
 
-def get_forward_feature_selection_curve(X, y, get_results, max_features: int = None):
-    selected_features = []
+def get_forward_feature_selection_curve(
+    X, y, get_results, max_features: Optional[int] = None
+):
+    selected_features: List = []
     available_features = list(X.columns)
     metrics_per_features = {}
     while len(available_features) != 0:
@@ -53,6 +54,7 @@ def get_importance_feature_selection_curve(
     y: Target,
     cross_validate_callback: CrossValidateCallback,
     max_features: Optional[int] = None,
+    verbose: bool = True,
 ):
     feature_selection_curve_all = evaluate_n_features(
         len(X.columns), X, y, cross_validate_callback, return_result=True
@@ -72,6 +74,7 @@ def get_importance_feature_selection_curve(
                     y=y,
                     cross_validate_callback=cross_validate_callback,
                     fi=fi,
+                    verbose=verbose,
                 ),
                 n_feature_range,
             ),
@@ -91,7 +94,11 @@ def evaluate_n_features(
     metrics=None,
     fi=None,
     return_result=False,
+    verbose: bool = False,
 ) -> Dict:
+    if verbose:
+        print(len(X.columns), end=" ")
+
     if fi is None:
         if n_features != len(X.columns):
             raise Exception("Need feature importance when evaluating a subset")
@@ -106,9 +113,12 @@ def evaluate_n_features(
         y,
         metrics,
     )
+
     output: Dict = dict(metrics=metrics_value, features=X_selected.columns.tolist())
+
     if return_result:
         output["results"] = results
+
     return output
 
 

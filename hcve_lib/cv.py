@@ -36,6 +36,7 @@ from hcve_lib.custom_types import (
     Result,
     TrainTestSplitter,
     Results,
+    Metrics,
 )
 from hcve_lib.evaluation_functions import (
     compute_metrics_result,
@@ -170,7 +171,6 @@ def cross_validate(
             ).values(),
             list,
         )
-        print()
 
         if mlflow:
             metrics = compute_metrics_fn(
@@ -496,18 +496,19 @@ def cross_validate_single_repeat(
     X: DataFrame,
     y: Target,
     get_splits: TrainTestSplitter,
-    random_state: Optional[int] = None,
+    random_state: int,
     predict_method: Optional[str] = "predict",
-    fit_params: Dict = None,
+    fit_params: Optional[Dict] = None,
     train_test_filter_callback: Optional[Callable] = None,
     optimize: bool = False,
     optimize_params: OptimizationParams = OptimizationParams(),
-    optimize_callbacks: Dict[str, Callable] = None,
-    hyperparameters: Union[Mapping[str, Dict], Dict] = None,
+    optimize_callbacks: Optional[Dict[str, Callable]] = None,
+    hyperparameters: Optional[Mapping[str, Dict] | Dict] = None,
     return_models: bool = True,
     logger: Optional[logging.Logger] = None,
     mlflow: bool = False,
     reporter: Optional[ProgressReporter] = None,
+    verbose: bool = True,
     n_jobs: int = -1,
 ) -> Result:
     if fit_params is None:
@@ -516,7 +517,9 @@ def cross_validate_single_repeat(
     if optimize_callbacks is None:
         optimize_callbacks = {}
 
-    print(".", end="")
+    if verbose:
+        print(".", end="")
+
     random_seed(random_state)
     y_data = y.data if y is Dict else y
 
@@ -608,21 +611,10 @@ def cross_validate_single_repeat(
         result = list_to_dict_index(runs)
 
     if mlflow:
-        metrics = compute_metrics_result(result, y)
+        metrics: Metrics = compute_metrics_result(result, y)
         log_metrics(metrics)
 
-    print("x", end="")
-
     return result
-
-
-# dict(n_trials=1),
-# self.optimize_params,
-
-# TODO
-
-# callbacks = [*self.optimize_callbacks, *([self.mlflow_callback] if self.mlflow_callback else [])],
-#
 
 
 def get_predictions(results: List[Result]) -> Iterable[Prediction]:

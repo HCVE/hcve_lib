@@ -195,7 +195,7 @@ def compute_metrics_result(
     y: Target,
     metrics: List[Metric] = None,
     skip_metrics: List[str] = None,
-) -> Dict[HashableT, ValueWithStatistics]:
+) -> Metrics:
     if metrics is None:
         metrics = get_standard_metrics(y)
 

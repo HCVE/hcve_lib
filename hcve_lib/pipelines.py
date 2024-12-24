@@ -2332,6 +2332,29 @@ def get_supervised_pipeline(
     )
 
 
+def get_basic_pipeline(
+    X: DataFrame,
+    y: Target,
+    random_state: int,
+    get_estimator: Callable[..., Estimator],
+) -> DFPipeline:
+    categorical = estimate_continuous_columns(X)
+    continuous = list(set(X.columns) - set(categorical))
+
+    return DFPipeline(
+        [
+            *_get_imputation(categorical, continuous),
+            *_get_standard_scaler(),
+            (
+                "estimator",
+                get_estimator(
+                    X=X, target_type=get_target_type(y), random_state=random_state
+                ),
+            ),
+        ]
+    )
+
+
 def get_imputation_pipeline(
     X: DataFrame,
     y: Target,

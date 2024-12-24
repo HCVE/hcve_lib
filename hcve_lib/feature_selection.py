@@ -96,15 +96,15 @@ def evaluate_n_features(
     return_result=False,
     verbose: bool = False,
 ) -> Dict:
-    if verbose:
-        print(len(X.columns), end=" ")
-
     if fi is None:
         if n_features != len(X.columns):
             raise Exception("Need feature importance when evaluating a subset")
         X_selected = X
     else:
         X_selected = X[fi.index[:n_features]]
+
+    if verbose:
+        print(len(X_selected.columns), end=" ")
 
     results = cross_validate_callback(X=X_selected, y=y)
 

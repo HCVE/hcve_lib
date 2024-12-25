@@ -2,11 +2,9 @@ import json
 from functools import partial
 from math import ceil
 from numbers import Rational
-from statistics import mean
 from typing import Any
 from typing import Tuple, List
 
-import numpy
 import numpy as np
 import yaml
 from IPython.core.display import HTML
@@ -18,13 +16,13 @@ from plotly.graph_objs import Figure
 from prettytable import PrettyTable, PLAIN_COLUMNS
 from ray.dashboard.modules.metrics.dashboards.common import Target
 from scipy.stats import gaussian_kde
-from toolz import merge
+from toolz import merge, valmap
 
-from hcve_lib.custom_types import Result, ValueWithStatistics, TrainTestSplits
+from hcve_lib.custom_types import Result, TrainTestSplits
 from hcve_lib.data import Metadata, format_features_and_values
 from hcve_lib.formatting import format_number
 from hcve_lib.functional import flatten, pipe, itemmap_recursive, itemmap_recursive_
-from hcve_lib.utils import get_X_y_split, is_noneish
+from hcve_lib.utils import is_noneish
 
 TRANSPARENT = "rgba(0,0,0,0)"
 

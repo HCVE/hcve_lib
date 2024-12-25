@@ -2,10 +2,10 @@ from typing import Optional, Dict, Protocol, List
 
 import plotly.graph_objs as go
 from pandas import DataFrame
+
 from hcve_lib.custom_types import Metrics, Target, Results
 from hcve_lib.evaluation_functions import compute_metrics
 from hcve_lib.feature_importance import get_model_importance
-from hcve_lib.utils import partial
 from hcve_lib.utils import transpose_dict
 
 
@@ -63,23 +63,16 @@ def get_importance_feature_selection_curve(
     max_features_ = max_features or len(X.columns)
     n_feature_range = list(range(1, max_features_ + 1))
 
-    # with NonDaemonPool(5) as pool:
-    feature_selection_curve = dict(
-        zip(
-            n_feature_range,
-            map(
-                partial(
-                    evaluate_n_features,
-                    X=X,
-                    y=y,
-                    cross_validate_callback=cross_validate_callback,
-                    fi=fi,
-                    verbose=verbose,
-                ),
-                n_feature_range,
-            ),
+    feature_selection_curve = {}
+    for n_features in n_feature_range:
+        feature_selection_curve[n_features] = evaluate_n_features(
+            n_features=n_features,
+            X=X,
+            y=y,
+            cross_validate_callback=cross_validate_callback,
+            fi=fi,
+            verbose=verbose,
         )
-    )
 
     feature_selection_curve[len(X.columns)] = feature_selection_curve_all
 

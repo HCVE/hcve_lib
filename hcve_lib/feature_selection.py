@@ -56,46 +56,50 @@ def get_importance_feature_selection_curve(
     max_features: Optional[int] = None,
     verbose: bool = True,
 ):
-    feature_selection_curve_all = evaluate_n_features(
-        len(X.columns), X, y, cross_validate_callback, return_result=True
+    max_features = max_features or len(X.columns)
+
+    point_all_features = evaluate_n_features(
+        X,
+        y,
+        cross_validate_callback,
+        return_result=True,
     )
-    fi = get_model_importance(feature_selection_curve_all["results"])
-    max_features_ = max_features or len(X.columns)
-    n_feature_range = list(range(1, max_features_ + 1))
+    feature_importance = get_model_importance(point_all_features["results"])
 
     feature_selection_curve = {}
-    for n_features in n_feature_range:
-        feature_selection_curve[n_features] = evaluate_n_features(
-            n_features=n_features,
+    feature_selection_curve[len(X.columns)] = point_all_features
+    n_feature_range = list(range(1, max_features + 1))
+
+    for n_features in reversed(n_feature_range):
+        X_selected = select_features_by_importance(
             X=X,
+            n_features=n_features,
+            feature_importance=feature_importance,
+        )
+
+        feature_selection_curve[n_features] = evaluate_n_features(
+            X_selected=X_selected,
             y=y,
             cross_validate_callback=cross_validate_callback,
-            fi=fi,
+            return_result=True,
             verbose=verbose,
         )
 
-    feature_selection_curve[len(X.columns)] = feature_selection_curve_all
+        feature_importance = get_model_importance(
+            feature_selection_curve[n_features]["results"]
+        )
 
     return feature_selection_curve
 
 
 def evaluate_n_features(
-    n_features: int,
-    X: DataFrame,
+    X_selected: DataFrame,
     y: Target,
     cross_validate_callback: CrossValidateCallback,
     metrics=None,
-    fi=None,
     return_result=False,
     verbose: bool = False,
 ) -> Dict:
-    if fi is None:
-        if n_features != len(X.columns):
-            raise Exception("Need feature importance when evaluating a subset")
-        X_selected = X
-    else:
-        X_selected = X[fi.index[:n_features]]
-
     if verbose:
         print(len(X_selected.columns), end=" ")
 
@@ -113,6 +117,18 @@ def evaluate_n_features(
         output["results"] = results
 
     return output
+
+
+def select_features_by_importance(
+    X: DataFrame,
+    n_features: int,
+    feature_importance: Optional[DataFrame],
+) -> DataFrame:
+    if feature_importance is None:
+        if n_features != len(X.columns):
+            raise Exception("Need feature importance when evaluating a subset")
+        return X
+    return X[feature_importance.index[:n_features]]
 
 
 def plot_feature_selection_curve(

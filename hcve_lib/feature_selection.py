@@ -54,6 +54,7 @@ def get_importance_feature_selection_curve(
     y: Target,
     cross_validate_callback: CrossValidateCallback,
     max_features: Optional[int] = None,
+    return_results: bool = False,
     verbose: bool = True,
 ):
     max_features = max_features or len(X.columns)
@@ -65,6 +66,9 @@ def get_importance_feature_selection_curve(
         return_result=True,
     )
     feature_importance = get_model_importance(point_all_features["results"])
+
+    if not return_results:
+        point_all_features.pop("results", None)
 
     feature_selection_curve = {}
     feature_selection_curve[len(X.columns)] = point_all_features
@@ -88,6 +92,9 @@ def get_importance_feature_selection_curve(
         feature_importance = get_model_importance(
             feature_selection_curve[n_features]["results"]
         )
+
+        if not return_results:
+            feature_selection_curve[n_features].pop("results", None)  #
 
     return feature_selection_curve
 

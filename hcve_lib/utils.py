@@ -32,6 +32,7 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
+    Mapping,
 )
 
 import numpy
@@ -422,16 +423,9 @@ def get_fraction_missing(series: Series) -> float:
     return len(series[series.isna()]) / len(series)
 
 
-TransposeDictT1 = TypeVar("TransposeDictT1")
-TransposeDictT2 = TypeVar("TransposeDictT2")
-TransposeDictValue = TypeVar("TransposeDictValue")
-
-TransposeDictInput = Dict[TransposeDictT1, Dict[TransposeDictT2, TransposeDictValue]]
-
-
-def transpose_dict(
-    dictionary: TransposeDictInput,
-) -> Dict[TransposeDictT2, Dict[TransposeDictT1, TransposeDictValue]]:
+def transpose_mapping(
+    dictionary: Mapping,
+) -> Mapping:
     outer_keys = dictionary.keys()
 
     if len(outer_keys) == 0:

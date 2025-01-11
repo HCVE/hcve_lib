@@ -58,7 +58,7 @@ from hcve_lib.metrics_types import Metric
 from hcve_lib.stats import confidence_interval
 from hcve_lib.tracking import log_metrics
 from hcve_lib.utils import (
-    transpose_dict,
+    transpose_mapping,
     map_groups_loc,
     split_data,
     get_y_split,
@@ -177,7 +177,7 @@ def compute_metrics_statistics(
 ) -> Dict[Any, ValueWithStatistics]:
     return pipe(
         values,
-        transpose_dict,
+        transpose_mapping,
         partial(
             itemmap,
             star_args(
@@ -208,7 +208,7 @@ def compute_metrics_result(
 
     return pipe(
         metrics_per_split,
-        transpose_dict,
+        transpose_mapping,
         partial(
             itemmap,
             star_args(
@@ -757,9 +757,9 @@ def merge_predictions(result: Result) -> Prediction:
 
 def average_group_scores(group: Dict[Hashable, Result]) -> Result:
     averaged_predictions = {}
-    for test_cohort, group in transpose_dict(group).items():
+    for test_cohort, group in transpose_mapping(group).items():
         y_scores = [prediction["y_score"] for prediction in group.values()]
-        y_proba = transpose_dict(group).get("y_proba")
+        y_proba = transpose_mapping(group).get("y_proba")
 
         averaged_predictions[test_cohort] = {
             **group[0],

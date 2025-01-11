@@ -31,7 +31,7 @@ from hcve_lib.utils import (
     list_to_dict_index,
     get_fraction_missing,
     loc,
-    transpose_dict,
+    transpose_mapping,
 )
 
 
@@ -250,7 +250,7 @@ def get_per_subset_split(
 
     output_splits = defaultdict(lambda: ([], []))
 
-    for key, value in transpose_dict(splits_subsets).items():
+    for key, value in transpose_mapping(splits_subsets).items():
         for train, test in value.values():
             output_splits[key][0].extend(train)
             output_splits[key][1].extend(test)

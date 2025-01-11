@@ -4,7 +4,8 @@ version = "0.1.21"
 description = ""
 authors = ["sitnarf <sitnarf@gmail.com>"]
 readme = "README.md"
-packages = [{include = "hcve_lib"}]
+packages = [{ include = "hcve_lib" }]
+
 
 [tool.poetry.dependencies]
 python = "^3.10"

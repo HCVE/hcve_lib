@@ -518,7 +518,7 @@ def cross_validate_single_repeat(
         optimize_callbacks = {}
 
     if verbose:
-        print(".", end="")
+        print(".", end="", flush=True)
 
     random_seed(random_state)
     y_data = y.data if y is Dict else y

@@ -4,9 +4,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
-from numpy import int64
 
-from hcve_lib.custom_types import Result, Prediction
 from hcve_lib.functional import itemmap_recursive, map_recursive
 from hcve_lib.utils import (
     get_class_ratios,
@@ -22,7 +20,7 @@ from hcve_lib.utils import (
     map_groups_iloc,
     remove_prefix,
     remove_column_prefix,
-    transpose_dict,
+    transpose_mapping,
     map_groups_loc,
     loc,
     split_data,
@@ -64,7 +62,6 @@ from hcve_lib.utils import (
     camelize_and_capitalize,
     diff_dict_values,
 )
-from imblearn.under_sampling import RandomUnderSampler
 from numpy.testing import assert_array_equal
 from pandas import Series, DataFrame, Index
 from pandas.testing import assert_frame_equal, assert_series_equal
@@ -259,7 +256,7 @@ def test_percent_missing():
 
 
 def test_transpose_dict():
-    assert transpose_dict(
+    assert transpose_mapping(
         {
             0: {"a": "x", "b": 1},
             1: {"a": "y", "b": 2},

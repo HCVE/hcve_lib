@@ -1,68 +1,64 @@
-from typing import Optional, Dict, Protocol, List
-
 import plotly.graph_objs as go
 from pandas import DataFrame
+from typing import Optional, Protocol, List, TypedDict, Mapping, Iterable, Callable
+from typing_extensions import NotRequired
 
 from hcve_lib.custom_types import Metrics, Target, Results
 from hcve_lib.evaluation_functions import compute_metrics
 from hcve_lib.feature_importance import get_model_importance
-from hcve_lib.utils import transpose_dict
+from hcve_lib.utils import transpose_mapping
 
 
-def get_forward_feature_selection_curve(
-    X, y, get_results, max_features: Optional[int] = None
-):
-    selected_features: List = []
-    available_features = list(X.columns)
-    metrics_per_features = {}
-    while len(available_features) != 0:
-        potential_features_results = {}
-        for potential_feature in available_features:
-            results = get_results(X=X[selected_features + [potential_feature]], y=y)
-            metrics_value = compute_metrics(
-                results,
-                y,
-            )
-            potential_features_results[potential_feature] = {
-                "metrics": metrics_value,
-                "results": results,
-            }
+class FeatureSelectionPoint(TypedDict, total=False):
+    metrics: Metrics
+    features: List[str]
+    results: NotRequired[Results]
 
-        best_feature = max(
-            potential_features_results,
-            key=lambda key: potential_features_results.get(key)["metrics"]["roc_auc"][
-                "mean"
-            ],
-        )
-        selected_features.append(best_feature)
-        available_features.remove(best_feature)
-        metrics_per_features[len(selected_features)] = {
-            "metrics": potential_features_results[best_feature]["metrics"],
-            "results": potential_features_results[best_feature]["results"],
-            "features": tuple(selected_features),
-        }
 
-    return metrics_per_features
+FeatureSelectionCurve = Mapping[int, FeatureSelectionPoint]
 
 
 class CrossValidateCallback(Protocol):
     def __call__(self, X: DataFrame, y: Target) -> Results: ...
 
 
+def evaluate_all_points(n_features: int) -> Iterable[int]:
+    return range(n_features, 0, -1)
+
+
+def evaluate_stepped_points(
+    total_features: int,
+    threshold: Optional[int] = None,
+    step: int = 10,
+    max_features: Optional[int] = None,
+) -> Iterable[int]:
+    if threshold is None:
+        threshold = total_features
+
+    if max_features is not None:
+        total_features = min(total_features, max_features)
+
+    stepped_evaluation = range(total_features, threshold, -step)
+
+    full_evaluation = range(threshold, 0, -1)
+
+    return list(stepped_evaluation) + list(full_evaluation)
+
+
 def get_importance_feature_selection_curve(
     X: DataFrame,
     y: Target,
     cross_validate_callback: CrossValidateCallback,
-    max_features: Optional[int] = None,
+    get_evaluated_points: Callable[[int], Iterable[int]] = evaluate_all_points,
     return_results: bool = False,
     verbose: bool = True,
-):
-    max_features = max_features or len(X.columns)
+) -> FeatureSelectionCurve:
+    n_features_points = get_evaluated_points(len(X.columns))
 
-    point_all_features = evaluate_n_features(
-        X,
-        y,
-        cross_validate_callback,
+    point_all_features = get_feature_selection_point(
+        X=X,
+        y=y,
+        cross_validate_callback=cross_validate_callback,
         return_result=True,
     )
     feature_importance = get_model_importance(point_all_features["results"])
@@ -72,17 +68,16 @@ def get_importance_feature_selection_curve(
 
     feature_selection_curve = {}
     feature_selection_curve[len(X.columns)] = point_all_features
-    n_feature_range = list(range(1, max_features + 1))
 
-    for n_features in reversed(n_feature_range):
+    for n_features in n_features_points:
         X_selected = select_features_by_importance(
             X=X,
             n_features=n_features,
             feature_importance=feature_importance,
         )
 
-        feature_selection_curve[n_features] = evaluate_n_features(
-            X_selected=X_selected,
+        feature_selection_curve[n_features] = get_feature_selection_point(
+            X=X_selected,
             y=y,
             cross_validate_callback=cross_validate_callback,
             return_result=True,
@@ -94,23 +89,23 @@ def get_importance_feature_selection_curve(
         )
 
         if not return_results:
-            feature_selection_curve[n_features].pop("results", None)  #
+            feature_selection_curve[n_features].pop("results", None)
 
     return feature_selection_curve
 
 
-def evaluate_n_features(
-    X_selected: DataFrame,
+def get_feature_selection_point(
+    X: DataFrame,
     y: Target,
     cross_validate_callback: CrossValidateCallback,
     metrics=None,
     return_result=False,
     verbose: bool = False,
-) -> Dict:
+) -> FeatureSelectionPoint:
     if verbose:
-        print(len(X_selected.columns), end=" ")
+        print(len(X.columns), end=" ", flush=True)
 
-    results = cross_validate_callback(X=X_selected, y=y)
+    results = cross_validate_callback(X=X, y=y)
 
     metrics_value: Metrics = compute_metrics(
         results,
@@ -118,7 +113,10 @@ def evaluate_n_features(
         metrics,
     )
 
-    output: Dict = dict(metrics=metrics_value, features=X_selected.columns.tolist())
+    output: FeatureSelectionPoint = FeatureSelectionPoint(
+        metrics=metrics_value,
+        features=X.columns.tolist(),
+    )
 
     if return_result:
         output["results"] = results
@@ -139,11 +137,13 @@ def select_features_by_importance(
 
 
 def plot_feature_selection_curve(
-    feature_selection_curve, metric_name: Optional[str] = None
-):
-    metrics: Metrics = transpose_dict(feature_selection_curve)["metrics"]
-    features = transpose_dict(feature_selection_curve)["features"]
-    per_metric = transpose_dict(metrics)
+    feature_selection_curve: FeatureSelectionCurve, metric_name: Optional[str] = None
+) -> None:
+    metrics: Metrics = transpose_mapping(feature_selection_curve)["metrics"]
+    features: Mapping[int, List[str]] = transpose_mapping(feature_selection_curve)[
+        "features"
+    ]
+    per_metric = transpose_mapping(metrics)
 
     for metric_name, values_per_n in per_metric.items():
         x_values = list(values_per_n.keys())
@@ -158,7 +158,7 @@ def plot_feature_selection_curve(
                     line=dict(color="rgb(0,100,80)"),
                     mode="markers+lines",
                     showlegend=False,
-                    hovertext=["<br>".join(f) for f in features.values()],
+                    hovertext=[feature[-1] for feature in features.values()],
                 ),
                 go.Scatter(
                     x=x_values + x_values[::-1],

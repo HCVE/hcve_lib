@@ -237,7 +237,7 @@ class ValueWithStatistics(TypedDict):
     std: float
 
 
-Metrics = Dict[Hashable, ValueWithStatistics]
+Metrics = Mapping[Hashable, ValueWithStatistics]
 
 
 class ClassificationMetricsWithStatistics(TypedDict):

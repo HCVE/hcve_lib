@@ -621,7 +621,7 @@ def cross_validate_apply_mask(
 
 def cwd_root():
     for folder in itertools.chain([Path.cwd()], Path.cwd().parents):
-        if (folder / "Pipfile").exists():
+        if (folder / "Pipfile").exists() or (folder / "pyproject.toml").exists():
             os.chdir(folder)
             break
 

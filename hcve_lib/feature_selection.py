@@ -120,6 +120,8 @@ def get_feature_selection_point(
         features=X.columns.tolist(),
     )
 
+    print(X.columns.tolist())
+
     if return_result:
         output["results"] = results
 

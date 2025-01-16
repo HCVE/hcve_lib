@@ -37,7 +37,9 @@ def evaluate_stepped_points(
 
     if max_features is not None:
         total_features = min(total_features, max_features)
+        threshold = min(threshold, max_features)
 
+    print("step", step)
     stepped_evaluation = range(total_features, threshold, -step)
 
     full_evaluation = range(threshold, 0, -1)
@@ -133,6 +135,7 @@ def select_features_by_importance(
         if n_features != len(X.columns):
             raise Exception("Need feature importance when evaluating a subset")
         return X
+    print(feature_importance.index[:n_features])
     return X[feature_importance.index[:n_features]]
 
 
@@ -158,7 +161,7 @@ def plot_feature_selection_curve(
                     line=dict(color="rgb(0,100,80)"),
                     mode="markers+lines",
                     showlegend=False,
-                    hovertext=[feature[-1] for feature in features.values()],
+                    hovertext=["<br>".join(f) for f in features.values()],
                 ),
                 go.Scatter(
                     x=x_values + x_values[::-1],

@@ -58,6 +58,9 @@ def test_evaluate_stepped_points():
     result = list(evaluate_stepped_points(5, 3, 1))
     assert result == [5, 4, 3, 2, 1]
 
+    result = list(evaluate_stepped_points(5, max_features=3))
+    assert result == [3, 2, 1]
+
 
 # Run the test
 test_evaluate_stepped_points()

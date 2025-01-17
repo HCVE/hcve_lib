@@ -39,7 +39,6 @@ def evaluate_stepped_points(
         total_features = min(total_features, max_features)
         threshold = min(threshold, max_features)
 
-    print("step", step)
     stepped_evaluation = range(total_features, threshold, -step)
 
     full_evaluation = range(threshold, 0, -1)
@@ -119,8 +118,6 @@ def get_feature_selection_point(
         metrics=metrics_value,
         features=X.columns.tolist(),
     )
-
-    print(X.columns.tolist())
 
     if return_result:
         output["results"] = results

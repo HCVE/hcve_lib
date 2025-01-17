@@ -52,6 +52,14 @@ def h4(text: str) -> None:
     display_html(f"<h4>{text}</h4>")
 
 
+def h5(text: str) -> None:
+    display_html(f"<h5>{text}</h5>")
+
+
+def h6(text: str) -> None:
+    display_html(f"<h6>{text}</h6>")
+
+
 def b(text: str) -> None:
     display_html(f"<b>{text}</b>")
 

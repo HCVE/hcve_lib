@@ -40,6 +40,7 @@ pyaml = "^24.9.0"
 notebook = "^7.3.1"
 dill = "^0.3.9"
 shap = "^0.46.0"
+fsspec = "^2024.12.0"
 
 
 [tool.poetry.dev-dependencies]

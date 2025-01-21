@@ -301,6 +301,8 @@ class Prediction(TypedDict, total=False):
     X_columns: List[str]
     model: Any
     split: TrainTestIndex
+    X: DataFrame
+    y: Target
 
 
 Result = Dict[Hashable, Prediction]

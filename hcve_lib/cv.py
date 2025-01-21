@@ -510,6 +510,7 @@ def cross_validate_single_repeat(
     optimize_callbacks: Optional[Dict[str, Callable]] = None,
     hyperparameters: Optional[Mapping[str, Dict] | Dict] = None,
     return_models: bool = True,
+    save_data: bool = False,
     logger: Optional[logging.Logger] = None,
     mlflow: bool = False,
     reporter: Optional[ProgressReporter] = None,
@@ -601,6 +602,7 @@ def cross_validate_single_repeat(
             predict_method,
             mlflow,
             return_models,
+            save_data,
         )
     )
 
@@ -1022,6 +1024,7 @@ def cross_validate_predict(
     predict_method: str,
     mlflow: bool = False,
     return_models: bool = True,
+    save_data: bool = False,
 ) -> Iterable[Prediction]:
     for name, split in splits.items():
         run_id, model = models[name]
@@ -1045,6 +1048,8 @@ def cross_validate_predict(
             y_column=y.name,
             y_pred=y_pred,
             model=model if return_models else None,
+            X=X if save_data else None,
+            y=y if save_data else None,
         )
 
         if mlflow:

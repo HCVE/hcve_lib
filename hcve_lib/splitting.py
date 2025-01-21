@@ -2,7 +2,7 @@ import itertools
 from collections import defaultdict
 from functools import partial
 from functools import wraps
-from typing import Callable, Sequence, List, Tuple, Dict, Any, Hashable
+from typing import Callable, Sequence, List, Tuple, Dict, Any, Hashable, Protocol
 from typing import Union
 
 import numpy as np
@@ -18,6 +18,7 @@ from sklearn.model_selection import (
 from toolz import merge
 from toolz.curried import valfilter, map
 
+import hcve_lib
 from hcve_lib.custom_types import (
     Target,
     TrainTestSplits,
@@ -480,3 +481,22 @@ def resample_prediction_test(
             y_pred=y_pred,
         ),
     )
+
+
+class GetSplits(Protocol):
+    def __call__(self, X: DataFrame, y: Target) -> TrainTestSplits: ...
+
+
+def get_splits_from_str(get_splits: str) -> GetSplits:
+    get_splits = (
+        getattr(hcve_lib.splitting, get_splits)
+        if isinstance(get_splits, str)
+        else get_train_test
+    )
+    return get_splits
+
+
+class GetSplitTrainSize(Protocol):
+    def __call__(
+        self, X: DataFrame, y: Target, random_state: int, train_size: int
+    ) -> TrainTestSplits: ...

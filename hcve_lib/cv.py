@@ -53,6 +53,7 @@ from hcve_lib.progress_reporter import ProgressReporter
 from hcve_lib.splitting import (
     get_k_fold,
     get_k_fold_stratified,
+    get_splits_from_str,
 )
 from hcve_lib.tracking import (
     log_early_stopping,
@@ -107,6 +108,10 @@ def cross_validate(
     *args,
     **kwargs,
 ) -> Results:
+    get_splits = (
+        get_splits_from_str(get_splits) if isinstance(get_splits, str) else get_splits
+    )
+
     if on_repeat_result is None:
         on_repeat_result = []
     elif isinstance(mlflow, str):

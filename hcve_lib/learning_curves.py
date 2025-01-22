@@ -4,21 +4,11 @@ from typing import Dict, Protocol, Optional, List
 import plotly.graph_objects as go
 from pandas import DataFrame
 
-from hcve_lib.custom_types import Results, Target, Metrics, TrainTestSplits
+from hcve_lib.custom_types import Results, Target, Metrics
 from hcve_lib.evaluation_functions import compute_metrics
 from hcve_lib.metrics_types import Metric
-from hcve_lib.splitting import get_bootstrap
+from hcve_lib.splitting import get_bootstrap, GetSplits, GetSplitTrainSize
 from hcve_lib.utils import partial
-
-
-class GetSplitTrainSize(Protocol):
-    def __call__(
-        self, X: DataFrame, y: Target, random_state: int, train_size: int
-    ) -> TrainTestSplits: ...
-
-
-class GetSplits(Protocol):
-    def __call__(self, X: DataFrame, y: Target) -> TrainTestSplits: ...
 
 
 class CrossValidateCallback(Protocol):
@@ -31,6 +21,9 @@ class CrossValidateCallback(Protocol):
     ) -> Results: ...
 
 
+LearningCurveData = Dict[int, Results]
+
+
 def get_learning_curve_data(
     X: DataFrame,
     y: Target,
@@ -41,7 +34,7 @@ def get_learning_curve_data(
     end_samples: float | int = 1.0,
     n_points: int = 10,
     verbose: bool = True,
-) -> Dict[int, Results]:
+) -> LearningCurveData:
     if get_splits is None:
         get_splits = get_bootstrap
 
@@ -97,11 +90,14 @@ def get_learning_curve_data(
     return results_all
 
 
+LearningCurveMetrics = Dict[int, Metrics]
+
+
 def compute_learning_curve_metrics(
     data: Dict[int, Results],
     y: Target,
     metrics: Optional[List[Metric]] = None,
-) -> Dict[int, Metrics]:
+) -> LearningCurveMetrics:
     metrics_all: Dict[int, Metrics] = {}
 
     for sample_size, results in data.items():

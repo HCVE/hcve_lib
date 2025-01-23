@@ -1,13 +1,15 @@
+import itertools
 from copy import deepcopy
-from typing import List, Tuple, Iterable, Any
-from plotly import express as px
+from typing import List, Tuple, Any
+
 import numpy as np
 import pandas
 import shap
 from joblib import Logger
 from pandas import DataFrame
-import itertools
-from hcve_lib.custom_types import TargetType, Estimator, Result, Prediction
+from plotly import express as px
+
+from hcve_lib.custom_types import Estimator, Result, Prediction
 from hcve_lib.progress_reporter import ProgressReporter
 from hcve_lib.utils import (
     get_X_split,
